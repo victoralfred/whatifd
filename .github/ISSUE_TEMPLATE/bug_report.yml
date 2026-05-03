@@ -1,0 +1,94 @@
+name: Bug report
+description: Something isn't working as documented.
+title: "bug: <one-line summary>"
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please complete each section so we can
+        reproduce — vague reports are usually closed unactioned.
+
+  - type: input
+    id: version
+    attributes:
+      label: whatif version
+      description: Output of `pip show whatif | grep Version` or the git SHA.
+      placeholder: "0.0.1 (git: abc123)"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.5"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Ubuntu 24.04 / macOS 14.5 / Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+      description: |
+        The full `whatif` command (or Python code) that triggered the bug.
+        Redact secrets and project-specific identifiers.
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: |
+        Include the full error output, stack trace, or unexpected report
+        contents. Use code fences for tracebacks.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: setup
+    attributes:
+      label: Tracer / scorer / runner setup
+      description: |
+        Which tracer (Langfuse, Phoenix, ...)? Which scorer (e.g.
+        `inspect_ai:faithfulness`)? What does your `--target` runner look
+        like? Pasting the relevant 10–30 lines is fine.
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Logs, screenshots, related issues, suspected root cause.
+
+  - type: checkboxes
+    id: agreed
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing open and closed issues for duplicates.
+          required: true
+        - label: I am running a supported Python version (>= 3.11).
+          required: true
+        - label: I have read DESIGN.md and this is unexpected behavior, not a non-goal.
+          required: true

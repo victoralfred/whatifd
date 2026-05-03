@@ -1,0 +1,50 @@
+# Pre-commit hooks for whatif.
+#
+# Install once per clone:
+#   uv run pip install pre-commit
+#   pre-commit install
+#
+# Then ruff + mypy + the hygiene hooks run on every `git commit`.
+# Run on the whole tree at any time with:
+#   pre-commit run --all-files
+
+repos:
+  # ----- Ruff: lint + format ---------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Pin to a known-good rev; Dependabot bumps this weekly via the
+    # github-actions ecosystem (which also covers pre-commit mirrors).
+    rev: v0.15.12
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # ----- Standard hygiene -------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+      - id: check-added-large-files
+        args: [--maxkb=2048]   # block PNG/etc over 2MB; force LFS or compression
+
+  # ----- Mypy (strict) ----------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.20.0
+    hooks:
+      - id: mypy
+        files: ^src/
+        additional_dependencies:
+          - "pydantic>=2.6"
+          - "types-PyYAML"
+
+# Notes:
+# - Hooks here are deliberately a subset of CI. CI is the source of truth;
+#   pre-commit just shortens the feedback loop locally.
+# - If a hook fails, fix the underlying issue rather than passing
+#   `--no-verify` — that is the discipline this repo runs on.

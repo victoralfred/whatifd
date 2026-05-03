@@ -1,0 +1,90 @@
+name: Feature request
+description: Propose a new capability or improvement.
+title: "feat: <one-line summary>"
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature. To make this easier to evaluate
+        against the design (DESIGN.md), please answer the prompts below.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: |
+        What user pain does this solve? Concrete scenario, not abstract.
+        ("When I do X with Y, I want Z because A.")
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        What would you change or add? Sketch the API / CLI / config shape
+        if relevant.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      multiple: true
+      options:
+        - CLI
+        - Runner contract (src/whatif/contract/)
+        - Source adapter (ingest)
+        - Scorer
+        - Cache policy
+        - Report (Markdown or JSON)
+        - CI integration
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you consider, and why this?
+    validations:
+      required: false
+
+  - type: textarea
+    id: design-fit
+    attributes:
+      label: Design fit
+      description: |
+        How does this fit (or push) the goals/non-goals in DESIGN.md? If it
+        conflicts with a non-goal, say so explicitly — non-goals are
+        load-bearing and the bar to override one is high.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: target-version
+    attributes:
+      label: Target version (your suggestion)
+      options:
+        - v0.1 (M10)
+        - v0.2 (M11)
+        - v0.3 (M12)
+        - v1.0 (year 2 — Path Z)
+        - Unsure
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: agreed
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I read DESIGN.md and this is consistent with the goals.
+          required: true
+        - label: I searched existing issues and discussions.
+          required: true

@@ -1,0 +1,26 @@
+# whatif code owners
+#
+# Lines are file globs and the user(s) responsible. The last matching pattern
+# wins, so order matters: most specific patterns last.
+#
+# These owners get auto-requested for review when matching files change.
+# Combined with branch protection, files under the listed paths require an
+# approving review from one of the owners before merge.
+
+# Default owner for everything in the repo.
+*                              @voseghale
+
+# The design and the runner contract are the load-bearing surfaces.
+# Changes here need extra care; the design should rarely change without
+# a corresponding DESIGN.md update.
+DESIGN.md                      @voseghale
+src/whatif/contract/           @voseghale
+
+# CI / security / release plumbing requires careful change.
+.github/workflows/             @voseghale
+SECURITY.md                    @voseghale
+pyproject.toml                 @voseghale
+
+# Public-facing copy.
+README.md                      @voseghale
+CHANGELOG.md                   @voseghale

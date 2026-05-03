@@ -1,5 +1,12 @@
 # whatif
 
+[![CI](https://github.com/voseghale/whatif/actions/workflows/ci.yml/badge.svg)](https://github.com/voseghale/whatif/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/voseghale/whatif/actions/workflows/codeql.yml/badge.svg)](https://github.com/voseghale/whatif/actions/workflows/codeql.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Status](https://img.shields.io/badge/status-pre--alpha-orange.svg)](#status)
+
 > **Open experiment runner for LLM behavior changes.** Fork production traces, replay with a proposed change, score the diff, emit a PR-ready verdict report.
 
 ![whatif workflow](./what_if_archi.png)

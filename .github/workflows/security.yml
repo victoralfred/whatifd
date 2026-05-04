@@ -30,10 +30,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip pip-audit
           python -m pip install ".[langfuse,inspect,anthropic,dev]"
-      - name: Audit installed environment
-        # --strict: fail the job on any vuln, including dev/test deps.
+      - name: Audit installed environment (excluding the project itself)
+        # whatif is pre-release (not on PyPI); strip it from the audit list.
+        # --strict fails the job on any vuln, including dev/test deps.
         # To permit dev-only vulns, drop --strict and filter the JSON output.
-        run: pip-audit --strict
+        run: |
+          pip freeze --exclude-editable | grep -v '^whatif==' > /tmp/audit-requirements.txt
+          pip-audit -r /tmp/audit-requirements.txt --strict
 
   bandit:
     name: bandit (Python SAST)

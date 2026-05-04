@@ -30,9 +30,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-langfuse  = ["langfuse>=2.0"]
-inspect   = ["inspect-ai>=0.3"]
-anthropic = ["anthropic>=0.40"]
+langfuse  = ["langfuse>=4.5.1"]
+inspect   = ["inspect-ai>=0.3.216"]
+anthropic = ["anthropic>=0.97.0"]
 dev = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",

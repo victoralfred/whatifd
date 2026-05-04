@@ -67,3 +67,12 @@ htmlcov/
 reports/
 .whatif-cache/
 *.whatif.json
+
+# Skill telemetry — raw transcripts and bulky benchmark outputs.
+# Cardinal rule #5 (sensitive data wrapped, never raw) — raw JSONL transcripts
+# may contain pasted user content. Per-prompt benchmark .txt outputs are
+# regenerable; only grades.md and run-metadata.json carry the time-series
+# signal worth committing.
+docs/sessions/raw/*.jsonl
+!docs/sessions/raw/.gitkeep
+tests/skill-benchmarks/results/**/*.txt

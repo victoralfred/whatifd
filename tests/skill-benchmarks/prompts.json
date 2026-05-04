@@ -1,0 +1,106 @@
+{
+  "skill_name": "whatif-design",
+  "version": "1.1.0",
+  "description": "Benchmark prompts for whatif-design skill. 8 should-trigger + 3 should-not-trigger.",
+  "evaluations": [
+    {
+      "id": "cardinal-rule-9-cpu-tools",
+      "category": "cardinal-rule",
+      "prompt": "I want to use Ray to parallelize the replay step across multiple cores. Help me design the integration so we can scale to thousands of traces.",
+      "expected_behavior": "Should invoke cardinal rule #9 (orchestration not compute), cite the workload-classification section in references/practices.md, refuse Ray for replay, and explain why ProcessPool/Ray is the wrong tool for I/O-bound LLM API calls. Should propose ThreadPoolExecutor or async as the alternative. Should NOT design the Ray integration.",
+      "should_read": ["references/practices.md"],
+      "should_cite_rule": 9,
+      "should_refuse": true
+    },
+    {
+      "id": "trust-floor-bypass",
+      "category": "cardinal-rule",
+      "prompt": "Can we make min_replay_validity_ratio configurable so users can lower it to 0.1 for early testing? I want to be able to ship from runs with mostly-broken traces if I'm just experimenting.",
+      "expected_behavior": "Should refuse, citing rule #2 (trust floor cannot be bypassed) and the configuration-as-bypass failure mode. Should explain the floor/policy split: floor is structural and cannot be lowered; policy can be made stricter than floor, never weaker. Should mention the FloorPassedProof witness-token enforcement.",
+      "should_read": ["references/doctrine.md", "references/enforcement.md"],
+      "should_cite_rule": 2,
+      "should_refuse": true
+    },
+    {
+      "id": "verdict-impact-resurrection",
+      "category": "cascade-catalog",
+      "prompt": "I'm going to add a verdict_impact field back to FailureRecord because it makes the renderer simpler. Just one field, no big deal.",
+      "expected_behavior": "Should refuse silently making the change. Should point to the cascade catalog entry that explicitly removed verdict_impact ('Verdict-impact removal from FailureRecord'). Should explain the operational-vs-policy layering: FailureRecord is operational fact, DecisionFinding is policy conclusion. Should redirect renderer logic to query DecisionFinding instead. Should ask whether the user wants to formally re-open the cascade catalog entry rather than silently revert it.",
+      "should_read": ["references/type-model.md", "references/cascade-catalog.md"],
+      "should_cite_rule": null,
+      "should_refuse": true
+    },
+    {
+      "id": "walkthrough-first",
+      "category": "phase-ordering",
+      "prompt": "Let's start coding the FailureRecord type. Set up the dataclass with __slots__.",
+      "expected_behavior": "Should redirect to Phase 0 walkthroughs first per references/phases.md. Should explain that walkthroughs surface gaps that prevent schema rework downstream. Should note that the deliberation-converged closing rule was 'walkthroughs before code.' Should not start coding the type without acknowledging the phase ordering and getting explicit user confirmation to skip Phase 0.",
+      "should_read": ["references/phases.md"],
+      "should_cite_rule": null,
+      "should_refuse": false
+    },
+    {
+      "id": "sensitive-bypass",
+      "category": "cardinal-rule",
+      "prompt": "I need to log the original trace input for debugging when replay fails. Can I add it to the manifest as a string field?",
+      "expected_behavior": "Should cite rule #5 (sensitive data wrapped never raw) and the redaction discipline. Should propose using Sensitive[T] with a structured unwrap reason. Should mention that the manifest sensitive_unwraps list captures this audit trail. Should NOT propose adding a raw string field that bypasses redaction.",
+      "should_read": ["references/type-model.md"],
+      "should_cite_rule": 5,
+      "should_refuse": false
+    },
+    {
+      "id": "experiment-shape-scope",
+      "category": "scope-discipline",
+      "prompt": "I want to use whatif to do an A/B test between two prompt variants on a fresh trace set. There's no failure cohort, just two prompts I want to compare.",
+      "expected_behavior": "Should explain v0.1 is failure-rescue only, A/B comparison is deferred to v0.2 with proper design. Should NOT offer to extend v0.1 ad hoc to support this case. Should either offer to record this as a v0.2 use case in the cascade catalog, or suggest the user wait for v0.2. Should reference the v0.1 doctrine vs tool doctrine split in references/doctrine.md.",
+      "should_read": ["references/doctrine.md", "references/phases.md"],
+      "should_cite_rule": null,
+      "should_refuse": true
+    },
+    {
+      "id": "structural-claim-without-mechanism",
+      "category": "enforcement",
+      "prompt": "Add a structural rule that scorer adapter versions must monotonically increase. Make it part of the trust contract.",
+      "expected_behavior": "Should ask for the enforcement mechanism before accepting the rule as 'structural.' Should refer to references/enforcement.md and the strength hierarchy (type-level > pre-write hook > property test > lint > convention). Should not just add the rule without specifying how it's enforced. Should propose a concrete mechanism (e.g., schema validation rejects adapter metadata where version is lower than the previously-recorded version).",
+      "should_read": ["references/enforcement.md"],
+      "should_cite_rule": null,
+      "should_refuse": false
+    },
+    {
+      "id": "statistical-overclaim-per-trace",
+      "category": "cardinal-rule",
+      "prompt": "We have 40 traces in the failure cohort. Let's add a per-trace significance test for each one and report which traces show statistically significant regression at p < 0.05.",
+      "expected_behavior": "Should refuse per-trace inferential claims, citing cardinal rule #10 (statistical claims must match the design). Should explain that 40 traces are NOT 40 independent hypothesis tests; the cohort-level endpoint is the unit of inference. Should reference the 'endpoint discipline first, statistical machinery second' principle. Should propose descriptive framing for per-trace evidence and reference the methodology disclosure block. Multiple-comparison correction applies only to multiple primary endpoints, not per-trace observations.",
+      "should_read": ["references/practices.md", "references/statistical-defaults.md"],
+      "should_cite_rule": 10,
+      "should_refuse": true
+    },
+    {
+      "id": "should-not-trigger-generic-python",
+      "category": "negative-test",
+      "prompt": "Show me how to read a CSV file in Python and compute the mean of one column.",
+      "expected_behavior": "Should NOT invoke the whatif-design skill. This is a generic Python question with no whatif relevance. Should answer the question directly without consulting whatif-design references or citing cardinal rules.",
+      "should_read": [],
+      "should_cite_rule": null,
+      "should_refuse": false
+    },
+    {
+      "id": "should-not-trigger-unrelated-llm",
+      "category": "negative-test",
+      "prompt": "Help me write a system prompt for a customer service chatbot that handles refund requests.",
+      "expected_behavior": "Should NOT invoke the whatif-design skill. LLM-related but unrelated to whatif's domain (experiment running, verdict reports, trace replay). Should answer the prompting question directly without consulting whatif-design references.",
+      "should_read": [],
+      "should_cite_rule": null,
+      "should_refuse": false
+    },
+    {
+      "id": "should-not-trigger-deployment",
+      "category": "negative-test",
+      "prompt": "Help me write a Dockerfile for a Python web service. It needs to support multi-stage builds.",
+      "expected_behavior": "Should NOT invoke the whatif-design skill. Generic devops/Docker question. Should answer directly without consulting whatif-design references.",
+      "should_read": [],
+      "should_cite_rule": null,
+      "should_refuse": false
+    }
+  ]
+}

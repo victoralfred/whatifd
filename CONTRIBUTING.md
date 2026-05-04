@@ -93,7 +93,7 @@ must update to `tool_cache.get(...)`.
 
 1. Open against `main`.
 2. The PR template auto-loads. Fill every section - vague PRs get blocked.
-3. CI runs: `lint`, `type`, `test (3.11)`, `test (3.12)`, `test (3.13)`, `pip-audit`, `bandit`, `gitleaks`, `codeql`.
+3. CI runs: `lint`, `type`, `test (3.11)`, `test (3.12)`, `test (3.13)`, `pip-audit`, `bandit`, `gitleaks`. CodeQL runs separately via GitHub's Default Setup.
 4. **All checks must pass before review.** Don't ask for review on a red PR.
 5. Address review comments by pushing additional commits. **Don't force-push during review** - it makes incremental review hard. The maintainer will squash on merge.
 6. After approval, the maintainer squash-merges. The PR title becomes the squashed commit message subject.
@@ -204,7 +204,7 @@ These have to be set in GitHub's UI; they aren't part of the repo files.
 - ☑ Secret scanning
 - ☑ Push protection (blocks pushes containing secrets)
 - ☑ Private vulnerability reporting (enables the SECURITY.md GitHub Advisories link)
-- ☑ Code scanning-already configured via `.github/workflows/codeql.yml`
+- ☑ Code scanning — CodeQL via GitHub's Default Setup (Settings → Code security → CodeQL → Default)
 
 ### PyPI Trusted Publisher (one-time, before first release)
 

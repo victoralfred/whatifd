@@ -76,3 +76,8 @@ reports/
 docs/sessions/raw/*.jsonl
 !docs/sessions/raw/.gitkeep
 tests/skill-benchmarks/results/**/*.txt
+
+# Claude Code session-runtime artifacts (the skill itself IS tracked).
+.claude/scheduled_tasks.lock
+.claude/cache/
+.claude/state/

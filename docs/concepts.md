@@ -23,22 +23,7 @@ Stating non-claims protects the doctrine. whatif is:
 - **Not a load test.** Replay is for behavior comparison, not for performance evaluation.
 - **Not a causal estimator beyond replay association.** Cached-tool replay is a known biased estimator of true production effect. whatif claims "associated regression under cached-tool replay," not "caused production regression."
 
-## 3. Verdict states
-
-Three states. Closed set for v0.1; adding a state requires a major schema bump.
-
-- **`Ship`** — every primary endpoint passed; trust floor passed; no blocking findings. The change can ship.
-- **`Don't Ship`** — at least one primary endpoint failed (e.g., baseline regression rate above policy threshold; failure cohort didn't improve). Floor passed. The change cannot ship as-is.
-- **`Inconclusive`** — either the trust floor failed (insufficient evidence to evaluate) OR a `blocks_all` finding fired (e.g., scorer cache locked, scoring stage couldn't run). The verdict is unknown until the underlying issue is resolved.
-
-`Conditionally Ship` and acceptance mechanisms are deferred to v1.0 as a coherent unit.
-
-## 4. Trust floor and decision policy
-
-These are two distinct layers and the distinction is load-bearing:
-
 - **Trust floor** — about *evidence existence*. Below the floor, there is insufficient evidence to evaluate any verdict. Floor failures produce `Inconclusive`. The floor cannot be overridden by configuration. Encoded structurally via the `FloorPassedProof` witness token: `Ship` requires a proof that only `evaluate_floor()` produces.
-- **Decision policy** — about *evidence quality*. Above the floor, evidence exists but its quality (statistical power, CI width, regression thresholds, baseline coverage ratio) is a configurable concern. Policy can be made stricter than the floor; never weaker.
 
 Why the split matters: a user who configures `min_replay_validity: 0.1` cannot produce a junk-evidence Ship verdict because the floor structurally refuses below 0.50.
 

@@ -728,9 +728,11 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 **Source decision:** PR #23 ships `parse_decimal_string` early (one half of the Phase 5 serialization helper pair) so Phase 2.5 guards can validate `CohortResult.median_delta`. The current implementation accepts anything `float()` parses but emits a `DeprecationWarning` on inputs that violate the committed canonical shape (no decimal point, scientific notation). Phase 5 will flip the warning to a hard `InvariantViolationError` and pin exact precision per field.
 
 **Rippled to:**
-- `whatif/serialization/decimal.py` — replace the `DeprecationWarning` branch with `raise InvariantViolationError(...)`. The canonical regex (`_CANONICAL_DECIMAL_RE`) becomes the gate.
-- `tests/unit/whatif/serialization/test_decimal.py::TestParseDecimalStringNonCanonicalWarns` — flips from `pytest.warns(DeprecationWarning)` to `pytest.raises(InvariantViolationError)` for every test in that class.
+- `whatif/serialization/decimal.py` — replace the `FutureWarning` branch with `raise InvariantViolationError(...)`. The canonical regex (`_CANONICAL_DECIMAL_RE`) becomes the gate.
+- `tests/unit/whatif/serialization/test_decimal.py::TestParseDecimalStringNonCanonicalWarns` — flips from `pytest.warns(FutureWarning)` to `pytest.raises(InvariantViolationError)` for every test in that class.
+- **Flip-test list synchronization (PR #23 reviewer note):** as more callers adopt `parse_decimal_string` (each subsequent guard, the verdict layer, the renderer), every test that uses `pytest.warns(FutureWarning, match=...)` against a non-canonical input becomes part of the Phase 5 flip surface. Phase 5's PR must grep for `pytest.warns(FutureWarning` across `tests/` and update each occurrence in lockstep. Today there's only one location; the count grows.
 - `format_decimal_string` (new in Phase 5) pins per-field precision. The current canonical shape is `^-?\d+\.\d+$`; Phase 5 may narrow further (e.g., exactly 3 fractional digits for ratios).
+- **Float-equality stability (PR #23 reviewer note):** the `practical_delta_guard` boundary check `median_delta_float <= policy.practical_delta_epsilon` relies on `float("0.050") == 0.05` round-tripping exactly. When `format_decimal_string` lands with a guarantee that policy thresholds round-trip through `format(value, '.3f')` to identical bytes, this concern dissolves. The Phase 5 PR should pin a boundary-stability test asserting `parse(format(x)) == x` for the canonical thresholds.
 
 **Status:** open — soft-warning phase active.
 
@@ -740,7 +742,17 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 ## Resolved cascades
 
-(Populate as decisions ship.)
+### Fresh-list-per-guard contract — convention, not enforcement (resolved 2026-05-05)
+
+**Source decision:** PR #23 went through three reviewer iterations on whether `run_guards` should structurally enforce that each guard returns a fresh list (not a class-level mutable shared across guards). Iterations: add `id()`-based check → upgrade to `is`-comparison with strong references → drop the check entirely. Final state: convention documented in `whatif/decision/guards/__init__.py`'s discipline note + `whatif/decision/guards/protocol.py` `run_guards` docstring; no runtime check.
+
+**Rationale:** The fresh-list contract is a coding-pattern claim, not a structural claim about verdict integrity (which would belong in `references/enforcement.md`). Per the enforcement-strength hierarchy, convention-with-documentation is the appropriate mechanism for non-structural claims. The trust-floor witness pattern (`FloorPassedProof`) is for structural claims; the runtime check would have been belt-and-suspenders that didn't pay rent.
+
+**Recovery path:** if a real shared-list bug ever surfaces, the response is a targeted regression test for that specific failure mode, NOT re-introducing blanket runtime enforcement. The doctrine: defense-in-depth must earn its rent in observed bugs, not hypothetical ones.
+
+**Resolved by:** PR #23, commit `064154c` (final state).
+
+
 
 ## Audit checklist for schema freeze
 

@@ -4,24 +4,9 @@ from __future__ import annotations
 
 from whatif.decision.guards.improvement_observation import improvement_observation_guard
 from whatif.decision.guards.practical_delta import practical_delta_guard
-from whatif.types.cohort import CohortResult
 from whatif.types.policy import DecisionPolicy
-from whatif.types.primitives import DecimalString
 
-
-def _failure_cohort(median_delta: str | None = "0.310") -> CohortResult:
-    return CohortResult(
-        name="failure",
-        selected=10,
-        replayed=10,
-        scored=10,
-        ci_available=True,
-        ci_unavailable_reason=None,
-        median_delta=DecimalString(median_delta) if median_delta is not None else None,
-        ci_lower=None,
-        ci_upper=None,
-        floor_passed=True,
-    )
+from ._helpers import failure_cohort as _failure_cohort
 
 
 class TestImprovementObservationEmits:

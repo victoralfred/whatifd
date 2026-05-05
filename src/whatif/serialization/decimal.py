@@ -15,13 +15,19 @@ contract violation, not a runtime data condition. The helper raises
 intent is legible.
 
 The current implementation accepts anything `float()` parses, then
-emits a `DeprecationWarning` on inputs that violate the committed
-canonical shape (fixed-precision: decimal point with at least one
-fractional digit; no scientific notation). Phase 5 flips the warning
-to a hard reject and pins exact precision per field. The cascade-
-catalog entry "`parse_decimal_string` permissiveness — tighten at
-Phase 5" tracks the deferral rationale and the tests that flip from
-`pytest.warns` to `pytest.raises` at that point.
+emits a `FutureWarning` on inputs that violate the committed canonical
+shape (fixed-precision: decimal point with at least one fractional
+digit; no scientific notation). Phase 5 flips the warning to a hard
+reject and pins exact precision per field. The cascade-catalog entry
+"`parse_decimal_string` permissiveness — tighten at Phase 5" tracks
+the deferral rationale and the tests that flip from `pytest.warns` to
+`pytest.raises` at that point.
+
+`FutureWarning` (not `DeprecationWarning`) is intentional: Python's
+default warning filters silence `DeprecationWarning` in library code
+(only shown when running as `__main__`). `FutureWarning` is shown by
+default to end users — surfacing drift early was the point of the
+soft warning, so the more visible category is the right pick.
 """
 
 from __future__ import annotations
@@ -56,11 +62,14 @@ def parse_decimal_string(value: DecimalString, *, field: FieldLabel) -> float:
     message for diagnostic clarity. It does NOT affect parse logic — it's
     metadata only.
 
-    Emits a `DeprecationWarning` for inputs that parse but violate the
+    Emits a `FutureWarning` for inputs that parse but violate the
     committed canonical shape (no decimal point, scientific notation,
     leading `+`). Phase 5 will tighten the warning into a hard reject;
     the warning gives drift visibility now without pre-committing to
-    exact per-field precision.
+    exact per-field precision. `FutureWarning` is used (not
+    `DeprecationWarning`) because the default warning filters silence
+    `DeprecationWarning` outside `__main__`, which would defeat the
+    drift-surface purpose.
 
     Returns: the parsed float value.
 
@@ -79,7 +88,7 @@ def parse_decimal_string(value: DecimalString, *, field: FieldLabel) -> float:
             f"DecimalString {value!r} (field={field!r}) is non-canonical: "
             f"expected fixed-precision form like '0.310' or '-0.050'. "
             f"Phase 5 will reject scientific notation and bare integers.",
-            DeprecationWarning,
+            FutureWarning,
             stacklevel=2,
         )
     return result

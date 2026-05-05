@@ -29,7 +29,7 @@ class TestParseDecimalStringCanonical:
     def test_canonical_input_does_not_warn(self) -> None:
         # Hard error if any warning fires on canonical input.
         with warnings.catch_warnings():
-            warnings.simplefilter("error", DeprecationWarning)
+            warnings.simplefilter("error", FutureWarning)
             assert parse_decimal_string(DecimalString("0.310"), field=_LABEL) == 0.310
 
 
@@ -44,28 +44,28 @@ class TestParseDecimalStringNonCanonicalWarns:
     def test_warns_on_integer_form(self) -> None:
         # `"42"` parses (`float()` accepts), but lacks a decimal point —
         # not the fixed-precision shape `format_decimal_string` will emit.
-        with pytest.warns(DeprecationWarning, match="non-canonical"):
+        with pytest.warns(FutureWarning, match="non-canonical"):
             result = parse_decimal_string(DecimalString("42"), field=_LABEL)
         assert result == 42.0
 
     def test_warns_on_scientific_notation(self) -> None:
-        with pytest.warns(DeprecationWarning, match="non-canonical"):
+        with pytest.warns(FutureWarning, match="non-canonical"):
             result = parse_decimal_string(DecimalString("1e-3"), field=_LABEL)
         assert result == 0.001
 
     def test_warning_message_includes_field_label(self) -> None:
-        with pytest.warns(DeprecationWarning, match="median_delta"):
+        with pytest.warns(FutureWarning, match="median_delta"):
             parse_decimal_string(
                 DecimalString("42"),
                 field=FieldLabel("CohortResult.median_delta"),
             )
 
     def test_warning_message_includes_offending_value(self) -> None:
-        with pytest.warns(DeprecationWarning, match="1e-3"):
+        with pytest.warns(FutureWarning, match="1e-3"):
             parse_decimal_string(DecimalString("1e-3"), field=_LABEL)
 
     def test_warning_mentions_phase_5_tightening(self) -> None:
-        with pytest.warns(DeprecationWarning, match="Phase 5"):
+        with pytest.warns(FutureWarning, match="Phase 5"):
             parse_decimal_string(DecimalString("42"), field=_LABEL)
 
 

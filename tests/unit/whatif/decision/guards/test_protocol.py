@@ -11,22 +11,8 @@ from whatif.decision.guards.practical_delta import practical_delta_guard
 from whatif.types.cohort import CohortResult
 from whatif.types.finding import DecisionFinding
 from whatif.types.policy import DecisionPolicy
-from whatif.types.primitives import DecimalString
 
-
-def _failure_cohort(median_delta: str | None = "0.310") -> CohortResult:
-    return CohortResult(
-        name="failure",
-        selected=10,
-        replayed=10,
-        scored=10,
-        ci_available=True,
-        ci_unavailable_reason=None,
-        median_delta=DecimalString(median_delta) if median_delta is not None else None,
-        ci_lower=None,
-        ci_upper=None,
-        floor_passed=True,
-    )
+from ._helpers import failure_cohort as _failure_cohort
 
 
 class TestGuardProtocol:
@@ -120,3 +106,39 @@ class TestRunGuards:
             DecisionPolicy(),
         )
         assert result == []
+
+    def test_passes_same_cohort_results_object_to_every_guard(self) -> None:
+        # Pin the no-mutation contract structurally: run_guards must
+        # pass the SAME cohort_results object (by `is` identity) to
+        # every guard. If a future implementation accidentally
+        # rebound or copied the input mid-loop, callers expecting
+        # shared state would see drift.
+        received: list[Sequence[CohortResult]] = []
+
+        def spy_guard(
+            cohort_results: Sequence[CohortResult], policy: DecisionPolicy
+        ) -> list[DecisionFinding]:
+            received.append(cohort_results)
+            return []
+
+        cohorts = [_failure_cohort()]
+        run_guards([spy_guard, spy_guard, spy_guard], cohorts, DecisionPolicy())
+        assert len(received) == 3
+        assert all(r is cohorts for r in received), (
+            "every guard must receive the SAME cohort_results object identity"
+        )
+
+    def test_passes_same_policy_object_to_every_guard(self) -> None:
+        # Symmetric to the cohort_results check.
+        received: list[DecisionPolicy] = []
+
+        def spy_guard(
+            cohort_results: Sequence[CohortResult], policy: DecisionPolicy
+        ) -> list[DecisionFinding]:
+            received.append(policy)
+            return []
+
+        policy = DecisionPolicy()
+        run_guards([spy_guard, spy_guard], [_failure_cohort()], policy)
+        assert len(received) == 2
+        assert all(r is policy for r in received)

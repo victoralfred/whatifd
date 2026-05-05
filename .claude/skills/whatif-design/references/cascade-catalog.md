@@ -724,6 +724,8 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 2. ~~PR adding `ci_unavailable_for_required_cohort` to `FINDING_CODE_REGISTRY` + `FIX_SUGGESTION_REGISTRY` → land `ci_availability_guard`~~ → **resolved by Phase 2.5c**: finding code added (severity=blocks_all, derived_from_failures="always"); fix-suggestion entry added with `--accept-no-ci` escape-hatch guidance; `ci_availability_guard` lands and emits one finding per affected required cohort. Pending: failure-record plumbing (`derived_from_failures` placeholder used; real wiring in Phase 2.6 / projection layer).
 3. Phase 3 cache subsystem PRs → cache metadata reaches `CohortResult` via projection layer → land `cache_staleness_guard`.
 4. Phase 2.6 verdict computation PR → `primary_endpoint_guard` lands as part of the multi-endpoint resolution. Also: `ci_availability_guard`'s emitted findings need real `derived_from_failures` wiring once failure records are threaded end-to-end (placeholder `["pending_phase_2_6_plumbing"]` is in place today).
+   - **Partial resolution by Phase 2.6b (PR after #26):** `primary_endpoint_guard` lands as a configurable rate-based guard that consolidates the Phase 2.5b `failure_improvement_guard` + `baseline_regression_guard` pair. Reads `policy.primary_endpoints` and dispatches by direction (`improvement_above_threshold`, `non_regression_below_threshold`); emits the existing finding codes (`failure_improvement_below_threshold`, `baseline_regression_above_threshold`) — no registry change. The two hardcoded Phase 2.5b guards are deleted; their tests migrate to `test_primary_endpoint.py`.
+   - **Remaining for Phase 2.6c:** real `derived_from_failures` wiring on `ci_availability_guard` (replace `_PHASE_2_6_PLACEHOLDER`); `accept_no_ci` arithmetic in `compute_verdict`.
 
 ### Guard pre-parse caching — Phase 2.6 verdict computation
 
@@ -758,6 +760,24 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 **Resolution:** Phase 5 — `format_decimal_string` lands and pins the canonical shape; `parse_decimal_string` tightens warning → error. The two functions become a round-trip pair: `parse(format(x)) == x` for every numeric x in the determinism budget.
 
 **Trigger for resolution:** Phase 5 serialization layer PR.
+
+### Inconclusive renderer must distinguish floor_failures from blocking_findings
+
+**Source decision:** PR #26 (Phase 2.6a) reviewer F2 noted that the floor-failure-Inconclusive case populates BOTH `Inconclusive.floor_failures` AND `Inconclusive.blocking_findings` from guard outputs. The data structure is honest: the two fields are distinct on the type. But a renderer that prints `blocking_findings` without also surfacing `floor_failures` could mislead a reviewer into thinking the guard finding drove the verdict — when in fact the floor failure is the structural reason.
+
+**Rippled to:**
+- `whatif/render/markdown.py` (Phase 7) — the Inconclusive renderer must:
+  1. ALWAYS surface `floor_failures` first (cardinal #2 structural reason takes precedence).
+  2. Surface `blocking_findings` SECOND, framed as "guard observations" rather than "verdict drivers".
+  3. Never print `blocking_findings` alone for a floor-failure verdict (the misleading-class case).
+- `tests/integration/test_walkthroughs.py` (Phase 9) — walkthrough scenario 4 (Inconclusive insufficient sample) is the empirical reviewer for this rendering rule. The committed walkthrough Markdown shows `floor_failures` first; the renderer test must produce identical output.
+- Doctrine cross-reference: cardinal #3 ("disclosure necessary but not sufficient") — the renderer is the disclosure surface; if it buries the floor reason, disclosure has been compromised even though the data was honest.
+
+**Status:** open
+
+**Resolution:** Phase 7 (rendering) — Inconclusive renderer reads both fields and orders the output per the rule above. Walkthrough scenario 4 round-trip test pins the contract.
+
+**Trigger for resolution:** Phase 7 renderer PR.
 
 ## Resolved cascades
 

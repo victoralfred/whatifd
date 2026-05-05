@@ -45,19 +45,17 @@ This PR proves the pattern. Subsequent sub-phases add more guards:
   resolution logic from Phase 2.6 — lands with verdict computation.
 """
 
-from whatif.decision.guards.baseline_regression import baseline_regression_guard
 from whatif.decision.guards.ci_availability import ci_availability_guard
-from whatif.decision.guards.failure_improvement import failure_improvement_guard
 from whatif.decision.guards.improvement_observation import improvement_observation_guard
 from whatif.decision.guards.practical_delta import practical_delta_guard
+from whatif.decision.guards.primary_endpoint import primary_endpoint_guard
 from whatif.decision.guards.protocol import Guard, run_guards
 
 __all__ = [
     "Guard",
-    "baseline_regression_guard",
     "ci_availability_guard",
-    "failure_improvement_guard",
     "improvement_observation_guard",
     "practical_delta_guard",
+    "primary_endpoint_guard",
     "run_guards",
 ]

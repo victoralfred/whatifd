@@ -18,8 +18,18 @@ Phase 1 ordering (per `.claude/skills/whatif-design/phases.md`):
 """
 
 from whatif.types.primitives import DecimalString, JsonPrimitive
+from whatif.types.sensitive import (
+    Sensitive,
+    SensitiveSerializationError,
+    SensitiveUnwrap,
+    UnredactedSensitiveError,
+)
 
 __all__ = [
     "DecimalString",
     "JsonPrimitive",
+    "Sensitive",
+    "SensitiveSerializationError",
+    "SensitiveUnwrap",
+    "UnredactedSensitiveError",
 ]

@@ -1,0 +1,188 @@
+"""Verdict computation — Phase 2.6a.
+
+`compute_verdict` is the single entry point that turns
+`(cohort_results, floor, policy)` into a `Verdict`. It composes the
+existing decision pipeline:
+
+1. **Floor evaluation** (`evaluate_floor`) — Cardinal #2 structural
+   gate. If the floor returns a `FloorFailureSet`, the verdict is
+   `Inconclusive` regardless of any guard findings. The floor
+   precedence is absolute.
+
+2. **Guard chain** (`run_guards`) — Each guard in the configured
+   sequence emits 0+ `DecisionFinding`s. Order matches registration;
+   `run_guards` is the chain composer.
+
+3. **Severity sorting** — Findings are partitioned by severity:
+   - `blocks_all` → forces `Inconclusive` (operational catastrophes
+     like cache corruption that break the run regardless of policy)
+   - `blocks_ship` → produces `DontShip` when no `blocks_all` is
+     present; the policy says "no Ship" but evidence existed
+   - `degrades_trust` → accumulates against future quality thresholds
+     (v1.0+); v0.1 collects but does not blocking-act on these
+   - `info` → observational; no verdict impact, included in `findings`
+     for the renderer
+
+4. **Verdict construction**:
+   - Any `blocks_all` → `Inconclusive(blocking_findings=blocks_all_findings)`
+   - Else any `blocks_ship` → `DontShip(blocking_findings=blocks_ship_findings)`
+   - Else → `Ship(proof=floor_passed_proof)`
+
+Per cardinal #2, the `Ship` branch is the ONLY branch that consumes
+the `FloorPassedProof`. The witness token is structurally required —
+`compute_verdict` cannot construct `Ship` without one.
+
+## v0.1 guard registration
+
+Phase 2.6a uses the four landed guards (per cardinal #10's three-layer
+structure):
+- `failure_improvement_guard` (rate-based primary endpoint, blocks_ship)
+- `baseline_regression_guard` (symmetric non-regression, blocks_ship)
+- `practical_delta_guard` (magnitude floor, blocks_ship)
+- `improvement_observation_guard` (observational info)
+- `ci_availability_guard` (cohort-level CI availability, blocks_all)
+
+`primary_endpoint_guard` is deferred to Phase 2.6b along with the
+`DecisionPolicy.primary_endpoints` configurable; today's primary
+endpoint is the failure-rescue rate (handled by `failure_improvement_guard`).
+`cache_staleness_guard` is deferred to Phase 3.
+
+## accept_no_ci handling — Phase 2.6c work
+
+`DecisionPolicy.accept_no_ci` is the v0.1 single-flag escape hatch for
+the case where CI is unavailable but the user wants to ship anyway
+(documented small-sample experiments). Phase 2.6c will implement:
+- Filter out `ci_unavailable_for_required_cohort` findings from
+  `blocking_findings` when `policy.accept_no_ci=True`
+- Emit a separate `info` finding noting the acceptance was used
+- Both the original finding AND the acceptance are recorded in the
+  manifest so the audit trail is complete
+
+For Phase 2.6a, `accept_no_ci` is NOT consulted — the guard's emission
+is unconditional. Tests pin both behaviors so Phase 2.6c can flip the
+existing assertions cleanly.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from whatif.decision.floor import FloorFailureSet, FloorPassedProof, evaluate_floor
+from whatif.decision.guards import (
+    Guard,
+    baseline_regression_guard,
+    ci_availability_guard,
+    failure_improvement_guard,
+    improvement_observation_guard,
+    practical_delta_guard,
+    run_guards,
+)
+from whatif.types.cohort import CohortResult
+from whatif.types.finding import DecisionFinding
+from whatif.types.policy import DecisionPolicy
+from whatif.types.verdict import DontShip, Inconclusive, Ship, Verdict
+
+# v0.1 default guard chain, in registration order. Order matches the
+# cardinal #10 layer structure: rate-based primary endpoints first
+# (load-bearing), magnitude layer, observational layer, then
+# operational guards (CI availability). Test_layer_composition pins
+# the no-mutation contract; the per-guard tests pin the boundary
+# semantics.
+_DEFAULT_GUARDS: tuple[Guard, ...] = (
+    failure_improvement_guard,
+    baseline_regression_guard,
+    practical_delta_guard,
+    improvement_observation_guard,
+    ci_availability_guard,
+)
+
+
+def compute_verdict(
+    cohort_results: Sequence[CohortResult],
+    floor: object,  # TrustFloor; not imported to avoid type-narrowing issues
+    policy: DecisionPolicy,
+    *,
+    guards: Sequence[Guard] | None = None,
+) -> Verdict:
+    """Compute the verdict for a run.
+
+    Cardinal #2: floor failures produce `Inconclusive` regardless of
+    guard findings. The floor evaluation is the structural gate.
+
+    `guards` defaults to the v0.1 `_DEFAULT_GUARDS` tuple. Tests pass
+    a custom sequence to exercise specific scenarios in isolation.
+
+    Returns one of `Ship`, `DontShip`, `Inconclusive`. The `Ship`
+    branch consumes the `FloorPassedProof` from `evaluate_floor`;
+    structurally cannot construct `Ship` without that token.
+    """
+    from whatif.types.policy import TrustFloor
+
+    if not isinstance(floor, TrustFloor):
+        raise TypeError(f"compute_verdict requires a TrustFloor; got {type(floor).__name__}")
+
+    floor_outcome = evaluate_floor(
+        cohort_results,
+        floor,
+        policy.required_cohorts,
+    )
+
+    # Cardinal #2: floor failures → Inconclusive, regardless of guards.
+    if isinstance(floor_outcome, FloorFailureSet):
+        # Run guards anyway so observational findings (improvement_observed,
+        # etc.) appear in the report. Their severities are NOT blocking
+        # in this branch; the floor is the structural reason for
+        # Inconclusive.
+        findings = run_guards(
+            guards if guards is not None else _DEFAULT_GUARDS,
+            cohort_results,
+            policy,
+        )
+        return Inconclusive(
+            cohort_results=list(cohort_results),
+            findings=findings,
+            blocking_findings=_filter_inconclusive_blocking(findings),
+            floor_failures=list(floor_outcome.failures),
+        )
+
+    # Floor passed; floor_outcome is a FloorPassedProof.
+    assert isinstance(floor_outcome, FloorPassedProof)  # narrows for mypy
+    findings = run_guards(
+        guards if guards is not None else _DEFAULT_GUARDS,
+        cohort_results,
+        policy,
+    )
+
+    blocks_all = [f for f in findings if f.severity == "blocks_all"]
+    if blocks_all:
+        # Operational catastrophe at policy level (e.g., cache lock
+        # unavailable). Floor passed but evidence is unrenderable.
+        return Inconclusive(
+            cohort_results=list(cohort_results),
+            findings=findings,
+            blocking_findings=_filter_inconclusive_blocking(findings),
+            floor_failures=[],
+        )
+
+    blocks_ship = [f for f in findings if f.severity == "blocks_ship"]
+    if blocks_ship:
+        return DontShip(
+            cohort_results=list(cohort_results),
+            findings=findings,
+            blocking_findings=blocks_ship,
+        )
+
+    return Ship(
+        proof=floor_outcome,
+        cohort_results=list(cohort_results),
+        findings=findings,
+    )
+
+
+def _filter_inconclusive_blocking(findings: list[DecisionFinding]) -> list[DecisionFinding]:
+    """Inconclusive's `blocking_findings` accepts both `blocks_ship`
+    and `blocks_all` per the type's `__post_init__` invariant.
+    `Inconclusive` collects everything blocking; `DontShip` collects
+    only `blocks_ship`.
+    """
+    return [f for f in findings if f.severity in ("blocks_ship", "blocks_all")]

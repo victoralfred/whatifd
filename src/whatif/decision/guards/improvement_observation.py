@@ -43,10 +43,11 @@ def improvement_observation_guard(
     if failure is None or failure.median_delta is None:
         return []
 
-    try:
-        median_delta_float = float(failure.median_delta)
-    except (TypeError, ValueError):
-        return []
+    # A non-numeric DecimalString is a structural integrity violation
+    # upstream, not a precondition the guard should hide. Per cardinal
+    # #1, bugs propagate; expected failures are data. We let ValueError
+    # surface to the verdict pipeline rather than silently abstaining.
+    median_delta_float = float(failure.median_delta)
 
     if median_delta_float <= policy.practical_delta_epsilon:
         return []

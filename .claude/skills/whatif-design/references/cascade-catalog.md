@@ -688,6 +688,25 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 **Trigger for resolution:** v0.2 first minor release.
 
+### Phase 2.5 deferred guards — dependency map
+
+**Source decision:** Phase 2.5 (PR #23) lands the `Guard` Protocol, the `run_guards` chain composer, and two guards (`practical_delta_guard`, `improvement_observation_guard`). Five remaining guards are intentionally deferred — each blocks on a specific upstream change. Documented here so the dependency chain is discoverable from the catalog rather than buried in a PR body.
+
+**Rippled to:**
+- `baseline_regression_guard` — blocked on `CohortResult` rate-count fields (`improved_count`, `unchanged_count`, `regressed_count`). Emits `baseline_regression_above_threshold`.
+- `failure_improvement_guard` — same dependency. Emits `failure_improvement_below_threshold`.
+- `ci_availability_guard` — blocked on adding `ci_unavailable_for_required_cohort` to `FINDING_CODE_REGISTRY`. The corresponding failure code (operational fact, emitted by stats) already exists; the finding code (policy conclusion) does not.
+- `cache_staleness_guard` — blocked on Phase 3 cache subsystem (cache metadata: `last_modified_at`, `cache_key_version`).
+- `primary_endpoint_guard` (cardinal #10) — blocked on Phase 2.6 verdict-computation logic; the multiple-endpoint resolution shape is co-designed with the verdict layer.
+
+**Status:** open (each tracked individually below)
+
+**Resolution plan:**
+1. PR after #23: extend `CohortResult` with rate-count fields → land `baseline_regression_guard` + `failure_improvement_guard` together (they share the data dependency).
+2. PR adding `ci_unavailable_for_required_cohort` to `FINDING_CODE_REGISTRY` + `FIX_SUGGESTION_REGISTRY` → land `ci_availability_guard`.
+3. Phase 3 cache subsystem PRs → cache metadata reaches `CohortResult` via projection layer → land `cache_staleness_guard`.
+4. Phase 2.6 verdict computation PR → `primary_endpoint_guard` lands as part of the multi-endpoint resolution.
+
 ## Resolved cascades
 
 (Populate as decisions ship.)

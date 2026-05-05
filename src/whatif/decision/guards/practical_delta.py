@@ -45,14 +45,11 @@ def practical_delta_guard(
         return []
 
     median_delta_str = failure.median_delta
-    try:
-        median_delta_float = float(median_delta_str)
-    except (TypeError, ValueError):
-        # `median_delta` is typed `DecimalString | None`; if a caller
-        # has stuffed something non-numeric we silently abstain rather
-        # than raise. The floor catches any structurally-missing data;
-        # this guard is policy-level.
-        return []
+    # A non-numeric DecimalString is a structural integrity violation
+    # upstream, not a precondition the guard should hide. Per cardinal
+    # #1, bugs propagate; expected failures are data. We let ValueError
+    # surface to the verdict pipeline rather than silently abstaining.
+    median_delta_float = float(median_delta_str)
 
     threshold = policy.practical_delta_epsilon
     if median_delta_float > threshold:

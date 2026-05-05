@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from whatif.decision.guards.practical_delta import practical_delta_guard
 from whatif.types.cohort import CohortResult
 from whatif.types.policy import DecisionPolicy
@@ -106,11 +108,12 @@ class TestPracticalDeltaGuardDoesNotMutate:
 
 
 class TestPracticalDeltaGuardMalformedDelta:
-    def test_silent_on_non_numeric_string(self) -> None:
-        # If median_delta carries a non-numeric DecimalString (a misuse
-        # of the type), the guard abstains rather than raising. Cardinal
-        # #1: expected failures are data; this is a programmer error
-        # upstream that we don't surface as a verdict-affecting finding.
+    def test_raises_on_non_numeric_string(self) -> None:
+        # A non-numeric DecimalString is a structural integrity
+        # violation upstream — the type contract is "decimal-formatted
+        # string". Per cardinal #1, bugs propagate; the guard does not
+        # silently hide malformed data. PR #23 reviewer flagged the
+        # earlier silent-abstention path as tensioning with cardinal #1.
         cohort = CohortResult(
             name="failure",
             selected=10,
@@ -123,5 +126,5 @@ class TestPracticalDeltaGuardMalformedDelta:
             ci_upper=None,
             floor_passed=True,
         )
-        findings = practical_delta_guard([cohort], DecisionPolicy())
-        assert findings == []
+        with pytest.raises(ValueError):
+            practical_delta_guard([cohort], DecisionPolicy())

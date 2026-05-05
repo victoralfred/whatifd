@@ -704,6 +704,8 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 **Trigger for resolution:** Phase 2.6 verdict computation PR (verdict computation reads from `CohortResult` rate counts and depends on them being exhaustive).
 
+**Related Phase 5 ripple:** when `ReportV01` lands in Phase 5 (public schema; hand-written per cardinal #6), the rate-count fields need a projection mapping from internal `CohortResult` to the public report shape. PR #24 reviewer noted: an end-to-end serialization test that a `CohortResult` with non-zero rate counts round-trips through `ReportV01` should land alongside the projection. That test belongs to the Phase 5 serialization PR, not this one.
+
 ### Phase 2.5 deferred guards — dependency map
 
 **Source decision:** Phase 2.5 (PR #23) lands the `Guard` Protocol, the `run_guards` chain composer, and two guards (`practical_delta_guard`, `improvement_observation_guard`). Five remaining guards are intentionally deferred — each blocks on a specific upstream change. Documented here so the dependency chain is discoverable from the catalog rather than buried in a PR body.

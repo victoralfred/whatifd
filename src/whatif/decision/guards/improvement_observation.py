@@ -15,6 +15,14 @@ emits per run. When the failure cohort's median delta is above epsilon,
 this guard fires; when at-or-below, the practical_delta guard fires.
 That mutual exclusion isn't enforced structurally (both are pure
 functions; verdict layer reads severities), but tests pin the behavior.
+
+Note on the redundant `parse_decimal_string` call: when this guard and
+`practical_delta_guard` both run on the same cohort, both call
+`parse_decimal_string` independently on `median_delta`. The redundancy
+is intentional — each guard is self-contained for testability and
+reasoning. Caching parsed floats across guards (via Phase 2.6's
+verdict computation passing pre-parsed values) is a future
+optimization; today's overhead is negligible.
 """
 
 from __future__ import annotations

@@ -138,13 +138,17 @@ class TestSharedMutableListDetection:
     fresh list. The classic footgun is a class-level mutable attribute
     or a closure-bound list reused across guards. `run_guards` raises
     `InvariantViolationError` when two guards in the same call return
-    the same list (by identity).
+    the same list (compared by `is` identity).
+
+    The check holds strong references to seen lists for the duration
+    of the call so `is` comparison is sound — without that, CPython
+    could recycle a GC'd list's id and produce false matches.
     """
 
     def test_two_guards_returning_same_list_raises(self) -> None:
         # Construct the canonical footgun: a shared list that two
-        # guards both return. `run_guards` should detect by id() and
-        # raise.
+        # guards both return. `run_guards` detects by `is` identity
+        # and raises.
         shared: list[DecisionFinding] = [
             make_decision_finding(
                 "improvement_observed",
@@ -165,6 +169,19 @@ class TestSharedMutableListDetection:
 
         with pytest.raises(InvariantViolationError, match="shared with another guard"):
             run_guards([guard_a, guard_b], [], DecisionPolicy())
+
+    def test_many_distinct_empty_lists_pass(self) -> None:
+        # Stress: a thousand guards each returning a fresh `[]`.
+        # The strong-reference scheme prevents id recycling false
+        # positives. Without strong refs, CPython could reuse the
+        # same id for a GC'd list and trigger a false match.
+        def fresh_empty(
+            cohort_results: Sequence[CohortResult], policy: DecisionPolicy
+        ) -> list[DecisionFinding]:
+            return []
+
+        result = run_guards([fresh_empty] * 1000, [], DecisionPolicy())
+        assert result == []
 
     def test_two_guards_returning_distinct_empty_lists_pass(self) -> None:
         # Each guard returns a fresh empty list — fine.

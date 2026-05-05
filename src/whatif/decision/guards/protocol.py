@@ -72,23 +72,32 @@ def run_guards(
 
     Each guard MUST return a fresh `list` — not a class-level mutable
     or a list shared with a sibling guard. The check below catches the
-    cross-guard sharing case (`id(result) in seen_ids`) which would
-    indicate two guards returning the same list. A guard returning the
-    same list across separate `run_guards` calls isn't caught here
-    (different invocations, different state); that pattern is rare in
-    practice and code review is the safety net.
+    cross-guard sharing case by `is` identity, comparing the actual
+    returned list objects. A guard returning the same list across
+    separate `run_guards` calls isn't caught here (different
+    invocations, different state); that pattern is rare in practice
+    and code review is the safety net.
+
+    Implementation note: the contract is "fresh list", not "distinct
+    id". `id()` would false-positive if CPython recycled the address
+    of a GC'd list. We hold strong references to every returned list
+    in `seen_lists` for the duration of the call, which prevents any
+    of them from being collected and keeps `is` comparison meaningful.
     """
     findings: list[DecisionFinding] = []
-    seen_ids: set[int] = set()
+    # Strong references to every returned list — prevents GC, which
+    # in turn prevents id recycling, which keeps `is` comparison sound.
+    seen_lists: list[list[DecisionFinding]] = []
     for guard in guards:
         result = guard(cohort_results, policy)
-        if id(result) in seen_ids:
-            raise InvariantViolationError(
-                f"guard {guard!r} returned a list shared with another guard "
-                "in the same run_guards call. Each guard must return a fresh "
-                "list to prevent cross-guard mutation. See the protocol.py "
-                "docstring for the contract."
-            )
-        seen_ids.add(id(result))
+        for prior in seen_lists:
+            if result is prior:
+                raise InvariantViolationError(
+                    f"guard {guard!r} returned a list shared with another "
+                    "guard in the same run_guards call. Each guard must "
+                    "return a fresh list to prevent cross-guard mutation. "
+                    "See the protocol.py docstring for the contract."
+                )
+        seen_lists.append(result)
         findings.extend(result)
     return findings

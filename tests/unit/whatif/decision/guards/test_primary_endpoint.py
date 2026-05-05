@@ -173,15 +173,27 @@ class TestPrimaryEndpointCustomPolicy:
         assert findings == []
 
     def test_unknown_cohort_in_endpoint_silently_skipped(self) -> None:
-        # Two endpoints declared. The guard's expected behavior differs
-        # per endpoint, both producing zero findings:
-        #   - "failure" endpoint: cohort present + improvement rate
-        #     above threshold → no emit (passing condition).
-        #   - "exploratory" endpoint: cohort missing from results →
-        #     silently abstain (the guard's intentional skip; floor's
-        #     required_cohort_present rule catches missing REQUIRED
-        #     cohorts, but exploratory isn't required here).
-        # Both contribute zero findings via different code paths.
+        # Two endpoints declared. Both produce zero findings, but via
+        # DIFFERENT code paths — this test pins both paths in one
+        # scenario rather than splitting into two tests:
+        #
+        #   PATH A — endpoint cohort present, evaluation passes:
+        #     "failure" cohort exists, improvement rate 8/10=0.800,
+        #     threshold 0.500 → 0.800 > 0.500 → strict-< check fails →
+        #     guard does NOT emit. Passing condition; `_evaluate_improvement`
+        #     returns None.
+        #
+        #   PATH B — endpoint cohort missing, guard abstains:
+        #     "exploratory" cohort is NOT in cohort_results.
+        #     `cohorts_by_name.get("exploratory")` returns None, the
+        #     guard's `if cohort is None: continue` branch fires, no
+        #     evaluation happens. Floor's `required_cohort_present`
+        #     rule catches missing REQUIRED cohorts (this one isn't
+        #     required), so the policy-level guard silently abstains.
+        #
+        # If a future change conflates these two paths (e.g., emits a
+        # "missing-cohort" finding for path B), the assertion below
+        # fails with a diagnostic listing the offending finding codes.
         policy = DecisionPolicy(
             primary_endpoints=(
                 PrimaryEndpoint(cohort="failure", direction="improvement_above_threshold"),
@@ -191,8 +203,9 @@ class TestPrimaryEndpointCustomPolicy:
         cohorts = [failure_cohort(improved=8, unchanged=2, regressed=0)]
         findings = primary_endpoint_guard(cohorts, policy)
         assert len(findings) == 0, (
-            "expected zero findings: failure passes, exploratory silently skipped "
-            f"(missing cohort), but got {[f.code for f in findings]}"
+            "expected zero findings via two distinct code paths "
+            "(failure cohort PASSED its check; exploratory cohort MISSING "
+            f"from results so guard abstained); got {[f.code for f in findings]}"
         )
 
 

@@ -36,6 +36,18 @@ from whatif.types.sensitive import (
     SensitiveUnwrap,
     UnredactedSensitiveError,
 )
+from whatif.types.statistical import (
+    BootstrapMethodDisclosure,
+    ClusteringPolicy,
+    ClusterKeySupport,
+    ClusterSelection,
+    EffectSizeDisclosure,
+    JudgeMethodDisclosure,
+    MethodologyDisclosure,
+    MultiplicityDisclosure,
+    TraceDelta,
+    TraceDeltaReportV01,
+)
 from whatif.types.verdict import DontShip, Inconclusive, Ship, Verdict
 
 __all__ = [  # noqa: RUF022 — grouped by Phase for readability, not alphabetical
@@ -72,4 +84,15 @@ __all__ = [  # noqa: RUF022 — grouped by Phase for readability, not alphabetic
     # 1.6 manifest (SensitiveUnwrap re-exported from 1.2 sensitive)
     "EnvironmentFingerprint",
     "RunManifest",
+    # 1.7 statistical (cardinal #10)
+    "BootstrapMethodDisclosure",
+    "ClusterKeySupport",
+    "ClusterSelection",
+    "ClusteringPolicy",
+    "EffectSizeDisclosure",
+    "JudgeMethodDisclosure",
+    "MethodologyDisclosure",
+    "MultiplicityDisclosure",
+    "TraceDelta",
+    "TraceDeltaReportV01",
 ]

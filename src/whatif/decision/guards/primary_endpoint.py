@@ -89,6 +89,12 @@ def _evaluate_endpoint(
 
     Returns a finding when the endpoint fails; None when it passes
     (or the precondition isn't met — zero scored traces).
+
+    Uses a `match` statement with an explicit case per Literal value
+    so mypy strict catches missing dispatch branches when v0.2+ adds
+    new directions to `EndpointDirection`. The Literal exhaustiveness
+    pattern is the project standard (see `whatif/types/verdict.py`'s
+    `Verdict` sealed union).
     """
     total_scored = cohort.improved_count + cohort.unchanged_count + cohort.regressed_count
     if total_scored == 0:
@@ -97,16 +103,11 @@ def _evaluate_endpoint(
         # branch unreachable for production cohorts (cascade-tracked).
         return None
 
-    if endpoint.direction == "improvement_above_threshold":
-        return _evaluate_improvement(cohort, total_scored, policy)
-    if endpoint.direction == "non_regression_below_threshold":
-        return _evaluate_non_regression(cohort, total_scored, policy)
-
-    # Defensive: unknown direction. The Literal type prevents this at
-    # compile time; runtime fallthrough indicates a v0.2+ direction
-    # added without a dispatch branch — visible as a missed finding
-    # rather than a silent skip if seen in production.
-    return None  # pragma: no cover — Literal exhaustiveness at type level
+    match endpoint.direction:
+        case "improvement_above_threshold":
+            return _evaluate_improvement(cohort, total_scored, policy)
+        case "non_regression_below_threshold":
+            return _evaluate_non_regression(cohort, total_scored, policy)
 
 
 def _evaluate_improvement(
@@ -127,7 +128,7 @@ def _evaluate_improvement(
     return make_decision_finding(
         "failure_improvement_below_threshold",
         message=(
-            f"{cohort.name}-cohort improvement rate {observed_str} below "
+            f"{cohort.name} cohort improvement rate {observed_str} below "
             f"threshold {threshold_str} "
             f"({cohort.improved_count}/{total_scored} traces improved)"
         ),
@@ -153,7 +154,7 @@ def _evaluate_non_regression(
     return make_decision_finding(
         "baseline_regression_above_threshold",
         message=(
-            f"{cohort.name} regression rate {observed_str} exceeds "
+            f"{cohort.name} cohort regression rate {observed_str} exceeds "
             f"threshold {threshold_str} "
             f"({cohort.regressed_count}/{total_scored} traces regressed)"
         ),

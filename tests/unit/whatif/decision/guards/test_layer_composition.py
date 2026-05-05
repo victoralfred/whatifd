@@ -57,10 +57,11 @@ class TestCardinal10LayerComposition:
             baseline_cohort(improved=2, unchanged=8, regressed=0),
         ]
         findings = run_guards(_LAYER, cohorts, DecisionPolicy())
-        codes = [f.code for f in findings]
-        assert codes == ["failure_improvement_below_threshold"], (
-            f"expected only the primary-endpoint finding, got {codes}"
-        )
+        assert len(findings) == 1
+        assert findings[0].code == "failure_improvement_below_threshold"
+        # Cardinal #2: severity drives verdict. Pin it explicitly so a
+        # registry-level severity regression can't slip past.
+        assert findings[0].severity == "blocks_ship"
 
     def test_baseline_regression_above_threshold_only(self) -> None:
         # Baseline regression too high (3/10 = 0.30 > 0.10 default).
@@ -70,8 +71,9 @@ class TestCardinal10LayerComposition:
             baseline_cohort(improved=4, unchanged=3, regressed=3),
         ]
         findings = run_guards(_LAYER, cohorts, DecisionPolicy())
-        codes = [f.code for f in findings]
-        assert codes == ["baseline_regression_above_threshold"]
+        assert len(findings) == 1
+        assert findings[0].code == "baseline_regression_above_threshold"
+        assert findings[0].severity == "blocks_ship"
 
     def test_magnitude_below_epsilon_only(self) -> None:
         # Failure rescue rate is fine (8/10 > 0.50). Baseline is fine.
@@ -83,10 +85,9 @@ class TestCardinal10LayerComposition:
             baseline_cohort(improved=2, unchanged=8, regressed=0),
         ]
         findings = run_guards(_LAYER, cohorts, DecisionPolicy())
-        codes = [f.code for f in findings]
-        assert codes == ["practical_delta_below_threshold"], (
-            f"magnitude layer should fire when rate is fine but delta is in noise floor; got {codes}"
-        )
+        assert len(findings) == 1
+        assert findings[0].code == "practical_delta_below_threshold"
+        assert findings[0].severity == "blocks_ship"
 
     def test_all_three_layers_fire_simultaneously(self) -> None:
         # Catastrophe scenario: failure rescue too low AND baseline regressed
@@ -108,6 +109,13 @@ class TestCardinal10LayerComposition:
             "baseline_regression_above_threshold",
             "practical_delta_below_threshold",
         ], f"findings should arrive in registration order; got {codes}"
+        # Cardinal #2: every finding emitted by these guards is
+        # blocks_ship — pinned so a registry-level severity regression
+        # in any of the three codes can't slip past unnoticed.
+        severities = [f.severity for f in findings]
+        assert severities == ["blocks_ship"] * 3, (
+            f"all cardinal-#10 layer findings must be blocks_ship; got {severities}"
+        )
 
     def test_layer_independence_under_composition(self) -> None:
         # Pin that running all three guards together produces the same

@@ -204,6 +204,58 @@ class TestComputeVerdictFloorFails:
         # Inconclusive carries floor_failures; DontShip never does.
         assert verdict.floor_failures
 
+    def test_floor_failure_overrides_blocking_findings(self) -> None:
+        """Cardinal #2 floor precedence: when both the floor fails AND
+        guards emit blocking findings, the verdict is Inconclusive
+        (driven by floor) rather than DontShip (driven by guard).
+
+        This pins the precedence direction explicitly. The clean-findings
+        case is in `test_floor_failure_overrides_clean_findings`; this
+        test covers the more interesting case where DontShip would be
+        the alternative.
+        """
+        cohorts = [
+            # Below floor on scored AND failure-improvement rate too low.
+            # Without floor failure, this would be DontShip.
+            CohortResult(
+                name="failure",
+                selected=10,
+                replayed=10,
+                scored=2,  # floor fails: scored < min 5
+                ci_available=True,
+                ci_unavailable_reason=None,
+                median_delta=DecimalString("0.020"),  # also magnitude-floor concern
+                ci_lower=DecimalString("-0.010"),
+                ci_upper=DecimalString("0.050"),
+                floor_passed=False,
+                improved_count=0,
+                unchanged_count=1,
+                regressed_count=1,  # 0/2 improvement rate, would block DontShip
+            ),
+            _passing_baseline_cohort(improved=2, unchanged=4, regressed=4),
+            # ^ baseline regression rate also high, would also block DontShip
+        ]
+        verdict = compute_verdict(cohorts, TrustFloor(), DecisionPolicy())
+        # Floor precedence is absolute. Even with blocks_ship findings
+        # present in `verdict.findings`, the verdict is Inconclusive
+        # because the floor failed.
+        assert isinstance(verdict, Inconclusive)
+        assert verdict.floor_failures
+        # The blocks_ship findings are still in `findings` for the
+        # renderer (cardinal #1: failure-as-data; the floor doesn't
+        # silence guard observations) — they're just not the structural
+        # reason for the verdict.
+        codes = [f.code for f in verdict.findings]
+        # At least one blocking finding should be present alongside the floor.
+        assert any(
+            c in codes
+            for c in [
+                "failure_improvement_below_threshold",
+                "baseline_regression_above_threshold",
+                "practical_delta_below_threshold",
+            ]
+        )
+
 
 # ---------------------------------------------------------------------------
 # Inconclusive branch (blocks_all from guards)

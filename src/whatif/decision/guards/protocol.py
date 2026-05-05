@@ -22,19 +22,27 @@ functions in their own modules.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from whatif.types.cohort import CohortResult
 from whatif.types.finding import DecisionFinding
 from whatif.types.policy import DecisionPolicy
 
 
+@runtime_checkable
 class Guard(Protocol):
     """One link in the guard chain.
 
     Every guard module exports a callable matching this signature. The
     callable's `__name__` is used by `run_guards` for diagnostic logs
     and by tests asserting registration order.
+
+    `@runtime_checkable` enables `isinstance(g, Guard)` for diagnostic
+    use. Caveat: Python cannot verify call signatures at runtime, so
+    the runtime `isinstance` check effectively asserts only that
+    `__call__` exists (i.e., `callable(x)`). The full signature
+    contract is type-system-enforced; the runtime check is a smoke
+    test, not a guarantee.
     """
 
     def __call__(

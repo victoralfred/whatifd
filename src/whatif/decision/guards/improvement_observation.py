@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from whatif.decision.finding_codes import make_decision_finding
-from whatif.exceptions import InvariantViolationError
+from whatif.serialization.decimal import parse_decimal_string
 from whatif.types.cohort import CohortResult
 from whatif.types.finding import DecisionFinding
 from whatif.types.policy import DecisionPolicy
@@ -44,18 +44,10 @@ def improvement_observation_guard(
     if failure is None or failure.median_delta is None:
         return []
 
-    # A non-numeric DecimalString is a structural integrity violation
-    # upstream, not a precondition the guard should hide. Per cardinal
-    # #1, bugs propagate; expected failures are data. We surface as a
-    # typed `InvariantViolationError` so the call-site intent is legible —
-    # a stdlib `ValueError` would conflate this with value-domain bugs.
-    try:
-        median_delta_float = float(failure.median_delta)
-    except ValueError as e:
-        raise InvariantViolationError(
-            f"CohortResult.median_delta must be a parseable DecimalString; "
-            f"got {failure.median_delta!r} on cohort={failure.name!r}"
-        ) from e
+    median_delta_float = parse_decimal_string(
+        failure.median_delta,
+        field=f"CohortResult.median_delta (cohort={failure.name!r})",
+    )
 
     if median_delta_float <= policy.practical_delta_epsilon:
         return []

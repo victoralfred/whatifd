@@ -128,7 +128,7 @@ class TestPracticalDeltaGuardMalformedDelta:
             ci_upper=None,
             floor_passed=True,
         )
-        with pytest.raises(InvariantViolationError, match="parseable DecimalString"):
+        with pytest.raises(InvariantViolationError, match="parseable as a number"):
             practical_delta_guard([cohort], DecisionPolicy())
 
     def test_invariant_violation_chains_underlying_value_error(self) -> None:

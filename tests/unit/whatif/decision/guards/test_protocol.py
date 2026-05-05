@@ -30,16 +30,24 @@ def _failure_cohort(median_delta: str | None = "0.310") -> CohortResult:
 
 class TestGuardProtocol:
     def test_practical_delta_guard_satisfies_protocol(self) -> None:
-        # A plain function with the right signature passes `isinstance`
-        # against a runtime-checkable protocol. Without runtime_checkable,
-        # `isinstance` won't work at runtime — but the type system still
-        # accepts it. We assert by assignment.
+        # `Guard` is `@runtime_checkable` so `isinstance` works.
+        # Caveat documented on the Protocol: Python cannot verify call
+        # signatures at runtime, so this only checks that `__call__`
+        # exists. Full signature compliance is type-system-enforced
+        # (mypy strict on the assignment).
         g: Guard = practical_delta_guard
-        assert callable(g)
+        assert isinstance(g, Guard)
 
     def test_improvement_observation_guard_satisfies_protocol(self) -> None:
         g: Guard = improvement_observation_guard
-        assert callable(g)
+        assert isinstance(g, Guard)
+
+    def test_non_callable_does_not_satisfy_protocol(self) -> None:
+        # The runtime check at least catches the obvious case: passing
+        # something that isn't callable at all.
+        assert not isinstance(42, Guard)
+        assert not isinstance("a string", Guard)
+        assert not isinstance({"a": "dict"}, Guard)
 
 
 class TestRunGuards:

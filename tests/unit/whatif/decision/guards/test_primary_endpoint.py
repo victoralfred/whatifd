@@ -186,3 +186,45 @@ class TestPrimaryEndpointCustomPolicy:
         cohorts = [failure_cohort(improved=8, unchanged=2, regressed=0)]
         findings = primary_endpoint_guard(cohorts, policy)
         assert findings == []  # failure passes; exploratory missing is silent
+
+
+class TestSubPrecisionThresholdDivergence:
+    """Pin the float-vs-displayed-string caveat documented in the
+    rate-based guards' module docstrings.
+
+    Migrated from `test_failure_improvement.py::TestSubPrecisionThresholdDivergence`
+    when Phase 2.6b consolidated the two hardcoded guards into
+    `primary_endpoint_guard`. The caveat applies identically — the
+    comparator runs on float, displayed strings round to 3 decimal
+    places via `format(rate, '.3f')`, and at sub-precision thresholds
+    the displayed equality may not match the comparator's verdict.
+
+    Phase 5's `format_decimal_string` round-trip pair will dissolve
+    this concern; until then, the documented divergence is empirically
+    pinned. See cascade-catalog "`parse_decimal_string` permissiveness".
+    """
+
+    def test_one_third_rate_at_one_third_threshold_does_not_emit(self) -> None:
+        # 1/3 = 0.3333... > 0.333 in float; guard does NOT emit even
+        # though both displayed strings would round to "0.333". Strict
+        # `<` improvement-rate comparator wins; reader-side ambiguity
+        # in the displayed strings is the cost.
+        policy = DecisionPolicy(min_failure_improvement_ratio=0.333)
+        cohort = failure_cohort(improved=1, unchanged=1, regressed=1)  # 1/3 rate
+        findings = primary_endpoint_guard([cohort], policy)
+        assert findings == [], (
+            "1/3 rate (0.3333...) is strictly > threshold 0.333 in float, "
+            "so the guard should not emit even though displayed strings "
+            "would both round to '0.333'. Phase 5 dissolves this divergence."
+        )
+
+    def test_two_thirds_rate_at_two_thirds_threshold_emits(self) -> None:
+        # 2/3 = 0.6666... < 0.667 in float; guard emits with
+        # observed="0.667" and threshold="0.667" — pinned identity in
+        # displayed form. Comparator wins; display rounds.
+        policy = DecisionPolicy(min_failure_improvement_ratio=0.667)
+        cohort = failure_cohort(improved=2, unchanged=1, regressed=0)  # 2/3 rate
+        findings = primary_endpoint_guard([cohort], policy)
+        assert len(findings) == 1
+        assert findings[0].details["observed"] == "0.667"
+        assert findings[0].details["threshold"] == "0.667"

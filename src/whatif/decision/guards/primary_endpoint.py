@@ -48,6 +48,7 @@ abstains silently in those cases.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import assert_never
 
 from whatif.decision.finding_codes import make_decision_finding
 from whatif.types.cohort import CohortResult
@@ -108,6 +109,12 @@ def _evaluate_endpoint(
             return _evaluate_improvement(cohort, total_scored, policy)
         case "non_regression_below_threshold":
             return _evaluate_non_regression(cohort, total_scored, policy)
+        case _ as never:
+            # Self-documenting exhaustiveness: `assert_never` is mypy's
+            # contract that this branch is unreachable. v0.2 adding a new
+            # `EndpointDirection` literal without a `case` here is a
+            # compile-time error, not a silently-dropped finding.
+            assert_never(never)
 
 
 def _evaluate_improvement(

@@ -34,8 +34,8 @@ the `FloorPassedProof`. The witness token is structurally required —
 
 ## v0.1 guard registration
 
-Phase 2.6a uses the four landed guards (per cardinal #10's three-layer
-structure):
+Phase 2.6a uses the five landed guards (per cardinal #10's three-layer
+structure plus the operational CI-availability check):
 - `failure_improvement_guard` (rate-based primary endpoint, blocks_ship)
 - `baseline_regression_guard` (symmetric non-regression, blocks_ship)
 - `practical_delta_guard` (magnitude floor, blocks_ship)
@@ -121,6 +121,8 @@ def compute_verdict(
     project's enforcement-strength hierarchy, type-level prevention
     is stronger than runtime defense-in-depth.
     """
+    resolved_guards = guards if guards is not None else _DEFAULT_GUARDS
+
     floor_outcome = evaluate_floor(
         cohort_results,
         floor,
@@ -133,11 +135,7 @@ def compute_verdict(
         # etc.) appear in the report. Their severities are NOT blocking
         # in this branch; the floor is the structural reason for
         # Inconclusive.
-        findings = run_guards(
-            guards if guards is not None else _DEFAULT_GUARDS,
-            cohort_results,
-            policy,
-        )
+        findings = run_guards(resolved_guards, cohort_results, policy)
         return Inconclusive(
             cohort_results=list(cohort_results),
             findings=findings,
@@ -147,11 +145,7 @@ def compute_verdict(
 
     # Floor passed; floor_outcome is a FloorPassedProof.
     assert isinstance(floor_outcome, FloorPassedProof)  # narrows for mypy
-    findings = run_guards(
-        guards if guards is not None else _DEFAULT_GUARDS,
-        cohort_results,
-        policy,
-    )
+    findings = run_guards(resolved_guards, cohort_results, policy)
 
     blocks_all = [f for f in findings if f.severity == "blocks_all"]
     if blocks_all:

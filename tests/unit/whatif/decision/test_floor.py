@@ -216,12 +216,8 @@ class TestImmutability:
 
 class TestProofEquality:
     def test_two_proofs_same_metadata_are_equal(self) -> None:
-        p1 = evaluate_floor(
-            _passing_pair(), TrustFloor(), ("failure", "baseline"), now=_FIXED_NOW
-        )
-        p2 = evaluate_floor(
-            _passing_pair(), TrustFloor(), ("failure", "baseline"), now=_FIXED_NOW
-        )
+        p1 = evaluate_floor(_passing_pair(), TrustFloor(), ("failure", "baseline"), now=_FIXED_NOW)
+        p2 = evaluate_floor(_passing_pair(), TrustFloor(), ("failure", "baseline"), now=_FIXED_NOW)
         # Same fixed clock → same evaluated_at → structural equality.
         assert p1 == p2
 
@@ -336,9 +332,7 @@ class TestComputeCohortFloorFailures:
         cohort = _cohort(selected=10, replayed=2, scored=2)
         failures = compute_cohort_floor_failures(cohort, TrustFloor())
         ratio = next(
-            f
-            for f in failures
-            if f.rule == "min_replay_validity_ratio_per_required_cohort"
+            f for f in failures if f.rule == "min_replay_validity_ratio_per_required_cohort"
         )
         assert ratio.observed == "0.200"
         assert ratio.threshold == 0.50
@@ -349,9 +343,7 @@ class TestComputeCohortFloorFailures:
         cohort = _cohort(selected=10, replayed=5, scored=5)
         failures = compute_cohort_floor_failures(cohort, TrustFloor())
         ratio_failures = [
-            f
-            for f in failures
-            if f.rule == "min_replay_validity_ratio_per_required_cohort"
+            f for f in failures if f.rule == "min_replay_validity_ratio_per_required_cohort"
         ]
         assert ratio_failures == []
 

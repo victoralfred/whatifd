@@ -59,9 +59,13 @@ VerdictState = Literal["ship", "dont_ship", "inconclusive"]
 DEFAULT_MODEL = "claude-haiku-4-5"
 
 # Hard limits to bound context usage and API cost on giant PRs.
-# A 50K-char diff is ~12.5K tokens, well under any current Claude context window.
-# If exceeded, we tell the model to return state=inconclusive rather than guess.
-MAX_DIFF_CHARS = 50_000
+# A 150K-char diff is ~37.5K tokens; well under Claude's 200K context window
+# even with the system prompt + user prompt overhead.
+# Earlier limit of 50K truncated foundational PRs (e.g. PR #13 was 156K chars,
+# saw ~32%) and forced inconclusive verdicts due to insufficient context.
+# If still exceeded, we tell the model to return state=inconclusive rather
+# than guess.
+MAX_DIFF_CHARS = 150_000
 MAX_BODY_CHARS = 5_000
 # 4000 tokens is plenty for a thorough review with multiple blocking issues
 # and cardinal-rule citations. Earlier limit of 1500 truncated Sonnet responses

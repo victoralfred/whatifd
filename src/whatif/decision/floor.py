@@ -184,7 +184,11 @@ def _build_floor_machinery() -> tuple[type, type, Callable[[], object]]:
         return FloorPassedProof(
             _token=_floor_token,
             floor_version="v1",
-            evaluated_at="phase-1.4-stub",
+            # Loud marker so a manifest carrying this string in production
+            # is obviously bug evidence, not a real evaluation timestamp.
+            # Phase 2.1 replaces this with an ISO 8601 timestamp from the
+            # injected clock.
+            evaluated_at="<<PHASE_1_4_STUB_REPLACE_IN_PHASE_2_1>>",
         )
 
     return FloorPassedProof, FloorFailureSet, evaluate_floor

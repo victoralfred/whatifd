@@ -32,6 +32,19 @@ code or fix-suggestion needed. Each emitted finding has the same
 shape that the per-cohort guards used in Phase 2.5b. The renderer
 sees the same surface.
 
+**v0.1 limitation (cascade-tracked):** the finding codes
+`failure_improvement_below_threshold` and
+`baseline_regression_above_threshold` encode the v0.1 default cohort
+identities into the code namespace. A v0.2 custom policy declaring
+`PrimaryEndpoint(cohort="warmup", direction="improvement_above_threshold")`
+would emit `failure_improvement_below_threshold` even though the
+cohort is `"warmup"`. This is acceptable for v0.1 (failure-rescue
+scope only; default cohorts are `failure` + `baseline`), but v0.2
+needs direction-keyed codes (e.g. `primary_improvement_below_threshold`)
+plus a `cohort` detail field. See cascade-catalog
+"Direction-keyed finding codes for v0.2 multi-cohort
+primary_endpoint_guard".
+
 Boundary semantics (preserved from the hardcoded guards):
 - Improvement: strict `<` so equality at the threshold meets the
   policy's "at least N%" promise.

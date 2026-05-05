@@ -779,6 +779,25 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 **Trigger for resolution:** Phase 7 renderer PR.
 
+### Direction-keyed finding codes for v0.2 multi-cohort `primary_endpoint_guard`
+
+**Source decision:** PR #27 (Phase 2.6b) introduced `primary_endpoint_guard` reading `policy.primary_endpoints`. The guard reuses Phase 2.3's existing finding codes (`failure_improvement_below_threshold`, `baseline_regression_above_threshold`), which hardcode the v0.1 default cohort identities (`failure`, `baseline`) into the code namespace. The findings agent reviewing PR #27 (F1) flagged that this leaks v0.1 cohort assumptions into the public schema: a v0.2 custom policy declaring `PrimaryEndpoint(cohort="warmup", direction="improvement_above_threshold")` would emit `failure_improvement_below_threshold` even though the cohort is `"warmup"` — code and message would disagree about which cohort is at fault. Reader-facing tooling that filters on finding codes would mis-categorize non-canonical cohort runs.
+
+**Why this is acceptable for v0.1:** v0.1 is failure-rescue-only (Phase 0.3 audience-distribution decision). Default cohorts are `failure` + `baseline` only; the finding-code names are truthful for the default. No v0.1 shipped path exercises the mismatch.
+
+**Rippled to:**
+- `src/whatif/decision/guards/primary_endpoint.py` — dispatch logic emits direction-keyed codes (`primary_improvement_below_threshold`, `primary_non_regression_above_threshold`); the cohort name moves to `details["cohort"]`.
+- `src/whatif/decision/finding_codes.py::FINDING_CODE_REGISTRY` — adds the new codes; deprecates the v0.1 codes (kept for one minor cycle per the schema-versioning promotion-path rules in `references/contracts.md`).
+- `src/whatif/decision/fix_suggestions.py::FIX_SUGGESTION_REGISTRY` — adds matching fix-suggestion entries for the new codes.
+- `tests/unit/whatif/decision/guards/test_primary_endpoint.py` — adds a `TestNonCanonicalCohortNames` class exercising the configurable surface with custom cohort names (e.g. `"warmup"`, `"regression"`); the test would have caught the v0.1 mismatch empirically.
+- Doctrine cross-reference: cardinal #6 (public schema is hand-written; internal types refactor freely) — finding codes ARE part of the public schema; the rename is a v0.2 minor bump per the schema versioning rules.
+
+**Status:** open (v0.2 work — not blocking v0.1 schema freeze).
+
+**Resolution:** v0.2 minor release. New direction-keyed codes shipped; v0.1 codes deprecated with one-minor-cycle notice; promotion-path rules in `references/contracts.md` followed.
+
+**Trigger for resolution:** v0.2 minor release PR (concurrent with `regression_check` cohort expansion or other multi-cohort work).
+
 ## Resolved cascades
 
 ### Single Ship-construction site — `whatif/decision/verdict.py` (resolved 2026-05-05)

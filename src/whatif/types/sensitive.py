@@ -132,7 +132,13 @@ def _infer_caller(skip: int = 2) -> str:
         function = frame.f_code.co_name
         lineno = frame.f_lineno
         return f"{module}:{function}:{lineno}"
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
+        # Narrow catch: frame attributes can disappear under exotic
+        # interpreters (PyPy, frame-stripping packers) or in finalizer
+        # contexts. We don't catch broader exceptions because audit-log
+        # location is metadata enrichment, not a verdict-affecting path —
+        # if something else goes wrong here, it's a bug, not a known
+        # tolerable mode.
         return "<unknown>"
 
 
@@ -162,6 +168,17 @@ class Sensitive(Generic[T]):
     def __init__(self, value: T, classification: str) -> None:
         object.__setattr__(self, "_value", value)
         object.__setattr__(self, "classification", classification)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        # Block post-construction reassignment. __slots__ alone permits
+        # reassigning declared names; we want frozen-dataclass semantics
+        # without the dataclass machinery (Generic[T] + __slots__ +
+        # frozen=True is fragile in some Python versions). __init__ uses
+        # object.__setattr__ to bypass this guard exactly once.
+        raise AttributeError(
+            f"Sensitive[{getattr(self, 'classification', '?')}] is immutable "
+            f"after construction; cannot set {name!r}"
+        )
 
     def __repr__(self) -> str:
         return f"<Sensitive[{self.classification}] redacted>"

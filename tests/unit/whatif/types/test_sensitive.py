@@ -77,18 +77,21 @@ class TestSlots:
             s.smuggled = "extra"  # type: ignore[attr-defined]
 
     def test_cannot_reassign_classification(self) -> None:
-        # __slots__ + object.__setattr__ pattern: we can SET in __init__,
-        # but post-construction reassignment should also be blocked since
-        # there's no __setattr__ override that would allow it. (Standard
-        # __slots__ does allow reassignment unless you also override
-        # __setattr__; document that v0.1 accepts this since the wrapper
-        # is short-lived and never reassigned in practice.)
+        # __setattr__ is overridden to raise on any post-construction
+        # assignment. __init__ bypasses via object.__setattr__ exactly
+        # once. This is frozen-dataclass semantics without the dataclass
+        # machinery (Generic[T] + __slots__ + frozen=True is fragile in
+        # some Python versions).
         s: Sensitive[str] = Sensitive("x", "user_input")
-        # This succeeds — slots permits assignment to declared names.
-        # Test pins the behavior so future refactors don't break callers
-        # that depend on it.
-        s.classification = "renamed"
-        assert s.classification == "renamed"
+        with pytest.raises(AttributeError, match="immutable"):
+            s.classification = "renamed"
+        # Original classification is unchanged.
+        assert s.classification == "user_input"
+
+    def test_cannot_reassign_value(self) -> None:
+        s: Sensitive[str] = Sensitive("x", "user_input")
+        with pytest.raises(AttributeError, match="immutable"):
+            s._value = "y"
 
 
 class TestUnwrap:

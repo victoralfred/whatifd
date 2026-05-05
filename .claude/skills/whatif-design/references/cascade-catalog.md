@@ -792,6 +792,10 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 - `tests/unit/whatif/decision/guards/test_primary_endpoint.py` — adds a `TestNonCanonicalCohortNames` class exercising the configurable surface with custom cohort names (e.g. `"warmup"`, `"regression"`); the test would have caught the v0.1 mismatch empirically.
 - Doctrine cross-reference: cardinal #6 (public schema is hand-written; internal types refactor freely) — finding codes ARE part of the public schema; the rename is a v0.2 minor bump per the schema versioning rules.
 
+**Sibling concerns folded into this entry (PR #27 bot iter-3):**
+- **Per-endpoint thresholds.** `_evaluate_non_regression` reads `policy.max_baseline_regression_ratio` regardless of which cohort the endpoint targets. A v0.2 `PrimaryEndpoint(cohort="warmup", direction="non_regression_below_threshold")` would silently use the baseline threshold. Symmetric for `_evaluate_improvement`. v0.2 should thread the threshold through `PrimaryEndpoint` (e.g., `threshold: float | None = None` falling back to the policy-level default by direction) so per-endpoint thresholds are explicit.
+- **`primary_endpoints` cohorts ⊆ `required_cohorts` invariant.** Today both fields are independent on `DecisionPolicy`; no validator enforces the subset relation. A user who declares an endpoint on a non-required cohort sees the endpoint silently abstain when the cohort is missing (the guard's intentional silent-skip + the floor's `required_cohort_present` rule catches missing REQUIRED cohorts only). v0.2 either adds a Pydantic validator on `DecisionPolicy` (ergonomic for misconfiguration) OR documents this as best-effort-by-design. The decision lands with the rest of the multi-cohort surface.
+
 **Status:** open (v0.2 work — not blocking v0.1 schema freeze).
 
 **Resolution:** v0.2 minor release. New direction-keyed codes shipped; v0.1 codes deprecated with one-minor-cycle notice; promotion-path rules in `references/contracts.md` followed.

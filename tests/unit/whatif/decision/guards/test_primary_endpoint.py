@@ -173,10 +173,15 @@ class TestPrimaryEndpointCustomPolicy:
         assert findings == []
 
     def test_unknown_cohort_in_endpoint_silently_skipped(self) -> None:
-        # Policy declares an endpoint for a cohort that isn't in the
-        # results — this guard skips silently. The floor's
-        # required_cohort_present rule catches missing required cohorts;
-        # this guard is policy-level.
+        # Two endpoints declared. The guard's expected behavior differs
+        # per endpoint, both producing zero findings:
+        #   - "failure" endpoint: cohort present + improvement rate
+        #     above threshold → no emit (passing condition).
+        #   - "exploratory" endpoint: cohort missing from results →
+        #     silently abstain (the guard's intentional skip; floor's
+        #     required_cohort_present rule catches missing REQUIRED
+        #     cohorts, but exploratory isn't required here).
+        # Both contribute zero findings via different code paths.
         policy = DecisionPolicy(
             primary_endpoints=(
                 PrimaryEndpoint(cohort="failure", direction="improvement_above_threshold"),
@@ -185,7 +190,57 @@ class TestPrimaryEndpointCustomPolicy:
         )
         cohorts = [failure_cohort(improved=8, unchanged=2, regressed=0)]
         findings = primary_endpoint_guard(cohorts, policy)
-        assert findings == []  # failure passes; exploratory missing is silent
+        assert len(findings) == 0, (
+            "expected zero findings: failure passes, exploratory silently skipped "
+            f"(missing cohort), but got {[f.code for f in findings]}"
+        )
+
+
+class TestPrimaryEndpointsSubsetOfRequiredCohorts:
+    """Document the current `DecisionPolicy` invariant state.
+
+    `policy.primary_endpoints` and `policy.required_cohorts` are two
+    independent fields. There is NO validator enforcing that endpoint
+    cohorts ⊆ required_cohorts. PR #27 bot iter-3 raised this:
+    confirm the unrestricted state via test, OR add a validator. For
+    v0.1 we document the current state — the invariant is sometimes
+    desirable (best-effort endpoints on non-required cohorts) and
+    sometimes a bug (silent abstain when user expected a finding).
+    The cascade entry "Direction-keyed finding codes for v0.2 multi-
+    cohort primary_endpoint_guard" tracks the v0.2 resolution decision
+    (Pydantic validator vs documented best-effort).
+
+    These tests exist so a future change adding a validator surfaces
+    them as failures the contributor must engage with — they're the
+    deletion-trigger pattern from `_PHASE_2_6_PLACEHOLDER` applied
+    to this invariant.
+    """
+
+    def test_endpoint_cohort_outside_required_cohorts_constructs_cleanly(self) -> None:
+        # No validator: policy with mismatch constructs without raising.
+        policy = DecisionPolicy(
+            required_cohorts=("failure",),
+            primary_endpoints=(
+                PrimaryEndpoint(cohort="exploratory", direction="improvement_above_threshold"),
+            ),
+        )
+        # Object exists; no exception was raised at construction.
+        assert policy.required_cohorts == ("failure",)
+        assert policy.primary_endpoints[0].cohort == "exploratory"
+
+    def test_endpoint_on_non_required_cohort_silently_abstains_when_missing(self) -> None:
+        # Mismatch surfaces at runtime as silent abstain. Today this is
+        # by design (best-effort); v0.2 may tighten with a validator.
+        policy = DecisionPolicy(
+            required_cohorts=("failure",),
+            primary_endpoints=(
+                PrimaryEndpoint(cohort="exploratory", direction="improvement_above_threshold"),
+            ),
+        )
+        # Cohort results don't include "exploratory".
+        cohorts = [failure_cohort(improved=8, unchanged=2, regressed=0)]
+        findings = primary_endpoint_guard(cohorts, policy)
+        assert findings == []  # silent abstain — the documented best-effort behavior
 
 
 class TestSubPrecisionThresholdDivergence:

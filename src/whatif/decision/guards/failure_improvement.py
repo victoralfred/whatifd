@@ -67,6 +67,14 @@ def failure_improvement_guard(
 
     total_scored = failure.improved_count + failure.unchanged_count + failure.regressed_count
     if total_scored == 0:
+        # `total_scored == 0` is the lenient-`<=`-invariant escape hatch
+        # documented in cascade-catalog "`CohortResult` rate-count
+        # partition — tighten `<=` to `==` at Phase 2.6". Today the
+        # default-zero partition is allowed (Phase 2.5b backward compat);
+        # the floor's `min_scored_per_required_cohort` rule catches the
+        # pathological "scored=10 with all-zero partition" case
+        # structurally. Phase 2.6 tightens the invariant; this branch
+        # becomes unreachable for production-shaped cohorts.
         return []
 
     improvement_rate = failure.improved_count / total_scored

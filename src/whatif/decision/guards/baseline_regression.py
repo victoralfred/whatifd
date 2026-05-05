@@ -56,6 +56,12 @@ def baseline_regression_guard(
 
     total_scored = baseline.improved_count + baseline.unchanged_count + baseline.regressed_count
     if total_scored == 0:
+        # See `failure_improvement_guard` for the lenient-`<=`-invariant
+        # rationale. Cascade-catalog "`CohortResult` rate-count
+        # partition — tighten `<=` to `==` at Phase 2.6" tracks the
+        # tightening that makes this branch unreachable for production
+        # cohorts; today the floor catches all-zero partitions
+        # structurally.
         return []
 
     regression_rate = baseline.regressed_count / total_scored

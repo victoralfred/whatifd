@@ -20,6 +20,14 @@ Phase 1 ordering (per `.claude/skills/whatif-design/phases.md`):
 from whatif.types.cohort import CIUnavailableReason, CohortResult, FloorFailure
 from whatif.types.failure import FailureRecord, Scope, Stage
 from whatif.types.finding import DecisionFinding, Severity
+from whatif.types.policy import (
+    DecisionPolicy,
+    EndpointDirection,
+    PrimaryEndpoint,
+    ScorerCacheMode,
+    ScorerCacheStorageProfile,
+    TrustFloor,
+)
 from whatif.types.primitives import DecimalString, JsonPrimitive
 from whatif.types.sensitive import (
     Sensitive,
@@ -53,4 +61,11 @@ __all__ = [  # noqa: RUF022 — grouped by Phase for readability, not alphabetic
     "Inconclusive",
     "Ship",
     "Verdict",
+    # 1.5 policy
+    "DecisionPolicy",
+    "EndpointDirection",
+    "PrimaryEndpoint",
+    "ScorerCacheMode",
+    "ScorerCacheStorageProfile",
+    "TrustFloor",
 ]

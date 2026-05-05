@@ -761,6 +761,19 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 ## Resolved cascades
 
+### Single Ship-construction site — `whatif/decision/verdict.py` (resolved 2026-05-05)
+
+**Source decision:** PR #26 (Phase 2.6a) lands `compute_verdict` as the only function that constructs `Ship` instances. Cardinal #2's witness-token contract (`Ship.proof: FloorPassedProof`) is structurally enforced via the closure-capture in `whatif/decision/floor.py` — only `evaluate_floor` produces proofs. `compute_verdict` is the only call site that calls `evaluate_floor` AND threads the resulting proof into `Ship(proof=...)`.
+
+**Rippled to / refactor protection:**
+- A future contributor MUST NOT add a second Ship-construction site. Doing so would either (a) bypass the floor (impossible — `Ship.__init__` requires a `FloorPassedProof`, and only `evaluate_floor` makes them) or (b) replicate the verdict-computation surface, which is duplication.
+- The verdict layer's contract surface is `compute_verdict(cohort_results, floor, policy, *, guards=None) -> Verdict`. Any new verdict-affecting concern (multi-endpoint primary, accept_no_ci arithmetic, aggregation roll-up) lands by extending this function or the guard chain it composes — not by introducing parallel Ship constructors.
+- Tests pin both halves:
+  - `tests/unit/whatif/decision/test_verdict.py::TestCardinalTwoTrustChain::test_ship_carries_proof_from_evaluate_floor` — the proof on Ship comes from `evaluate_floor`.
+  - `tests/unit/whatif/decision/test_floor.py::TestExternalConstructionBlocked` — `FloorPassedProof` cannot be constructed externally.
+
+**Resolved by:** PR #26 (Phase 2.6a), commit `606882b`.
+
 ### Fresh-list-per-guard contract — convention, not enforcement (resolved 2026-05-05)
 
 **Source decision:** PR #23 went through three reviewer iterations on whether `run_guards` should structurally enforce that each guard returns a fresh list (not a class-level mutable shared across guards). Iterations: add `id()`-based check → upgrade to `is`-comparison with strong references → drop the check entirely. Final state: convention documented in `whatif/decision/guards/__init__.py`'s discipline note + `whatif/decision/guards/protocol.py` `run_guards` docstring; no runtime check.

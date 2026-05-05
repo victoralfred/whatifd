@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+from whatif.exceptions import InvariantViolationError
 from whatif.types.primitives import DecimalString
 
 
@@ -103,3 +104,29 @@ class CohortResult:
     improved_count: int = 0
     unchanged_count: int = 0
     regressed_count: int = 0
+
+    def __post_init__(self) -> None:
+        # Per cardinal #1, structural integrity violations propagate as
+        # typed errors. The rate-count partition can't exceed the
+        # number of scored traces — if a projection-layer bug populates
+        # the wrong totals, the rate-based guards would silently emit
+        # incorrect findings. `<=` (not `==`) is intentional: callers
+        # may legitimately leave counts at 0 (the Phase 2.5b default for
+        # backward compat with construction sites that pre-date the
+        # rate-count fields). Phase 2.6+ projection should populate
+        # exhaustively; this check catches the over-population bug.
+        count_sum = self.improved_count + self.unchanged_count + self.regressed_count
+        if count_sum > self.scored:
+            raise InvariantViolationError(
+                f"CohortResult({self.name!r}) rate-count partition exceeds scored: "
+                f"improved={self.improved_count} + unchanged={self.unchanged_count} + "
+                f"regressed={self.regressed_count} = {count_sum}, but scored={self.scored}. "
+                "The rate partition is over scored traces; sum cannot exceed total. "
+                "Likely a projection-layer bug."
+            )
+        if self.improved_count < 0 or self.unchanged_count < 0 or self.regressed_count < 0:
+            raise InvariantViolationError(
+                f"CohortResult({self.name!r}) rate counts must be non-negative: "
+                f"improved={self.improved_count}, unchanged={self.unchanged_count}, "
+                f"regressed={self.regressed_count}."
+            )

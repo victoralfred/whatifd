@@ -34,6 +34,13 @@ When either is missing this guard emits no finding; the floor or
 another guard catches the missing-cohort case. The floor's
 `required_cohort_present` rule is the structural check; this guard
 operates above the floor on quality.
+
+TODO(phase-2.6): when `failure_improvement_below_threshold` (the
+rate-based primary endpoint guard) lands in the same Phase 2.6 PR,
+revisit this docstring and cross-link to that one so the magnitude-
+vs-endpoint partition is sharp at both call sites. See cascade-catalog
+"Phase 2.5 deferred guards — dependency map" → resolution plan #4
+(framing cleanup sub-bullet).
 """
 
 from __future__ import annotations

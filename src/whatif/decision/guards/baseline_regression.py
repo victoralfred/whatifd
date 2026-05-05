@@ -19,6 +19,13 @@ Precondition: a `baseline` cohort exists with non-zero scored traces.
 When missing or empty this guard emits no finding; the floor catches
 the structural case via `required_cohort_present` and
 `min_scored_per_required_cohort`.
+
+Note on float-vs-displayed comparison: same caveat as
+`failure_improvement_guard` — the comparator runs on the underlying
+float; displayed strings round to 3 decimal places. Standard
+thresholds (default 0.10) agree on both sides; exotic sub-precision
+thresholds may diverge. Phase 5's `format_decimal_string` round-trip
+dissolves the concern.
 """
 
 from __future__ import annotations

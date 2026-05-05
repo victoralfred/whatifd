@@ -27,6 +27,16 @@ The framing-cleanup that PR #23 noted is now in effect: this guard is
 the rate-based primary endpoint; `practical_delta_guard` is the
 supplementary magnitude layer. Read them as a pair — neither alone
 provides full cardinal #10 coverage.
+
+Note on float-vs-displayed comparison: the comparator runs on the
+underlying float (`improvement_rate < threshold`); the displayed
+strings (`format(rate, '.3f')`) round to 3 decimal places. At standard
+policy thresholds (default 0.50) the two agree. At exotic thresholds
+that fall on sub-precision boundaries (e.g., `min_failure_improvement_ratio=0.333`
+with a 1/3 rate), the displayed equality may not match the float
+comparison. Phase 5's `format_decimal_string` round-trip pair
+(`parse(format(x)) == x`) dissolves this concern; thresholds chosen
+to avoid sub-precision rounding produce the cleanest reports.
 """
 
 from __future__ import annotations

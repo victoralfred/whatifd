@@ -23,6 +23,11 @@ is intentional — each guard is self-contained for testability and
 reasoning. Caching parsed floats across guards (via Phase 2.6's
 verdict computation passing pre-parsed values) is a future
 optimization; today's overhead is negligible.
+
+TODO(phase-2.6): replace this redundant parse when verdict computation
+threads pre-parsed `median_delta_float` into the guard signature. See
+cascade-catalog "Guard pre-parse caching — Phase 2.6 verdict
+computation".
 """
 
 from __future__ import annotations

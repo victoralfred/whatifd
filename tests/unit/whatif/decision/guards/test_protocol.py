@@ -53,6 +53,23 @@ class TestGuardProtocol:
         assert not isinstance("a string", Guard)
         assert not isinstance({"a": "dict"}, Guard)
 
+    def test_runtime_check_does_not_validate_signature(self) -> None:
+        # CRITICAL caveat documented as a test rather than a comment:
+        # `@runtime_checkable` Protocols with `__call__` can only verify
+        # that `__call__` exists at runtime. Python cannot inspect call
+        # signatures. So a callable with the WRONG signature passes the
+        # runtime check.
+        #
+        # Future contributors: do NOT rely on `isinstance(x, Guard)` for
+        # signature validation. The full signature contract is enforced
+        # by mypy strict; the runtime check is a smoke test for "is it
+        # callable", nothing more.
+        wrong_signature_lambda = lambda: None  # noqa: E731 — intentional
+        assert isinstance(wrong_signature_lambda, Guard)  # falsely passes!
+
+        wrong_signature_function: object = lambda x, y, z: "totally wrong"  # noqa: E731
+        assert isinstance(wrong_signature_function, Guard)  # falsely passes!
+
 
 class TestRunGuards:
     def test_empty_chain_returns_empty_list(self) -> None:

@@ -707,6 +707,22 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 3. Phase 3 cache subsystem PRs → cache metadata reaches `CohortResult` via projection layer → land `cache_staleness_guard`.
 4. Phase 2.6 verdict computation PR → `primary_endpoint_guard` lands as part of the multi-endpoint resolution.
 
+### Guard pre-parse caching — Phase 2.6 verdict computation
+
+**Source decision:** PR #23 ships two guards (`practical_delta_guard`, `improvement_observation_guard`) that each independently call `parse_decimal_string(failure.median_delta, ...)`. When both run on the same cohort the parse happens twice. Phase 2.5 keeps each guard self-contained for testability and reasoning; the redundancy is acceptable at v0.1 scale (microseconds per call).
+
+**Rippled to:**
+- `whatif/decision/guards/improvement_observation.py` — docstring marks the redundant parse with reference to this cascade entry.
+- Phase 2.6 verdict computation introduces a context object (or a pre-parsed `cohort_results_parsed` view) that pre-parses `median_delta` once per cohort and passes the float to guards alongside the `CohortResult`.
+- Guard signatures may evolve from `(cohorts, policy)` to `(cohorts, policy, parsed)` or similar; the `Guard` Protocol updates accordingly.
+- Existing guards retain a thin parse-fallback path so they remain self-contained when called outside the verdict pipeline (tests, ad-hoc usage).
+
+**Status:** open
+
+**Resolution:** Phase 2.6 — verdict computation pre-parses cohort numerics once and threads the parsed values to every guard. Cardinal #1 invariant (parse-on-failure raises `InvariantViolationError`) moves to the pre-parse step; guards then read floats directly.
+
+**Trigger for resolution:** Phase 2.6 PR.
+
 ### `parse_decimal_string` permissiveness — soft warn now, tighten at Phase 5
 
 **Source decision:** PR #23 ships `parse_decimal_string` early (one half of the Phase 5 serialization helper pair) so Phase 2.5 guards can validate `CohortResult.median_delta`. The current implementation accepts anything `float()` parses but emits a `DeprecationWarning` on inputs that violate the committed canonical shape (no decimal point, scientific notation). Phase 5 will flip the warning to a hard `InvariantViolationError` and pin exact precision per field.

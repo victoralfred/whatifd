@@ -27,6 +27,7 @@ from whatif.types.sensitive import (
     SensitiveUnwrap,
     UnredactedSensitiveError,
 )
+from whatif.types.verdict import DontShip, Inconclusive, Ship, Verdict
 
 __all__ = [  # noqa: RUF022 — grouped by Phase for readability, not alphabetical
     # 1.1 primitives
@@ -46,4 +47,10 @@ __all__ = [  # noqa: RUF022 — grouped by Phase for readability, not alphabetic
     "Scope",
     "Severity",
     "Stage",
+    # 1.4 verdict (FloorPassedProof lives in whatif.decision.floor —
+    # closure-capture requires producer + type in the same module)
+    "DontShip",
+    "Inconclusive",
+    "Ship",
+    "Verdict",
 ]

@@ -257,31 +257,13 @@ class TestSeverityNonOverrideable:
 
 
 # ---------------------------------------------------------------------------
-# Cross-registry coverage (Phase 2.4 placeholder — will lift to assert)
+# Cross-registry coverage moved to test_fix_suggestions.py
 # ---------------------------------------------------------------------------
-
-
-class TestCrossRegistryCoverage:
-    @pytest.mark.xfail(
-        reason="Phase 2.4 introduces FIX_SUGGESTION_REGISTRY; coverage gate lifts then.",
-        strict=True,
-    )
-    def test_every_blocking_finding_has_a_fix_suggestion(self) -> None:
-        # Cardinal #8: Inconclusive must be actionable. Every blocks_ship
-        # and blocks_all finding code must have a fix-suggestion entry.
-        # This test is xfail until Phase 2.4 ships the registry; once it
-        # does, the strict=True forces this test to start passing (or
-        # be deleted in favor of the real Phase 2.4 coverage test).
-        from whatif.decision.fix_suggestions import (
-            FIX_SUGGESTION_REGISTRY,  # type: ignore[import-not-found]
-        )
-
-        blocking = {
-            code
-            for code, spec in FINDING_CODE_REGISTRY.items()
-            if spec.severity in ("blocks_ship", "blocks_all")
-        }
-        assert blocking <= set(FIX_SUGGESTION_REGISTRY)
+# Phase 2.3 staged a strict-xfail placeholder here for the cardinal #8
+# gate ("every blocking finding has a fix suggestion"). Phase 2.4 ships
+# the registry; the canonical coverage test lives in
+# `test_fix_suggestions.py::TestCrossRegistryCoverage` so the assertion
+# sits next to the registry it gates.
 
 
 # ---------------------------------------------------------------------------

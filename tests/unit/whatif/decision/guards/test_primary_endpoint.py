@@ -175,7 +175,7 @@ class TestPrimaryEndpointCustomPolicy:
         findings = primary_endpoint_guard([cohort], policy)
         assert findings == []
 
-    def test_unknown_cohort_in_endpoint_silently_skipped(self) -> None:
+    def test_missing_endpoint_cohort_abstains_passing_cohort_passes(self) -> None:
         # Two endpoints declared. Both produce zero findings, but via
         # DIFFERENT code paths — this test pins both paths in one
         # scenario rather than splitting into two tests:

@@ -109,6 +109,12 @@ def _walk(obj: Any, path: str, seen: set[int]) -> None:
     # Cardinal #5: the load-bearing check. Any Sensitive[T] instance
     # reachable from the graph is a leak — fail loud BEFORE the
     # encoder gets a chance to fall back.
+    #
+    # ORDERING: this isinstance check MUST stay before the cycle-guard
+    # `seen.add(id(obj))` below. A future refactor that swaps the
+    # blocks would cause a Sensitive that's been visited once (e.g.,
+    # via two paths in a shared subtree) to be silently skipped on the
+    # second encounter — defeating the load-bearing defense.
     if isinstance(obj, Sensitive):
         raise UnredactedSensitiveError(
             f"unredacted Sensitive[{obj.classification}] found at {path}. "
@@ -157,7 +163,7 @@ def _walk(obj: Any, path: str, seen: set[int]) -> None:
     if isinstance(obj, set | frozenset):
         # Sets aren't ordered; index meaningless, use repr for path.
         for value in obj:
-            _walk(value, f"{path}<set:{value!r}>", seen)
+            _walk(value, f"{path}[<set:{value!r}>]", seen)
         return
 
     # Anything else (Path, datetime, custom non-dataclass classes

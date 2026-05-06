@@ -18,6 +18,7 @@ Pin properties:
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from types import MappingProxyType
 
@@ -86,14 +87,39 @@ class TestEncoderDispatch:
         assert result["ci_computable"] is True
 
     def test_nested_dataclass_recurses(self) -> None:
-        # CohortResult contains FloorFailure list. Verify nested
+        # CohortResult contains a FloorFailure list. Verify nested
         # dataclasses round-trip through the recursive default()
         # dispatch (NOT dataclasses.asdict — see field-projection
-        # docstring).
+        # docstring on the encoder). Populate a real FloorFailure so
+        # the recursive path is actually exercised, not just asserted
+        # for the empty-list case.
+        from whatif.types.cohort import FloorFailure
+
+        c = cohort()
+        ff = FloorFailure(
+            rule="min_selected_per_required_cohort",
+            observed=2,
+            threshold=5,
+            severity="blocks_all",
+        )
+        with_failure = dataclasses.replace(c, floor_failures=[ff])
+        result = json.loads(json.dumps(with_failure, cls=WhatifJSONEncoder))
+        # The nested FloorFailure dataclass also dispatches through
+        # default() — not raised, fully encoded.
+        assert isinstance(result["floor_failures"], list)
+        assert len(result["floor_failures"]) == 1
+        nested = result["floor_failures"][0]
+        assert nested["rule"] == "min_selected_per_required_cohort"
+        assert nested["observed"] == 2
+        assert nested["threshold"] == 5
+        assert nested["severity"] == "blocks_all"
+
+    def test_empty_nested_collection_encodes_as_empty_list(self) -> None:
+        # Pin the empty-collection path separately from the populated
+        # one above. CohortResult.floor_failures defaults to []; the
+        # recursive dispatch must produce [], not raise or omit.
         c = cohort()
         result = json.loads(json.dumps(c, cls=WhatifJSONEncoder))
-        # CohortResult.floor_failures defaults to [] but the recursive
-        # dispatch must produce a list, not raise.
         assert result["floor_failures"] == []
 
     def test_mapping_proxy_type_encodes_as_object(self) -> None:

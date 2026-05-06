@@ -23,27 +23,15 @@ filename — `:` is invalid on Windows filesystems, and the
 
 ## Entry shape
 
-Per `references/contracts.md` §"Entry format":
-
-```json
-{
-  "cache_key_version": "v1",
-  "cache_schema_version": "v1",
-  "created_at": "2026-04-01T...",
-  "key_components": { ... full asdict of CacheKeyComponents ... },
-  "result": {
-    "score_delta": "0.310",
-    "verdict": "improved",
-    "rationale": "<redacted-or-stored-per-profile>",
-    "confidence": "0.850",
-    "flags": []
-  }
-}
-```
+Per `references/contracts.md` §"Entry format". `key_components` is
+typed as `CacheKeyComponents` (Phase 3.1) — the storage layer round-
+trips the typed shape rather than a raw dict, so cardinal #6's "no
+`dict[str, Any]` at typed boundaries" holds. A keying-v2 schema
+change requires a storage-v2 module (paired version bump).
 
 `rationale` is stored only when the storage profile is `full_judge_io`
 (per `references/contracts.md`); the default profile
-(`normalized_result_only`) has `rationale: null`. The profile gating
+(`normalized_result_only`) has `rationale: None`. The profile gating
 is the CALLER'S responsibility — this storage layer writes whatever
 `CacheEntry` the caller hands it. The cardinal #5 boundary
 (no `Sensitive[T]` in entry contents) is enforced by the
@@ -54,14 +42,21 @@ hex-validation invariant from Phase 3.1.
 
 `CACHE_SCHEMA_VERSION = "v1"` is written into `meta.json` at cache
 init, and into every entry. PRs that change the on-disk file format
-(entry shape, directory layout, `meta.json` schema) MUST introduce a
-`v2` module rather than mutate `v1`. Reading an entry whose
-`cache_schema_version` does not match this module's
-`CACHE_SCHEMA_VERSION` raises `CacheSchemaMismatchError` — a typed
-failure that downstream code can convert to a `FailureRecord`. The
-cache version-bump test (Phase 3 gate) asserts a diff under
-`whatif/cache/storage/v1.py` either bumps the constant or is
-rejected.
+MUST introduce a `v2` module rather than mutate `v1`.
+
+## Cardinal #1 split: programmer bugs vs data conditions
+
+- **Programmer-bug paths** raise `InvariantViolationError`: caller
+  constructs a `CacheEntry` with the wrong version, or hands a
+  wrong-version key to `read_entry`/`write_entry`. These are
+  contract violations the caller controls.
+- **Data-condition paths** raise `CacheSchemaMismatchError`: an
+  on-disk file declares a version this module doesn't know. The
+  caller did everything right; the disk surprised us. Callers convert
+  this to a `FailureRecord` at the appropriate scope.
+
+Splitting the two avoids the "is this a bug or a data condition?"
+ambiguity at the catch site.
 
 ## What this module does NOT do
 
@@ -70,8 +65,7 @@ rejected.
 - **CacheSummary aggregation** — Phase 3.5 (`whatif/cache/summary.py`).
 - **Profile gating on `rationale`** — caller's responsibility.
 
-This module is a pure I/O layer over a typed entry shape. Tests run
-against `tmp_path`; no shared state.
+Tests run against `tmp_path`; no shared state.
 """
 
 from __future__ import annotations
@@ -82,7 +76,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from whatif.cache.keying import CACHE_KEY_VERSION
+from whatif.cache.keying import CACHE_KEY_VERSION, CacheKeyComponents
+from whatif.exceptions import InvariantViolationError
 from whatif.serialization import canonical_json_bytes
 
 CACHE_SCHEMA_VERSION = "v1"
@@ -90,16 +85,25 @@ CACHE_SCHEMA_VERSION = "v1"
 _ENTRIES_DIRNAME = "entries"
 _META_FILENAME = "meta.json"
 
+# Known top-level keys in `meta.json`. Any key NOT in this set lands in
+# `CacheMeta.extra` (forward-compat round-trip per `CacheMeta` docstring).
+# `_write_meta` enforces that `extra` MUST NOT shadow any of these
+# names — a corrupted meta.json or a buggy caller cannot silently
+# overwrite version fields by smuggling them through `extra`.
+_META_KNOWN_KEYS = frozenset({"cache_schema_version", "cache_key_version", "created_at"})
+
 
 class CacheSchemaMismatchError(Exception):
-    """Raised when an on-disk entry's `cache_schema_version` does not
-    match this module's `CACHE_SCHEMA_VERSION`.
+    """An on-disk file declares a `cache_schema_version` this module
+    cannot read.
 
-    Distinct from a missing-file (cache miss) — schema mismatch is a
-    structural integrity concern that must surface, not a normal miss.
-    Callers convert this to a `FailureRecord` at the appropriate
-    scope (per cardinal #1, expected failures are data, not exceptions
-    leaving the boundary).
+    DATA condition (the file says one thing, this module expects
+    another), not a programmer bug. Callers convert to a
+    `FailureRecord` at the appropriate scope (per cardinal #1,
+    expected failures are data). Programmer-side version mismatches
+    (entry constructed with the wrong declared version, key passed in
+    with the wrong prefix) raise `InvariantViolationError` instead;
+    the split keeps cardinal #1 catch-site classification unambiguous.
     """
 
 
@@ -107,10 +111,10 @@ class CacheSchemaMismatchError(Exception):
 class CacheResult:
     """The judge result stored alongside a cache key.
 
-    `score_delta`, `confidence` are `DecimalString` for cross-platform
-    determinism (cardinal #4); `flags` is the list of judge-emitted
-    flags as bare strings (no domain typing in v0.1; the judge schema
-    treats them opaquely).
+    `score_delta`, `confidence` are decimal-formatted strings for
+    cross-platform determinism (cardinal #4); `flags` is the list of
+    judge-emitted flags as bare strings (no domain typing in v0.1; the
+    judge schema treats them opaquely).
 
     `rationale` is `str | None`. The caller decides whether to populate
     it — `full_judge_io` profile populates; `normalized_result_only`
@@ -128,11 +132,11 @@ class CacheResult:
 class CacheEntry:
     """One cache entry as written to disk.
 
-    `key_components` is the full `asdict(CacheKeyComponents)` from
-    Phase 3.1, stored as a dict for human-readable provenance. The
-    cache key (the hash) is what's used for lookup; the components
-    are stored so a debugger can reconstruct the inputs without
-    re-running the adapter.
+    `key_components` is the `CacheKeyComponents` instance the cache
+    key was derived from, stored for human-readable provenance and
+    so a debugger can reconstruct the inputs without re-running the
+    adapter. Typed (not `dict[str, Any]`) per cardinal #6 — a v2
+    keying schema requires a v2 storage module.
 
     `created_at` is an ISO-8601 UTC timestamp produced at write time.
     Non-deterministic; not part of the cache key.
@@ -141,7 +145,7 @@ class CacheEntry:
     cache_key_version: str
     cache_schema_version: str
     created_at: str
-    key_components: dict[str, Any]
+    key_components: CacheKeyComponents
     result: CacheResult
 
 
@@ -163,6 +167,12 @@ class CacheMeta:
     via `extra` round-trip rather than dropping it. Breaking changes
     (new required fields, semantic changes to existing fields) still
     require a `v2` schema bump.
+
+    Invariant: `extra` MUST NOT contain any of the known top-level key
+    names (`cache_schema_version`, `cache_key_version`, `created_at`).
+    `_write_meta` enforces this — a corrupted on-disk meta or a buggy
+    caller cannot silently overwrite version fields by smuggling them
+    through `extra`.
     """
 
     cache_schema_version: str
@@ -179,7 +189,8 @@ def init_cache(root: Path) -> CacheMeta:
     returns the recorded meta without overwriting it. Calling on a
     cache whose recorded versions do not match this module's constants
     raises `CacheSchemaMismatchError` — schema migration is not
-    automatic.
+    automatic. (DATA condition: the disk says one version, we expect
+    another. The caller did everything right.)
     """
     root.mkdir(parents=True, exist_ok=True)
     (root / _ENTRIES_DIRNAME).mkdir(exist_ok=True)
@@ -212,12 +223,11 @@ def read_meta(root: Path) -> CacheMeta:
     """
     meta_path = root / _META_FILENAME
     raw = json.loads(meta_path.read_text(encoding="utf-8"))
-    known = {"cache_schema_version", "cache_key_version", "created_at"}
     return CacheMeta(
         cache_schema_version=raw["cache_schema_version"],
         cache_key_version=raw["cache_key_version"],
         created_at=raw["created_at"],
-        extra={k: v for k, v in raw.items() if k not in known},
+        extra={k: v for k, v in raw.items() if k not in _META_KNOWN_KEYS},
     )
 
 
@@ -231,16 +241,17 @@ def write_entry(root: Path, key: str, entry: CacheEntry) -> Path:
     entries written by different platforms compare byte-equal — useful
     for cache integrity verification (`whatif cache verify`).
 
-    The entry's `cache_key_version` and `cache_schema_version` MUST
-    match this module's constants; mismatch is an
-    `InvariantViolationError` (cardinal #1: a write with the wrong
-    versions is a programmer bug, not a runtime data condition).
+    The entry's `cache_schema_version` MUST match this module's
+    `CACHE_SCHEMA_VERSION`; mismatch is a programmer bug (the caller
+    constructed an entry with the wrong declared version), so this
+    raises `InvariantViolationError`, NOT `CacheSchemaMismatchError`.
     """
     if entry.cache_schema_version != CACHE_SCHEMA_VERSION:
-        raise CacheSchemaMismatchError(
+        raise InvariantViolationError(
             f"CacheEntry.cache_schema_version={entry.cache_schema_version!r} "
             f"does not match storage CACHE_SCHEMA_VERSION={CACHE_SCHEMA_VERSION!r}. "
-            "Entries written by this module must declare the matching version."
+            "Entries written by this module must declare the matching version. "
+            "(Programmer bug; not a runtime data condition.)"
         )
     digest = _digest_from_key(key)
     shard_dir = root / _ENTRIES_DIRNAME / digest[:2]
@@ -256,8 +267,10 @@ def read_entry(root: Path, key: str) -> CacheEntry | None:
 
     Raises `CacheSchemaMismatchError` if the on-disk entry's
     `cache_schema_version` does not match this module's constant —
-    schema mismatch is a structural concern that must surface, not a
-    silent miss.
+    DATA condition; callers convert to a `FailureRecord`. A
+    wrong-version `key` (e.g., `v2:` against v1 storage) raises
+    `InvariantViolationError` from `_digest_from_key` because that's a
+    programmer bug, not a data condition.
     """
     digest = _digest_from_key(key)
     entry_path = root / _ENTRIES_DIRNAME / digest[:2] / f"{digest}.json"
@@ -275,7 +288,7 @@ def read_entry(root: Path, key: str) -> CacheEntry | None:
         cache_key_version=raw["cache_key_version"],
         cache_schema_version=raw["cache_schema_version"],
         created_at=raw["created_at"],
-        key_components=raw["key_components"],
+        key_components=CacheKeyComponents(**raw["key_components"]),
         result=CacheResult(
             score_delta=result["score_delta"],
             verdict=result["verdict"],
@@ -287,20 +300,28 @@ def read_entry(root: Path, key: str) -> CacheEntry | None:
 
 
 def _digest_from_key(key: str) -> str:
-    """Strip the `v1:` prefix and return the 64-char digest.
+    """Strip the `<version>:` prefix and return the digest portion.
 
-    Tolerates a bare digest (no prefix) for forward-compat with future
-    callers that pre-strip; rejects a key with the wrong version
-    prefix (e.g., `v2:` against the v1 storage module).
+    The key MUST be of the form `<version>:<hex>` where `<version>`
+    matches `CACHE_KEY_VERSION` (currently `"v1"`). Anything else —
+    a bare digest, a `v2:` prefix, an empty string — is a programmer
+    bug (the caller built the key wrong), so this raises
+    `InvariantViolationError`, NOT `CacheSchemaMismatchError`.
     """
     if ":" not in key:
-        return key
+        raise InvariantViolationError(
+            f"Cache key {key!r} has no `<version>:` prefix. Keys must be "
+            f"constructed via `whatif.cache.keying.build_cache_key`, which "
+            f"emits the prefix; bare digests are not accepted."
+        )
     prefix, digest = key.split(":", 1)
     if prefix != CACHE_KEY_VERSION:
-        raise CacheSchemaMismatchError(
+        raise InvariantViolationError(
             f"Cache key version mismatch: key prefix={prefix!r}; "
             f"this storage module expects {CACHE_KEY_VERSION!r}. "
-            "A v2 key cannot be looked up in v1 storage."
+            "A v2 key cannot be looked up in v1 storage. "
+            "(Programmer bug; the caller passed a key from a different "
+            "keying version.)"
         )
     return digest
 
@@ -311,13 +332,17 @@ def _entry_to_dict(entry: CacheEntry) -> dict[str, Any]:
     Uses field-by-field copy rather than `asdict()` so the on-disk
     schema is decoupled from the dataclass shape — a future field on
     `CacheEntry` is opt-in into the wire format, not auto-included.
+    `key_components` is asdict'd here (it's a known v1 schema; the
+    on-disk form mirrors the dataclass fields exactly).
     """
+    from dataclasses import asdict
+
     r = entry.result
     return {
         "cache_key_version": entry.cache_key_version,
         "cache_schema_version": entry.cache_schema_version,
         "created_at": entry.created_at,
-        "key_components": entry.key_components,
+        "key_components": asdict(entry.key_components),
         "result": {
             "score_delta": r.score_delta,
             "verdict": r.verdict,
@@ -329,6 +354,17 @@ def _entry_to_dict(entry: CacheEntry) -> dict[str, Any]:
 
 
 def _write_meta(root: Path, meta: CacheMeta) -> None:
+    # Refuse to write if `extra` shadows any known top-level key.
+    # A `**meta.extra` spread that overrode a version field would
+    # silently corrupt the meta — better to surface the bug.
+    overlap = _META_KNOWN_KEYS & meta.extra.keys()
+    if overlap:
+        raise InvariantViolationError(
+            f"CacheMeta.extra contains reserved top-level key(s) {sorted(overlap)!r}. "
+            "Reserved keys are written from named fields, not from extra; "
+            "having them in extra means a corrupted meta.json or a buggy "
+            "caller. Refusing to write."
+        )
     payload = {
         "cache_schema_version": meta.cache_schema_version,
         "cache_key_version": meta.cache_key_version,

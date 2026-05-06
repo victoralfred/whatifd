@@ -31,6 +31,7 @@ from whatif.cache.keying import CACHE_KEY_VERSION, CacheKeyComponents, build_cac
 from whatif.cache.storage import (
     CACHE_SCHEMA_VERSION,
     CacheEntry,
+    CacheMeta,
     CacheResult,
     CacheSchemaMismatchError,
     init_cache,
@@ -38,6 +39,7 @@ from whatif.cache.storage import (
     read_meta,
     write_entry,
 )
+from whatif.exceptions import InvariantViolationError
 from whatif.serialization import canonical_json_bytes
 
 # Tests use `canonical_json_bytes` rather than `json.dumps` directly to
@@ -66,13 +68,11 @@ def _components() -> CacheKeyComponents:
 
 def _entry(components: CacheKeyComponents | None = None) -> CacheEntry:
     components = components or _components()
-    from dataclasses import asdict
-
     return CacheEntry(
         cache_key_version=CACHE_KEY_VERSION,
         cache_schema_version=CACHE_SCHEMA_VERSION,
         created_at="2026-05-05T12:00:00Z",
-        key_components=asdict(components),
+        key_components=components,
         result=CacheResult(
             score_delta="0.310",
             verdict="improved",
@@ -133,7 +133,7 @@ class TestWriteRead:
             cache_key_version=CACHE_KEY_VERSION,
             cache_schema_version=CACHE_SCHEMA_VERSION,
             created_at="2026-05-05T12:00:00Z",
-            key_components={},
+            key_components=components,
             result=CacheResult(
                 score_delta="0.500",
                 verdict="improved",
@@ -154,6 +154,24 @@ class TestWriteRead:
         key = build_cache_key(_components())
         assert read_entry(tmp_path, key) is None
 
+    def test_cache_miss_with_existing_shard_dir(self, tmp_path: Path) -> None:
+        # Partial filesystem state: the shard directory exists (from a
+        # previously-written entry that shares the first 2 hex chars)
+        # but the specific .json file is absent. Pin: read_entry must
+        # return None on file absence regardless of whether the parent
+        # directory exists. A naive `if not parent.exists(): return None`
+        # implementation would fail this test.
+        init_cache(tmp_path)
+        components = _components()
+        key = build_cache_key(components)
+        write_entry(tmp_path, key, _entry(components))
+        # Delete the JSON file but leave the shard directory.
+        digest = key.split(":", 1)[1]
+        entry_path = tmp_path / "entries" / digest[:2] / f"{digest}.json"
+        entry_path.unlink()
+        assert entry_path.parent.is_dir()  # shard dir still there
+        assert read_entry(tmp_path, key) is None
+
     def test_overwrite_existing_entry(self, tmp_path: Path) -> None:
         # Write twice with different results at the same key.
         init_cache(tmp_path)
@@ -165,7 +183,7 @@ class TestWriteRead:
             cache_key_version=CACHE_KEY_VERSION,
             cache_schema_version=CACHE_SCHEMA_VERSION,
             created_at=first.created_at,
-            key_components=first.key_components,
+            key_components=components,
             result=CacheResult(
                 score_delta="0.999",
                 verdict="improved",
@@ -202,21 +220,52 @@ class TestSharding:
         assert ":" not in path.name
 
 
-class TestSchemaMismatch:
-    def test_write_rejects_mismatched_entry_version(self, tmp_path: Path) -> None:
+class TestVersionMismatch:
+    """Cardinal #1 split: programmer-bug paths raise
+    `InvariantViolationError`; data-condition paths (the disk surprised
+    us) raise `CacheSchemaMismatchError`. Catch sites read the type
+    to know whether to fail-fast (bug) or wrap-as-FailureRecord (data).
+    """
+
+    # ----- Programmer-bug paths (InvariantViolationError) -----
+
+    def test_write_rejects_mismatched_entry_version_as_bug(self, tmp_path: Path) -> None:
+        # Caller constructed an entry with the wrong declared version
+        # and handed it to write_entry. Programmer bug — they should
+        # have constructed it with CACHE_SCHEMA_VERSION.
         init_cache(tmp_path)
         bad = CacheEntry(
             cache_key_version=CACHE_KEY_VERSION,
             cache_schema_version="v0",
             created_at="2026-05-05T12:00:00Z",
-            key_components={},
+            key_components=_components(),
             result=CacheResult(score_delta="0.0", verdict="unchanged", confidence="0.5"),
         )
-        with pytest.raises(CacheSchemaMismatchError, match="v0"):
+        with pytest.raises(InvariantViolationError, match="v0"):
             write_entry(tmp_path, build_cache_key(_components()), bad)
 
-    def test_read_rejects_mismatched_on_disk_version(self, tmp_path: Path) -> None:
-        # Write a valid entry, then mutate its on-disk version.
+    def test_lookup_rejects_v2_key_as_bug(self, tmp_path: Path) -> None:
+        # Caller passed a key with the wrong version prefix. Programmer
+        # bug — they should have built the key with this version's
+        # build_cache_key.
+        init_cache(tmp_path)
+        with pytest.raises(InvariantViolationError, match="v2"):
+            read_entry(tmp_path, "v2:" + "a" * 64)
+
+    def test_lookup_rejects_bare_digest_as_bug(self, tmp_path: Path) -> None:
+        # No version prefix on the key. The bare-digest path was
+        # speculative forward-compat in an earlier revision; removed
+        # because it bypassed version validation. Caller MUST go
+        # through build_cache_key.
+        init_cache(tmp_path)
+        with pytest.raises(InvariantViolationError, match="no `<version>:` prefix"):
+            read_entry(tmp_path, "a" * 64)
+
+    # ----- Data-condition paths (CacheSchemaMismatchError) -----
+
+    def test_read_rejects_mismatched_on_disk_version_as_data(self, tmp_path: Path) -> None:
+        # The disk says v0 but this module is v1. Caller did everything
+        # right; the disk surprised us. Convert to FailureRecord.
         init_cache(tmp_path)
         components = _components()
         key = build_cache_key(components)
@@ -227,11 +276,41 @@ class TestSchemaMismatch:
         with pytest.raises(CacheSchemaMismatchError, match="v0"):
             read_entry(tmp_path, key)
 
-    def test_lookup_rejects_v2_key(self, tmp_path: Path) -> None:
+    def test_init_cache_rejects_mismatched_meta_as_data(self, tmp_path: Path) -> None:
+        # Same as the existing init test, made explicit about
+        # data-condition classification.
+        (tmp_path / "entries").mkdir()
+        (tmp_path / "meta.json").write_bytes(
+            canonical_json_bytes(
+                {
+                    "cache_schema_version": "v0",
+                    "cache_key_version": "v1",
+                    "created_at": "2026-01-01T00:00:00Z",
+                }
+            )
+        )
+        with pytest.raises(CacheSchemaMismatchError, match="v0"):
+            init_cache(tmp_path)
+
+
+class TestExtraOverlapRejected:
+    """`_write_meta` refuses to write a `CacheMeta` whose `extra` would
+    shadow a known top-level key. Defends against corrupted on-disk
+    meta or a buggy caller that smuggled a version field through extra.
+    """
+
+    def test_write_meta_refuses_overlap(self, tmp_path: Path) -> None:
+        from whatif.cache.storage.v1 import _write_meta
+
         init_cache(tmp_path)
-        # Forge a v2 key shape; this v1 storage module must refuse.
-        with pytest.raises(CacheSchemaMismatchError, match="v2"):
-            read_entry(tmp_path, "v2:" + "a" * 64)
+        bad = CacheMeta(
+            cache_schema_version=CACHE_SCHEMA_VERSION,
+            cache_key_version=CACHE_KEY_VERSION,
+            created_at="2026-05-05T12:00:00Z",
+            extra={"cache_schema_version": "v0"},  # smuggled override
+        )
+        with pytest.raises(InvariantViolationError, match="reserved top-level key"):
+            _write_meta(tmp_path, bad)
 
 
 class TestCanonicalOnDisk:

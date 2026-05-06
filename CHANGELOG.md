@@ -12,6 +12,15 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 5.1 (ReportV01 wire-format types)
+
+- `src/whatif/report/__init__.py` + `src/whatif/report/models_v01.py` — hand-written `ReportV01` dataclass per cardinal #6 (public schema is hand-written; internal types refactor freely). Sub-shapes reuse internal types directly: `CohortResult`, `FailureRecord`, `DecisionFinding`, `CacheSummary`, `TrustFloor`, `DecisionPolicy`, `MethodologyDisclosure`, `RunManifest`. The cardinal #6 boundary governs the WHATIF-emitted schema, not the universe of types it composes.
+- `REPORT_SCHEMA_VERSION = "0.1"` and `REPORT_SCHEMA_URI = "https://whatif.codes/schema/report/v0.1.json"` constants — stamped into every report instance.
+- `VerdictState = Literal["ship", "dont_ship", "inconclusive"]` — wire-format flattening of the internal `Verdict` sealed union. JSON schema can express literal strings but not Python sealed unions; projection (later sub-phase) does the flattening.
+- All 11 fields required (`schema_version`, `schema_uri`, `verdict_state`, `cohort_results`, `failures`, `decision_findings`, `cache_summary`, `trust_floor`, `decision_policy`, `methodology`, `runtime`); no `Optional[...]` hiding unset state behind `None`. `failures=[]`/`decision_findings=[]` is valid (clean run).
+- `runtime` is the only non-deterministic field per `references/type-model.md`. Schema generation (later sub-phase) annotates it `x-deterministic: false`; everything else defaults to true.
+- `tests/unit/whatif/report/test_models_v01.py` — 17 tests across six classes: schema constants pinned, all three verdict states accepted, frozen-dataclass immutability, no-`dict[str, Any]` boundary check via `typing.get_type_hints`, determinism-budget field-set pin (whole-set assertion against future drift), sub-shape integration smoke (internal types accepted directly), public-import surface defense.
+
 ### Added — Phase 3.5 (CacheSummary — closes Phase 3)
 
 - `src/whatif/cache/summary.py::CacheSummary` — typed dataclass that becomes the `cache_summary` field on `ReportV01`. Required fields per `references/contracts.md` §"Cache disclosure content spec": `schema_version`, `key_version`, `mode`, `storage_profile`, `storage_path`, `hits`, `misses`, `writes`, `stale_hits`, `corrupted_entries`, `policy`, `policy_violations`. Optional: `oldest_hit_age_days: int | None`, `models_distribution: Mapping[str, int]` (defaults `MappingProxyType({})`).

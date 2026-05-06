@@ -121,6 +121,17 @@ class TestConcurrency:
         # Probe the bound by counting concurrent runner entries via a
         # threading.Lock-protected counter. With max_workers=2, the
         # peak should be <= 2 even when 8 bundles are submitted.
+        #
+        # Scope of the lock-protected counter: it measures
+        # RUNNER-level concurrency (how many user-runner functions
+        # are inside their `time.sleep` simultaneously). This is the
+        # observable that matches the user-facing contract — "no
+        # more than max_workers runners run concurrently". The
+        # outer streaming pool's worker count is an implementation
+        # detail; user code only sees runner invocations. So the
+        # peak <= max_workers assertion is the right load-bearing
+        # check, and an off-by-one in the streaming layer's slide
+        # logic would surface here as runner concurrency violation.
         active = 0
         peak = 0
         lock = threading.Lock()
@@ -170,7 +181,12 @@ class TestStreaming:
                 pulled += 1
                 yield _bundle(f"t-{i}", _echo_runner)
 
-        stream = replay_stream(bundle_gen(), max_workers=3, timeout_seconds=2.0)
+        # Single source of truth for the worker count: passed to
+        # both `replay_stream` and the bound assertion below so a
+        # future tuning change can't silently drift one without
+        # the other.
+        workers = 3
+        stream = replay_stream(bundle_gen(), max_workers=workers, timeout_seconds=2.0)
 
         # Pull just the first result.
         first = next(stream)
@@ -185,11 +201,10 @@ class TestStreaming:
         # bound (`<= max_workers + 1`) so a future change to the
         # priming logic surfaces immediately rather than hiding
         # behind a generous `<100` upper bound.
-        max_workers = 3
-        assert pulled <= max_workers + 1, (
+        assert pulled <= workers + 1, (
             f"streaming layer drained {pulled} bundles before "
             f"yielding the first result; sliding-window bound is "
-            f"max_workers + 1 = {max_workers + 1}"
+            f"max_workers + 1 = {workers + 1}"
         )
 
         # Drain the rest so the executor shuts down cleanly.

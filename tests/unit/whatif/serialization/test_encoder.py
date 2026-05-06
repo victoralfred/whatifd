@@ -129,6 +129,61 @@ class TestEncoderDispatch:
         result = json.loads(json.dumps(m, cls=WhatifJSONEncoder))
         assert result == {"claude-sonnet-4-6": 80, "claude-haiku-4-5": 20}
 
+    def test_non_str_mapping_keys_coerced_via_str(self) -> None:
+        # Pin the documented "best-effort emergency dispatch" for
+        # non-str keys: encoder coerces via `str(k)` rather than
+        # raising. This is NOT a sanctioned feature — the wire
+        # boundary's typing contract is `Mapping[str, ...]` per
+        # cardinal #6, and the type system catches non-str keys at
+        # compile time. The runtime coercion is the rare-escape
+        # safety net (e.g., dynamic CLI paths, REPL usage).
+        #
+        # The test pins the coercion is LOSSLESS-by-str-repr: int 42
+        # becomes "42", not silently dropped or corrupted. A future
+        # contributor 'fixing' this to raise on non-str keys would
+        # fail this test, surfacing the design choice for explicit
+        # review rather than silently changing behavior.
+        m = {1: "one", 2: "two", 3: "three"}
+        result = json.loads(json.dumps(m, cls=WhatifJSONEncoder))
+        assert result == {"1": "one", "2": "two", "3": "three"}
+
+    def test_non_str_mapping_keys_with_collision_loses_data(self) -> None:
+        # Defense: surface the failure mode of `str()` coercion. Two
+        # distinct keys whose `str()` reprs collide produce a
+        # collapsed output — int 1 and float 1.0 both stringify to
+        # "1" / "1.0", so they DON'T collide; but bool True and int
+        # 1 both stringify to... actually `str(True)` is "True" and
+        # `str(1)` is "1", so they don't collide either. Verify the
+        # pathological case where collision DOES occur: a custom
+        # __str__ returning the same string for distinct keys.
+        class _Stub:
+            def __init__(self, label: str, val: int) -> None:
+                self._label = label
+                self._val = val
+
+            def __str__(self) -> str:
+                # Both stubs stringify identically — collision.
+                return self._label
+
+            def __hash__(self) -> int:
+                return self._val  # distinct hashes so dict treats them as distinct
+
+            def __eq__(self, other: object) -> bool:
+                return isinstance(other, _Stub) and self._val == other._val
+
+        a = _Stub("collide", 1)
+        b = _Stub("collide", 2)
+        m = {a: "first", b: "second"}
+        result = json.loads(json.dumps(m, cls=WhatifJSONEncoder))
+        # Dict comprehension collapses on duplicate string keys; the
+        # SECOND-iterated value wins. This documents the lossy
+        # behavior — callers using non-str keys with stringification
+        # collisions get silently merged values, NOT an error. Pin
+        # the behavior so a future contributor 'tightening' this
+        # path (e.g., to raise on collision) surfaces the change as
+        # a test failure rather than a silent semantic flip.
+        assert result == {"collide": "second"}
+
     def test_frozenset_encodes_as_sorted_list(self) -> None:
         fs = frozenset({"c", "a", "b"})
         result = json.loads(json.dumps(fs, cls=WhatifJSONEncoder))

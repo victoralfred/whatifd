@@ -215,6 +215,13 @@ def dont_ship() -> DontShip:
     Floor passes (Ship's witness-token chain ran upstream); the
     blocking finding is a `baseline_regression_above_threshold`
     `blocks_ship`-severity finding, the canonical example.
+
+    Kept alongside `dont_ship_with_observation()` (single-finding vs
+    findings-plus-observation): tests that exercise verdict-state
+    mapping or pass-through don't care about findings shape — the
+    plain fixture keeps those tests readable. Only tests that pin
+    the `findings != blocking_findings` contract need the richer
+    variant.
     """
     blocking = make_decision_finding(
         "baseline_regression_above_threshold",

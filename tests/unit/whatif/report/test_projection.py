@@ -328,3 +328,27 @@ class TestFailuresAsData:
         )
         assert isinstance(report.failures, list)
         assert report.failures == [failure]
+
+    def test_failures_is_fresh_list_not_aliased(self, failure: FailureRecord) -> None:
+        # Pin the defensive-copy contract explicitly: when the caller
+        # passes a list (not a tuple), the output's `failures` field
+        # must be a NEW list, not the same object. Otherwise a caller
+        # mutating their original list (e.g., appending more failures
+        # after projection) would silently mutate the report's state
+        # — broken cardinal #1 boundary.
+        input_failures: list[FailureRecord] = [failure]
+        report = project_to_report_v01(
+            ship(),
+            failures=input_failures,
+            cache_summary=cache_summary(),
+            methodology=methodology(),
+            runtime=runtime(),
+        )
+        assert report.failures is not input_failures, (
+            "project_to_report_v01 must defensively copy `failures` — "
+            "aliasing would let post-projection mutations of the input "
+            "list silently mutate the report's failures list."
+        )
+        # Mutating the original must not affect the report.
+        input_failures.clear()
+        assert len(report.failures) == 1

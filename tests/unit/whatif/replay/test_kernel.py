@@ -232,8 +232,66 @@ class TestExceptionClassification:
         assert isinstance(result, ReplayFailure)
         msg = result.details["message"]
         assert isinstance(msg, str)
-        assert len(msg) <= 2048 + len("...(truncated)")
-        assert msg.endswith("...(truncated)")
+        # Truncation contract: 2048 chars of original + suffix.
+        # Pinned exactly so an off-by-one in the `<=` boundary
+        # surfaces (the previous `<= 2048 + len(suffix)` was a
+        # weaker upper bound).
+        assert msg == ("x" * 2048) + "...(truncated)"
+
+    def test_truncation_boundary_at_exactly_2048(
+        self,
+        trace_input: TraceInput,
+        config: ReplayConfig,
+        empty_loose_cache: ToolCache,
+    ) -> None:
+        # Exactly 2048 chars: NO truncation suffix. The kernel
+        # condition is `if len(raw_message) <= 2048` — at exactly
+        # 2048, we keep the message as-is.
+        boundary = "x" * 2048
+
+        def runner(ti: TraceInput, cfg: ReplayConfig, tc: ToolCache) -> ReplayOutput:
+            raise RuntimeError(boundary)
+
+        result = replay_one_trace(
+            trace_id=_TEST_TRACE_ID,
+            cohort="failure",
+            trace_input=trace_input,
+            config=config,
+            tool_cache=empty_loose_cache,
+            runner=runner,
+            timeout_seconds=2.0,
+        )
+        assert isinstance(result, ReplayFailure)
+        msg = result.details["message"]
+        assert msg == boundary
+        assert "...(truncated)" not in msg
+
+    def test_truncation_boundary_at_2049(
+        self,
+        trace_input: TraceInput,
+        config: ReplayConfig,
+        empty_loose_cache: ToolCache,
+    ) -> None:
+        # Exactly 2049 chars: TRUNCATION fires. One char over the
+        # boundary is enough to trigger the suffix path. Pins the
+        # off-by-one direction precisely.
+        over = "x" * 2049
+
+        def runner(ti: TraceInput, cfg: ReplayConfig, tc: ToolCache) -> ReplayOutput:
+            raise RuntimeError(over)
+
+        result = replay_one_trace(
+            trace_id=_TEST_TRACE_ID,
+            cohort="failure",
+            trace_input=trace_input,
+            config=config,
+            tool_cache=empty_loose_cache,
+            runner=runner,
+            timeout_seconds=2.0,
+        )
+        assert isinstance(result, ReplayFailure)
+        msg = result.details["message"]
+        assert msg == ("x" * 2048) + "...(truncated)"
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +328,41 @@ class TestOrderCorrect:
         assert result.code == "tool_cache_miss"
         # NOT runner_exception:
         assert result.code != "runner_exception"
+
+    def test_runner_raising_cache_miss_directly_is_classified_as_tool_cache_miss(
+        self,
+        trace_input: TraceInput,
+        config: ReplayConfig,
+        empty_loose_cache: ToolCache,
+    ) -> None:
+        # Defense against the integration gap: the catch-order test
+        # above goes through the strict cache's `lookup`, which IS
+        # the canonical path. This test exercises the exception
+        # path DIRECTLY — a runner that constructs CacheMissError
+        # and raises it without touching the cache. Pins that the
+        # kernel's classification depends only on the EXCEPTION
+        # TYPE, not on which call site raised it. If a future
+        # refactor changed CacheMissError's class hierarchy (e.g.,
+        # making it not inherit Exception), this test would fail
+        # alongside the strict-cache integration test, surfacing
+        # the change at the kernel boundary specifically.
+        from whatif.replay.tool_cache import CacheMissError
+
+        def runner(ti: TraceInput, cfg: ReplayConfig, tc: ToolCache) -> ReplayOutput:
+            raise CacheMissError(trace_id="t-1", tool_name="direct", arg_count=0)
+
+        result = replay_one_trace(
+            trace_id=_TEST_TRACE_ID,
+            cohort="failure",
+            trace_input=trace_input,
+            config=config,
+            tool_cache=empty_loose_cache,
+            runner=runner,
+            timeout_seconds=2.0,
+        )
+        assert isinstance(result, ReplayFailure)
+        assert result.code == "tool_cache_miss"
+        assert result.details["tool_name"] == "direct"
 
 
 # ---------------------------------------------------------------------------

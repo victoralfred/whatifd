@@ -82,7 +82,7 @@ def ci_availability_guard(
                 "ci_unavailable_for_required_cohort",
                 message=(f"CI unavailable for required cohort {cohort.name!r}: {reason}"),
                 details={"cohort": cohort.name, "reason": reason},
-                # TODO(phase-2.6): replace this placeholder with the
+                # TODO(phase-2.6c): replace this placeholder with the
                 # real failure-record IDs once Phase 2.6 plumbs failure
                 # records end-to-end through the verdict pipeline. See
                 # cascade-catalog "Phase 2.5 deferred guards" → bullet 4.

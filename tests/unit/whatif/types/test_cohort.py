@@ -221,3 +221,59 @@ class TestRateCountInvariant:
         # Diagnostic: the cohort name appears so callers can locate the bug.
         with pytest.raises(InvariantViolationError, match="'failure'"):
             self._build(improved=11, unchanged=0, regressed=0)
+
+
+class TestCiMeaningfulSplit:
+    """`ci_meaningful` is the policy-quality assessment of a CI that
+    exists. Per V0_1_DECISION_RECORD §2 + 2026-05-05 addendum, the field
+    is only valid when `ci_computable=True`. Defaults True for v0.1 since
+    the width-vs-`max_ci_width` check is deferred to Phase 3 (cascade
+    entry "ci_meaningful policy-guard wiring").
+    """
+
+    def _build(
+        self,
+        *,
+        ci_computable: bool,
+        ci_meaningful: bool = True,
+        reason: CIUnavailableReason | None = None,
+    ) -> CohortResult:
+        return CohortResult(
+            name="failure",
+            selected=10,
+            replayed=10,
+            scored=10,
+            ci_computable=ci_computable,
+            ci_unavailable_reason=reason,
+            median_delta=None,
+            ci_lower=None,
+            ci_upper=None,
+            floor_passed=True,
+            ci_meaningful=ci_meaningful,
+        )
+
+    def test_default_ci_meaningful_is_true(self) -> None:
+        c = self._build(ci_computable=True)
+        assert c.ci_meaningful is True
+
+    def test_ci_computable_true_meaningful_false_constructs(self) -> None:
+        # The Phase 3 outcome we're staging the field for.
+        c = self._build(ci_computable=True, ci_meaningful=False)
+        assert c.ci_computable is True
+        assert c.ci_meaningful is False
+
+    def test_ci_computable_false_meaningful_true_constructs(self) -> None:
+        # Default ci_meaningful=True is a benign no-op when CI is not
+        # computable — the guard never reads the field for non-computable
+        # cohorts. Pinned so a future tightening doesn't accidentally
+        # forbid this default-construction shape.
+        c = self._build(ci_computable=False, ci_meaningful=True, reason="sample_too_small")
+        assert c.ci_meaningful is True
+
+    def test_ci_computable_false_meaningful_false_raises(self) -> None:
+        # Incoherent: ci_meaningful is the quality assessment of a CI
+        # that exists. If no CI exists, meaningfulness is undefined.
+        with pytest.raises(
+            InvariantViolationError, match="ci_meaningful=False requires ci_computable=True"
+        ):
+            self._build(ci_computable=False, ci_meaningful=False, reason="sample_too_small")

@@ -147,6 +147,13 @@ def replay_one_trace(
         # until the runner returns naturally — Python can't kill
         # threads. NO subsequent shutdown(wait=True) call: that
         # would join() the thread and re-block.
+        #
+        # `future.cancel()` returns False here because the future
+        # is already running (we got a timeout, so the worker
+        # picked up the task). The concurrent.futures contract:
+        # cancel() only succeeds for not-yet-started futures.
+        # Harmless to call; documents intent ("we tried"); does
+        # nothing in practice.
         future.cancel()
         ex.shutdown(wait=False)
         return _timeout_failure(

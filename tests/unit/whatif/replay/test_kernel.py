@@ -32,6 +32,12 @@ from whatif.replay import (
 )
 from whatif.replay.tool_cache import make_strict_tool_cache
 
+# Shared constant for the test trace_id. Both the strict-cache
+# fixture and the kernel invocations consume this so a future
+# variant that drifts the cache's trace_id from the kernel's
+# would surface visibly here rather than silently passing.
+_TEST_TRACE_ID = "t-1"
+
 
 def _input() -> TraceInput:
     return TraceInput(user_message="hello")
@@ -42,7 +48,7 @@ def _config() -> ReplayConfig:
 
 
 def _empty_strict_cache() -> ToolCache:
-    return make_strict_tool_cache({}, trace_id="t-1")
+    return make_strict_tool_cache({}, trace_id=_TEST_TRACE_ID)
 
 
 def _empty_loose_cache() -> ToolCache:
@@ -60,7 +66,7 @@ class TestSuccess:
             return ReplayOutput(text=f"echo: {ti.user_message}")
 
         result = replay_one_trace(
-            trace_id="t-1",
+            trace_id=_TEST_TRACE_ID,
             cohort="failure",
             trace_input=_input(),
             config=_config(),
@@ -89,7 +95,7 @@ class TestCacheMissClassification:
             return ReplayOutput(text="never reached")
 
         result = replay_one_trace(
-            trace_id="t-1",
+            trace_id=_TEST_TRACE_ID,
             cohort="failure",
             trace_input=_input(),
             config=_config(),
@@ -121,7 +127,7 @@ class TestTimeoutClassification:
 
         start = time.monotonic()
         result = replay_one_trace(
-            trace_id="t-1",
+            trace_id=_TEST_TRACE_ID,
             cohort="failure",
             trace_input=_input(),
             config=_config(),
@@ -155,7 +161,7 @@ class TestExceptionClassification:
             raise ValueError("upstream service unreachable")
 
         result = replay_one_trace(
-            trace_id="t-1",
+            trace_id=_TEST_TRACE_ID,
             cohort="failure",
             trace_input=_input(),
             config=_config(),
@@ -178,7 +184,7 @@ class TestExceptionClassification:
             raise RuntimeError(big)
 
         result = replay_one_trace(
-            trace_id="t-1",
+            trace_id=_TEST_TRACE_ID,
             cohort="failure",
             trace_input=_input(),
             config=_config(),
@@ -210,7 +216,7 @@ class TestOrderCorrect:
             return ReplayOutput(text="x")
 
         result = replay_one_trace(
-            trace_id="t-1",
+            trace_id=_TEST_TRACE_ID,
             cohort="failure",
             trace_input=_input(),
             config=_config(),
@@ -244,7 +250,7 @@ class TestNeverRaises:
 
         with pytest.raises(SystemExit):
             replay_one_trace(
-                trace_id="t-1",
+                trace_id=_TEST_TRACE_ID,
                 cohort="failure",
                 trace_input=_input(),
                 config=_config(),
@@ -263,7 +269,7 @@ class TestNeverRaises:
             raise ValueError("structured failure, not exception")
 
         result = replay_one_trace(
-            trace_id="t-1",
+            trace_id=_TEST_TRACE_ID,
             cohort="failure",
             trace_input=_input(),
             config=_config(),
@@ -273,3 +279,44 @@ class TestNeverRaises:
         )
         # No raise reached this assertion.
         assert isinstance(result, ReplayFailure)
+
+
+# ---------------------------------------------------------------------------
+# CPython futures unwrap-re-raise behavior pin
+# ---------------------------------------------------------------------------
+
+
+class TestFuturesUnwrapBehavior:
+    def test_future_result_re_raises_original_exception_unwrapped(self) -> None:
+        # The kernel's CacheMissError catch-order argument relies on
+        # `concurrent.futures.Future.result()` re-raising the worker
+        # thread's exception UNWRAPPED — i.e., as the original type,
+        # not a "thread exception" wrapper. CPython implements this
+        # via `_invoke_callbacks` storing `self._exception = exc` and
+        # `result()` doing `raise self._exception`.
+        #
+        # This test runs that contract directly against the
+        # `concurrent.futures` API (not through the kernel) so a
+        # future Python that wrapped exceptions surfaces here as a
+        # type mismatch, with a clear message pointing at the kernel
+        # contract that depends on this behavior.
+        from concurrent.futures import ThreadPoolExecutor
+
+        class _SentinelError(Exception):
+            pass
+
+        def _raise() -> None:
+            raise _SentinelError("from worker")
+
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            future = ex.submit(_raise)
+            with pytest.raises(_SentinelError) as excinfo:
+                future.result()
+
+        assert type(excinfo.value) is _SentinelError, (
+            "concurrent.futures.Future.result() wrapped the worker "
+            f"exception (got {type(excinfo.value).__name__}). The "
+            "kernel's CacheMissError catch-order in replay_one_trace "
+            "depends on unwrapped re-raise — see kernel.py docstring."
+        )
+        assert str(excinfo.value) == "from worker"

@@ -155,6 +155,20 @@ def _flatten_verdict(
     severity-tagged `decision_findings` list. Including a parallel
     `blocking_findings` field on the wire would invite drift between
     the two.
+
+    **Inconclusive.floor_failures handling (v0.1 design choice):** the
+    internal `Inconclusive` carries `floor_failures: list[FloorFailure]`
+    aggregating run-level floor failures (including run-scope
+    structural failures like "required cohort missing" that have no
+    per-cohort home). v0.1 `ReportV01` has no top-level `floor_failures`
+    field — per-cohort failures flow through `cohort_results[].floor_failures`
+    (preserved), but run-level aggregates are dropped on the wire.
+    For most run shapes this is information-preserving (the failures
+    appear under their cohort); for the missing-cohort case the
+    information is lost from the wire format. Cascade-tracked under
+    "Run-level FloorFailure projection" for v0.2 schema decision.
+    Tests pin the current behavior so the drop is intentional, not
+    accidental.
     """
     # The three arms are structurally parallel today (all variants
     # carry `cohort_results` and `findings` with identical wire

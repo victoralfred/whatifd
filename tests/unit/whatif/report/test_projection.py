@@ -34,7 +34,7 @@ from whatif.decision.floor import FloorFailureSet, evaluate_floor
 from whatif.decision.verdict import compute_verdict
 from whatif.report.models_v01 import REPORT_SCHEMA_URI, REPORT_SCHEMA_VERSION
 from whatif.report.projection import _flatten_verdict, project_to_report_v01
-from whatif.types.cohort import CohortResult
+from whatif.types.cohort import CohortResult, FloorFailure
 from whatif.types.failure import FailureRecord
 from whatif.types.verdict import DontShip, Inconclusive, Ship
 
@@ -448,3 +448,96 @@ class TestFloorFailureNeverProjectsToShip:
         )
         assert report.verdict_state == "inconclusive"
         assert report.verdict_state != "ship"
+
+
+# ---------------------------------------------------------------------------
+# Floor-failures projection pin (cardinal #1, intentional drop)
+# ---------------------------------------------------------------------------
+
+
+class TestFloorFailuresProjection:
+    """Pin the v0.1 wire-format design choice for `Inconclusive.floor_failures`.
+
+    `Inconclusive` carries a run-level `floor_failures` list that
+    aggregates structural failures across cohorts. v0.1 `ReportV01`
+    has no top-level `floor_failures` field — per-cohort failures
+    flow through `cohort_results[].floor_failures`, but the
+    run-level aggregate is dropped. These tests pin both halves
+    (preserved + dropped) so the design choice is intentional, not
+    accidental. Cascade-tracked under "Run-level FloorFailure
+    projection" for v0.2 schema decision.
+    """
+
+    def test_per_cohort_floor_failures_preserved_via_cohort_results(self) -> None:
+        # The cohort's own floor_failures travel via the wire's
+        # cohort_results[].floor_failures field.
+        bad_cohort = CohortResult(
+            name="failure",
+            selected=2,
+            replayed=2,
+            scored=2,
+            ci_computable=True,
+            ci_unavailable_reason=None,
+            median_delta=None,
+            ci_lower=None,
+            ci_upper=None,
+            floor_passed=False,
+            floor_failures=[
+                FloorFailure(
+                    rule="min_selected_per_required_cohort",
+                    observed=2,
+                    threshold=5,
+                    severity="blocks_all",
+                ),
+            ],
+        )
+        verdict = Inconclusive(
+            cohort_results=[bad_cohort],
+            findings=[],
+            blocking_findings=[],
+            floor_failures=[],
+        )
+        report = project_to_report_v01(
+            verdict,
+            failures=[],
+            cache_summary=cache_summary(),
+            methodology=methodology(),
+            runtime=runtime(),
+        )
+        # Cohort's floor_failures preserved.
+        assert len(report.cohort_results[0].floor_failures) == 1
+        assert report.cohort_results[0].floor_failures[0].rule == (
+            "min_selected_per_required_cohort"
+        )
+
+    def test_run_level_floor_failures_dropped_v01(self) -> None:
+        # Inconclusive.floor_failures is the run-level aggregate.
+        # v0.1 ReportV01 has no top-level floor_failures field; the
+        # aggregate is dropped on the wire. This is intentional
+        # (cascade-tracked) — pin the behavior so a future change
+        # adding the field surfaces here as a deliberate update.
+        verdict = Inconclusive(
+            cohort_results=[],  # no cohorts at all (extreme case)
+            findings=[],
+            blocking_findings=[],
+            floor_failures=[
+                FloorFailure(
+                    rule="required_cohort_present",
+                    observed="missing",
+                    threshold=1,
+                    severity="blocks_all",
+                ),
+            ],
+        )
+        report = project_to_report_v01(
+            verdict,
+            failures=[],
+            cache_summary=cache_summary(),
+            methodology=methodology(),
+            runtime=runtime(),
+        )
+        # Verdict still flattens to "inconclusive".
+        assert report.verdict_state == "inconclusive"
+        # ReportV01 has no `floor_failures` attribute — the run-level
+        # aggregate is dropped on the wire by design.
+        assert not hasattr(report, "floor_failures")

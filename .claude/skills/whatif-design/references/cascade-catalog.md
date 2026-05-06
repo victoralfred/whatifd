@@ -84,9 +84,9 @@ Initial registry (catalog from doctrine):
 **Rippled to:**
 - `evaluate_floor()` no longer checks CI availability.
 - New policy guard `ci_availability_guard` produces `DecisionFinding(code="ci_uncomputable_for_required_cohort")`.
-- `--accept-no-ci` flag is a policy override, not a floor override.
+- Per V0_1_DECISION_RECORD §6 (and 2026-05-05 skill-alignment addendum), `--accept-no-ci` is removed; `policy.max_ci_width` is the lever for accepting wider CIs.
 - Doctrine docs updated: floor is about evidence existence, not evidence quality.
-- Cohort propagation: `CohortResult.ci_available` populated by stats stage, consumed by policy guard.
+- Cohort propagation: `CohortResult.ci_computable` populated by stats stage, consumed by policy guard.
 
 **Status:** open
 
@@ -304,10 +304,10 @@ Initial registry (catalog from doctrine):
 
 ### CI unavailability reason on CohortResult
 
-**Source decision:** Scenario 4 renders `(CI not computed: sample too small)` inline in the stats line for the baseline cohort. The current `CohortResult.ci_available: bool` flag captures *whether* CI was computed but not *why*. Without the reason, the renderer can't produce the right phrase — it can only say "CI not available" generically.
+**Source decision:** Scenario 4 renders `(CI not computed: sample too small)` inline in the stats line for the baseline cohort. The `ci_computable: bool` flag captures *whether* CI was computed but not *why*. Without the reason, the renderer can't produce the right phrase — it can only say "CI not available" generically.
 
 **Rippled to:**
-- Extend `CohortResult` with `ci_unavailable_reason: Literal["sample_too_small", "zero_variance", "computation_failed", None]` (None when `ci_available=True`)
+- Extend `CohortResult` with `ci_unavailable_reason: Literal["sample_too_small", "zero_variance", "computation_failed", None]` (None when `ci_computable=True`)
 - Stats stage populates the reason when computation skips
 - Renderer uses the reason to produce specific text: "sample too small" → "CI not computed: sample too small"; "zero_variance" → "CI not computed: all samples identical"; "computation_failed" → "CI computation failed; see manifest for details"
 - The `computation_failed` case also emits a `DecisionFinding(code="ci_computation_failed", severity="degrades_trust")`
@@ -721,9 +721,11 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 **Resolution plan:**
 1. ~~PR after #23: extend `CohortResult` with rate-count fields → land `baseline_regression_guard` + `failure_improvement_guard` together~~ → **resolved by Phase 2.5b**: both rate-based guards landed alongside the `improved_count`/`unchanged_count`/`regressed_count` extension on `CohortResult`. Framing cleanup applied: `practical_delta_guard`'s docstring now cross-references `failure_improvement_guard` as the load-bearing primary endpoint.
-2. ~~PR adding `ci_unavailable_for_required_cohort` to `FINDING_CODE_REGISTRY` + `FIX_SUGGESTION_REGISTRY` → land `ci_availability_guard`~~ → **resolved by Phase 2.5c**: finding code added (severity=blocks_all, derived_from_failures="always"); fix-suggestion entry added with `--accept-no-ci` escape-hatch guidance; `ci_availability_guard` lands and emits one finding per affected required cohort. Pending: failure-record plumbing (`derived_from_failures` placeholder used; real wiring in Phase 2.6 / projection layer).
+2. ~~PR adding `ci_unavailable_for_required_cohort` to `FINDING_CODE_REGISTRY` + `FIX_SUGGESTION_REGISTRY` → land `ci_availability_guard`~~ → **resolved by Phase 2.5c**: finding code added (severity=blocks_all, derived_from_failures="always"); fix-suggestion entry added; `ci_availability_guard` lands and emits one finding per affected required cohort. Pending: failure-record plumbing (`derived_from_failures` placeholder used; real wiring in Phase 2.6 / projection layer). Skill-alignment 2026-05-05: the entry's earlier `--accept-no-ci` escape-hatch guidance was removed — V0_1_DECISION_RECORD §6 forbids the flag.
 3. Phase 3 cache subsystem PRs → cache metadata reaches `CohortResult` via projection layer → land `cache_staleness_guard`.
 4. Phase 2.6 verdict computation PR → `primary_endpoint_guard` lands as part of the multi-endpoint resolution. Also: `ci_availability_guard`'s emitted findings need real `derived_from_failures` wiring once failure records are threaded end-to-end (placeholder `["pending_phase_2_6_plumbing"]` is in place today).
+   - **Partial resolution by Phase 2.6b (PR after #26):** `primary_endpoint_guard` lands as a configurable rate-based guard that consolidates the Phase 2.5b `failure_improvement_guard` + `baseline_regression_guard` pair. Reads `policy.primary_endpoints` and dispatches by direction (`improvement_above_threshold`, `non_regression_below_threshold`); emits the existing finding codes (`failure_improvement_below_threshold`, `baseline_regression_above_threshold`) — no registry change. The two hardcoded Phase 2.5b guards are deleted; their tests migrate to `test_primary_endpoint.py`.
+   - **Remaining for Phase 2.6c:** real `derived_from_failures` wiring on `ci_availability_guard` (replace `_PHASE_2_6_PLACEHOLDER`). The previously-tracked `accept_no_ci` arithmetic was removed in the 2026-05-05 skill-alignment pass — V0_1_DECISION_RECORD §6 forbids the flag, so 2.6c is just the failure-record plumbing.
 
 ### Guard pre-parse caching — Phase 2.6 verdict computation
 
@@ -759,7 +761,75 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 **Trigger for resolution:** Phase 5 serialization layer PR.
 
+### Inconclusive renderer must distinguish floor_failures from blocking_findings
+
+**Source decision:** PR #26 (Phase 2.6a) reviewer F2 noted that the floor-failure-Inconclusive case populates BOTH `Inconclusive.floor_failures` AND `Inconclusive.blocking_findings` from guard outputs. The data structure is honest: the two fields are distinct on the type. But a renderer that prints `blocking_findings` without also surfacing `floor_failures` could mislead a reviewer into thinking the guard finding drove the verdict — when in fact the floor failure is the structural reason.
+
+**Rippled to:**
+- `whatif/render/markdown.py` (Phase 7) — the Inconclusive renderer must:
+  1. ALWAYS surface `floor_failures` first (cardinal #2 structural reason takes precedence).
+  2. Surface `blocking_findings` SECOND, framed as "guard observations" rather than "verdict drivers".
+  3. Never print `blocking_findings` alone for a floor-failure verdict (the misleading-class case).
+- `tests/integration/test_walkthroughs.py` (Phase 9) — walkthrough scenario 4 (Inconclusive insufficient sample) is the empirical reviewer for this rendering rule. The committed walkthrough Markdown shows `floor_failures` first; the renderer test must produce identical output.
+- Doctrine cross-reference: cardinal #3 ("disclosure necessary but not sufficient") — the renderer is the disclosure surface; if it buries the floor reason, disclosure has been compromised even though the data was honest.
+
+**Status:** open
+
+**Resolution:** Phase 7 (rendering) — Inconclusive renderer reads both fields and orders the output per the rule above. Walkthrough scenario 4 round-trip test pins the contract.
+
+**Trigger for resolution:** Phase 7 renderer PR.
+
+### Direction-keyed finding codes for v0.2 multi-cohort `primary_endpoint_guard`
+
+**Source decision:** PR #27 (Phase 2.6b) introduced `primary_endpoint_guard` reading `policy.primary_endpoints`. The guard reuses Phase 2.3's existing finding codes (`failure_improvement_below_threshold`, `baseline_regression_above_threshold`), which hardcode the v0.1 default cohort identities (`failure`, `baseline`) into the code namespace. The findings agent reviewing PR #27 (F1) flagged that this leaks v0.1 cohort assumptions into the public schema: a v0.2 custom policy declaring `PrimaryEndpoint(cohort="warmup", direction="improvement_above_threshold")` would emit `failure_improvement_below_threshold` even though the cohort is `"warmup"` — code and message would disagree about which cohort is at fault. Reader-facing tooling that filters on finding codes would mis-categorize non-canonical cohort runs.
+
+**Why this is acceptable for v0.1:** v0.1 is failure-rescue-only (Phase 0.3 audience-distribution decision). Default cohorts are `failure` + `baseline` only; the finding-code names are truthful for the default. No v0.1 shipped path exercises the mismatch.
+
+**Rippled to:**
+- `src/whatif/decision/guards/primary_endpoint.py` — dispatch logic emits direction-keyed codes (`primary_improvement_below_threshold`, `primary_non_regression_above_threshold`); the cohort name moves to `details["cohort"]`.
+- `src/whatif/decision/finding_codes.py::FINDING_CODE_REGISTRY` — adds the new codes; deprecates the v0.1 codes (kept for one minor cycle per the schema-versioning promotion-path rules in `references/contracts.md`).
+- `src/whatif/decision/fix_suggestions.py::FIX_SUGGESTION_REGISTRY` — adds matching fix-suggestion entries for the new codes.
+- `tests/unit/whatif/decision/guards/test_primary_endpoint.py` — adds a `TestNonCanonicalCohortNames` class exercising the configurable surface with custom cohort names (e.g. `"warmup"`, `"regression"`); the test would have caught the v0.1 mismatch empirically.
+- Doctrine cross-reference: cardinal #6 (public schema is hand-written; internal types refactor freely) — finding codes ARE part of the public schema; the rename is a v0.2 minor bump per the schema versioning rules.
+
+**Sibling concerns folded into this entry (PR #27 bot iter-3):**
+- **Per-endpoint thresholds.** `_evaluate_non_regression` reads `policy.max_baseline_regression_ratio` regardless of which cohort the endpoint targets. A v0.2 `PrimaryEndpoint(cohort="warmup", direction="non_regression_below_threshold")` would silently use the baseline threshold. Symmetric for `_evaluate_improvement`. v0.2 should thread the threshold through `PrimaryEndpoint` (e.g., `threshold: float | None = None` falling back to the policy-level default by direction) so per-endpoint thresholds are explicit.
+- **`primary_endpoints` cohorts ⊆ `required_cohorts` invariant.** Today both fields are independent on `DecisionPolicy`; no validator enforces the subset relation. A user who declares an endpoint on a non-required cohort sees the endpoint silently abstain when the cohort is missing (the guard's intentional silent-skip + the floor's `required_cohort_present` rule catches missing REQUIRED cohorts only). v0.2 either adds a Pydantic validator on `DecisionPolicy` (ergonomic for misconfiguration) OR documents this as best-effort-by-design. The decision lands with the rest of the multi-cohort surface.
+
+**Status:** open (v0.2 work — not blocking v0.1 schema freeze).
+
+**Resolution:** v0.2 minor release. New direction-keyed codes shipped; v0.1 codes deprecated with one-minor-cycle notice; promotion-path rules in `references/contracts.md` followed.
+
+**Trigger for resolution:** v0.2 minor release PR (concurrent with `regression_check` cohort expansion or other multi-cohort work).
+
+### `ci_meaningful` policy-guard wiring
+
+**Source decision:** Skill-alignment pass (2026-05-05) restored the `CohortResult` CI split per V0_1_DECISION_RECORD §2: `ci_computable` (structural, read by `ci_availability_guard`) vs `ci_meaningful` (policy-quality, defaults True). The width-vs-`policy.max_ci_width` check that populates `ci_meaningful=False` is not yet wired — `max_ci_width` defaults to None today, and there is no guard that consults the field.
+
+**Rippled to:**
+- Phase 3 stats layer: when `ci_computable=True`, compute the CI width (`ci_upper - ci_lower`) as float; if `policy.max_ci_width is not None and width > max_ci_width`, set `ci_meaningful=False`.
+- New guard `ci_meaningful_guard` (or fold into a generalized `ci_quality_guard`) at policy severity `blocks_ship` (NOT `blocks_all` — meaningfulness is policy quality, not structural). Emits a finding code like `ci_too_wide_for_required_cohort`.
+- Finding code + fix-suggestion entries land alongside the guard.
+- Cardinal #2 boundary preserved: `ci_computable` stays at `blocks_all` (Inconclusive); `ci_meaningful` stops at `blocks_ship` (DontShip).
+
+**Status:** open
+
+**Resolution:** Phase 3 (cache + stats layer) wires the width computation; the policy guard lands in the same PR or immediately after. Test: a cohort with `ci_computable=True, ci_meaningful=False` produces `DontShip`, not `Inconclusive`.
+
 ## Resolved cascades
+
+### Single Ship-construction site — `whatif/decision/verdict.py` (resolved 2026-05-05)
+
+**Source decision:** PR #26 (Phase 2.6a) lands `compute_verdict` as the only function that constructs `Ship` instances. Cardinal #2's witness-token contract (`Ship.proof: FloorPassedProof`) is structurally enforced via the closure-capture in `whatif/decision/floor.py` — only `evaluate_floor` produces proofs. `compute_verdict` is the only call site that calls `evaluate_floor` AND threads the resulting proof into `Ship(proof=...)`.
+
+**Rippled to / refactor protection:**
+- A future contributor MUST NOT add a second Ship-construction site. Doing so would either (a) bypass the floor (impossible — `Ship.__init__` requires a `FloorPassedProof`, and only `evaluate_floor` makes them) or (b) replicate the verdict-computation surface, which is duplication.
+- The verdict layer's contract surface is `compute_verdict(cohort_results, floor, policy, *, guards=None) -> Verdict`. Any new verdict-affecting concern (multi-endpoint primary, ci_meaningful policy guard, aggregation roll-up) lands by extending this function or the guard chain it composes — not by introducing parallel Ship constructors.
+- Tests pin both halves:
+  - `tests/unit/whatif/decision/test_verdict.py::TestCardinalTwoTrustChain::test_ship_carries_proof_from_evaluate_floor` — the proof on Ship comes from `evaluate_floor`.
+  - `tests/unit/whatif/decision/test_floor.py::TestExternalConstructionBlocked` — `FloorPassedProof` cannot be constructed externally.
+
+**Resolved by:** PR #26 (Phase 2.6a), commit `606882b`.
 
 ### Fresh-list-per-guard contract — convention, not enforcement (resolved 2026-05-05)
 

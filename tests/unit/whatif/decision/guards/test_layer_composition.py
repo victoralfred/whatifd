@@ -1,17 +1,22 @@
-"""Cardinal #10 layer composition test — Phase 2.5b integration.
+"""Cardinal #10 layer composition test — Phase 2.5b/2.6b integration.
 
-Pins the end-to-end behavior of the three cardinal-#10 guards
-running together via `run_guards`:
+Pins the end-to-end behavior of the cardinal-#10 guards running
+together via `run_guards`:
 
-- `failure_improvement_guard` (primary endpoint, load-bearing)
-- `baseline_regression_guard` (symmetric non-regression endpoint)
+- `primary_endpoint_guard` (configurable rate-based endpoints, load-bearing)
 - `practical_delta_guard` (supplementary magnitude layer)
 
-Per cardinal #10, these three guards form the verdict's statistical-
-claims layer for v0.1. They MUST compose cleanly: each reads only
-its own cohort's data, run_guards concatenates findings in
-registration order, and the verdict layer (Phase 2.6) selects
-Ship/DontShip/Inconclusive from the resulting findings.
+Per cardinal #10, these guards form the verdict's statistical-claims
+layer for v0.1. They MUST compose cleanly: each reads only its own
+cohort's data, run_guards concatenates findings in registration order,
+and the verdict layer (Phase 2.6) selects Ship/DontShip/Inconclusive
+from the resulting findings.
+
+Phase 2.6b consolidation: `primary_endpoint_guard` replaced the
+previous (`failure_improvement_guard`, `baseline_regression_guard`)
+hardcoded pair. For the default policy, `primary_endpoint_guard`
+emits findings under the same codes the pair did — but it can also
+read custom `policy.primary_endpoints`.
 
 This test does NOT call the verdict layer (that's Phase 2.6); it
 asserts the pre-verdict guard composition is correct on realistic
@@ -21,19 +26,18 @@ cohort scenarios.
 from __future__ import annotations
 
 from whatif.decision.guards import (
-    baseline_regression_guard,
-    failure_improvement_guard,
     practical_delta_guard,
+    primary_endpoint_guard,
     run_guards,
 )
 from whatif.types.policy import DecisionPolicy
 
 from ._helpers import baseline_cohort, failure_cohort
 
-# Standard cardinal-#10 layer ordering: primary endpoints first
-# (rate-based), magnitude layer last (supplementary). This is the
-# expected order Phase 2.6 verdict computation will register.
-_LAYER = (failure_improvement_guard, baseline_regression_guard, practical_delta_guard)
+# Standard cardinal-#10 layer ordering: rate-based primary endpoints
+# first (load-bearing), magnitude layer last (supplementary). Matches
+# the order Phase 2.6 verdict computation registers.
+_LAYER = (primary_endpoint_guard, practical_delta_guard)
 
 
 class TestCardinal10LayerComposition:
@@ -96,8 +100,9 @@ class TestCardinal10LayerComposition:
         #
         # Order matters: `run_guards` documents registration-order
         # concatenation. `_LAYER` is registered as
-        # (failure_improvement, baseline_regression, practical_delta), so
-        # findings must come back in that exact order.
+        # (primary_endpoint, practical_delta). primary_endpoint_guard
+        # itself emits findings in `policy.primary_endpoints` order
+        # (failure first, baseline second by default).
         cohorts = [
             failure_cohort(median_delta="0.020", improved=2, unchanged=4, regressed=4),
             baseline_cohort(improved=3, unchanged=4, regressed=3),
@@ -118,7 +123,7 @@ class TestCardinal10LayerComposition:
         )
 
     def test_layer_independence_under_composition(self) -> None:
-        # Pin that running all three guards together produces the same
+        # Pin that running all guards together produces the same
         # findings as running each individually + concatenating. Catches
         # any future regression where guards accidentally interact via
         # shared mutable state.
@@ -132,10 +137,8 @@ class TestCardinal10LayerComposition:
         composed_codes = [f.code for f in composed]
 
         # Individual concatenation in the SAME order as _LAYER registration.
-        individual = (
-            failure_improvement_guard(cohorts, policy)
-            + baseline_regression_guard(cohorts, policy)
-            + practical_delta_guard(cohorts, policy)
+        individual = primary_endpoint_guard(cohorts, policy) + practical_delta_guard(
+            cohorts, policy
         )
         individual_codes = [f.code for f in individual]
 
@@ -148,13 +151,13 @@ class TestCardinal10LayerComposition:
 
     def test_only_failure_cohort_present_does_not_break_composition(self) -> None:
         # Realistic edge case: only failure cohort populated (e.g., baseline
-        # cohort below floor). baseline_regression_guard abstains; the
-        # other two evaluate normally.
+        # cohort below floor). primary_endpoint_guard's baseline endpoint
+        # silently abstains; the other endpoints/guards evaluate normally.
         cohorts = [
             failure_cohort(median_delta="0.310", improved=8, unchanged=2, regressed=0),
         ]
         findings = run_guards(_LAYER, cohorts, DecisionPolicy())
-        # No blocking findings: failure_improvement passes (8/10 > 0.50),
-        # practical_delta passes (0.310 > 0.050), baseline_regression
-        # silently abstains.
+        # No blocking findings: failure improvement passes (8/10 > 0.50),
+        # practical_delta passes (0.310 > 0.050), baseline endpoint silently
+        # abstains because the baseline cohort isn't present.
         assert findings == []

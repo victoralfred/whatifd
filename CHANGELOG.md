@@ -12,6 +12,15 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 6.2 (strict per-trace tool cache)
+
+- `src/whatif/replay/tool_cache.py::StrictToolCache` — `whatif.contract.ToolCache` subclass that overrides `lookup(...)` to raise `CacheMissError` on miss instead of returning `None`. Liskov-substitutable: user runners annotated `tool_cache: ToolCache` receive the strict variant transparently. Public `ToolCache` contract remains unchanged (Pydantic v2 `extra="forbid"` boundary preserved); strictness lives in the subclass.
+- `CacheMissError` — typed exception module-private to `whatif.replay`. Carries `trace_id`, `tool_name`, `tool_args` for diagnostic context. Renamed from `args` to avoid `BaseException.args` shadow. The pipeline (Phase 6.3) catches at the runner-call boundary and converts to `ReplayFailure(code="tool_cache_miss")`.
+- `make_strict_tool_cache(entries, *, trace_id) -> StrictToolCache` — factory the adapter / pipeline calls per-trace. Captures `trace_id` via Pydantic v2 `PrivateAttr` so the raised `CacheMissError` names it diagnostically. Defensively dict-copies the entries map.
+- `CacheMissError.details_for_failure() -> Mapping[str, JsonPrimitive]` — projection helper that returns the shape `ReplayFailure(details=...)` expects. Only `tool_name` is included; `tool_args` is NOT propagated (cardinal #5 boundary — args may carry sensitive user content like emails or credentials). The diagnostic message names the tool and arg COUNT but not VALUES, so logs stay safe.
+- Top-level `import whatif.cache` in the module primes the serialization↔cache import order so the replay tests run cleanly in isolation. The cascade entry "Serialization ↔ report ↔ cache import cycle" tracks the root-cause refactor; this prime is a load-order safety net until that lands.
+- `tests/unit/whatif/replay/test_tool_cache.py` — pins factory + Liskov substitutability, hit returns value, miss raises with full context, args-dict-copied defense, message-leak-safety (no PII in exception text), details-shape (only `tool_name`, no args), and registry alignment (the projected details map satisfies `FAILURE_CODE_REGISTRY["tool_cache_miss"].required_details`).
+
 ### Added — Phase 6.1 (replay-stage result types)
 
 - `src/whatif/replay/result.py` — `ReplaySuccess(trace_id, cohort, output: ReplayOutput)`, `ReplayFailure(trace_id, cohort, code, message, details)`, sealed union `ReplayResult = ReplaySuccess | ReplayFailure`. Frozen + slotted; `ReplayOutput` referenced via TYPE_CHECKING to keep `whatif.replay` import-time-cheap.

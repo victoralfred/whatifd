@@ -98,6 +98,37 @@ class TestCiAvailabilitySilent:
         assert findings == []
 
 
+class TestCiMeaningfulBoundary:
+    """Pin the layer boundary: `ci_availability_guard` reads only
+    `ci_computable`. `ci_meaningful` is the deferred Phase 3 policy-
+    quality concern at a different severity (`blocks_ship` vs this
+    guard's `blocks_all`); see cascade-catalog "ci_meaningful policy-
+    guard wiring". When the Phase 3 guard lands, it MUST be a separate
+    guard — folding `ci_meaningful` into this one would conflate the
+    structural and policy-quality severities the V0_1_DECISION_RECORD
+    §2 split exists to keep apart.
+    """
+
+    def test_meaningful_false_alone_does_not_emit(self) -> None:
+        # ci_computable=True so this guard's precondition fails; the
+        # ci_meaningful=False signal is the future guard's territory.
+        cohort = CohortResult(
+            name="failure",
+            selected=10,
+            replayed=10,
+            scored=10,
+            ci_computable=True,
+            ci_unavailable_reason=None,
+            median_delta=None,
+            ci_lower=None,
+            ci_upper=None,
+            floor_passed=True,
+            ci_meaningful=False,
+        )
+        findings = ci_availability_guard([cohort], DecisionPolicy())
+        assert findings == []
+
+
 class TestCiAvailabilityReasonFallback:
     def test_unspecified_reason_when_none(self) -> None:
         # CohortResult.ci_unavailable_reason is None despite ci_computable=False

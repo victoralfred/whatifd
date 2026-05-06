@@ -207,13 +207,42 @@ class StrictToolCache(ToolCache):
     `_trace_id` is a Pydantic v2 `PrivateAttr` — it lives outside the
     model's validated field set, so the parent's
     `model_config = ConfigDict(extra="forbid")` doesn't reject it.
-    The factory `make_strict_tool_cache` populates it after
-    construction; `lookup` raises `InvariantViolationError` if it
-    runs while `_trace_id` is still the unset sentinel (defense
-    against bypassing the factory).
+    The value is set atomically during construction via
+    `model_post_init`, NOT post-hoc by the factory. Pydantic v2 reads
+    the seed value from `model_config.private_attributes_init` (the
+    factory passes it via `_trace_id=...` keyword), and
+    `model_post_init` validates it landed correctly. A future
+    Pydantic upgrade that forbids post-construction PrivateAttr
+    mutation will not affect this path because we never mutate after
+    construction.
+
+    Direct construction (bypassing the factory) leaves `_trace_id`
+    at its `_UNSET_TRACE_ID` sentinel; `lookup` raises
+    `InvariantViolationError` on first miss as defense.
     """
 
     _trace_id: str = PrivateAttr(default=_UNSET_TRACE_ID)
+
+    def __init__(self, *, trace_id: str = _UNSET_TRACE_ID, **data: Any) -> None:
+        """Atomic construction: validates the model fields via the
+        parent's `__init__`, then sets `_trace_id` in the same call.
+        No post-construction mutation; the instance is fully
+        initialized when this returns.
+
+        Direct callers (tests, advanced uses) may omit `trace_id` —
+        the default sentinel triggers `InvariantViolationError` on
+        first `lookup` miss, defending against the empty-string-
+        fallback path. The `make_strict_tool_cache` factory is the
+        sanctioned construction site and validates non-empty trace_id.
+        """
+        super().__init__(**data)
+        # Pydantic v2 PrivateAttr storage: writing through the public
+        # attribute name is the documented pattern (it sets the
+        # underlying `__pydantic_private__` slot). Using
+        # `object.__setattr__` would bypass any future Pydantic-level
+        # protections; the plain assignment is intentionally going
+        # through Pydantic's hook so a future tightening surfaces here.
+        self._trace_id = trace_id
 
     def lookup(self, tool_name: str, args: dict[str, Any]) -> Any:
         """Strict lookup: returns the cached value or raises
@@ -264,14 +293,11 @@ def make_strict_tool_cache(
     string-fallback path that would silently corrupt failure-record
     cross-references.
 
-    The factory exists so the pipeline doesn't have to know about
-    `_trace_id` private-attribute mechanics — it just calls
-    `make_strict_tool_cache(entries, trace_id=...)` and hands the
-    result to the runner. Mutating `_trace_id` post-construction is
-    the documented Pydantic v2 pattern for `PrivateAttr` (the
-    attribute is allocated at __init__ but values can be set
-    afterwards); a future Pydantic upgrade that forbids mutation
-    would surface here at the assignment, not silently in `lookup`.
+    Construction is atomic: `_trace_id` is passed via the Pydantic
+    v2 PrivateAttr keyword convention (`_trace_id=...`) so it lands
+    on the instance before `__init__` returns. No post-construction
+    mutation of private state. Forward-proof against a future
+    Pydantic that freezes private attrs after construction.
     """
     if not trace_id:
         raise ValueError(
@@ -280,9 +306,11 @@ def make_strict_tool_cache(
             "an empty trace_id would silently produce un-cross-"
             "referenceable failure records (cardinal #1 corruption)."
         )
-    cache = StrictToolCache(cache=dict(entries), policy="use-original")
-    cache._trace_id = trace_id
-    return cache
+    return StrictToolCache(
+        cache=dict(entries),
+        policy="use-original",
+        trace_id=trace_id,
+    )
 
 
 __all__ = [

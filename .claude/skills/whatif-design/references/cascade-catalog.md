@@ -155,6 +155,22 @@ Initial registry (catalog from doctrine):
 
 **Resolution:** drift test in place from Phase 5.5. Phase 9 adds `jsonschema`-library validation. Phase 10 publishes to the public URI. Schema-version bump (v0.1 → v0.2) requires regenerating into `v0.2.schema.json` plus a `whatif report-migrate` stub.
 
+### Replay subpackage boundary (`whatif.replay`)
+
+**Source decision:** Phase 6 introduces a dedicated `whatif.replay` subpackage with a sealed-union typed result (`ReplayResult = ReplaySuccess | ReplayFailure`) as the per-trace pipeline output. `ReplayFailure` is the lightweight in-pipeline shape (registry-validated `code` with `stage="replay"`); the report-level `FailureRecord` is produced at aggregation via `make_failure_record`, which assigns the stable `id` and enforces required-details. Cardinal #1 boundary lives at `ReplayFailure.__post_init__`.
+
+**Rippled to:**
+- `whatif/replay/result.py` (Phase 6.1) — sealed union + registry validation. Frozen, slotted, ReplayOutput referenced via TYPE_CHECKING to keep import cheap.
+- `whatif/replay/tool_cache.py` (Phase 6.2) — `ToolCache.from_trace(...)` raises `CacheMissError` which the pipeline converts to `ReplayFailure(code="tool_cache_miss")`. The exception is module-private; it never escapes the replay subpackage.
+- `whatif/replay/pipeline.py` (Phase 6.3) — generator chain consuming `Iterator[RawTrace]`, producing `Iterator[ScoreCase | ReplayFailure]`. Timeout / runner exception → `ReplayFailure(code="runner_timeout"|"runner_exception")`. Bounded concurrency (ThreadPoolExecutor for sync, asyncio.gather + semaphore for async).
+- `whatif/decision/aggregation.py` (Phase 2.7) — projects the `ReplayFailure` stream into `list[FailureRecord]` for `ReportV01.failures`. Required-details validation runs here (via `make_failure_record`), not at construction.
+- `whatif/decision/failure_codes.py` — adding a new replay-stage code requires (a) registering with `stage="replay"`, (b) updating `ReplayFailure` callers to construct it. The `__post_init__` registry check catches mismatches at the call site.
+- Phase 9 integration — pipeline + aggregation tests pin the projection contract end-to-end.
+
+**Status:** open
+
+**Resolution:** 6.1 (sealed union) ✅. 6.2 (tool_cache + CacheMissError) and 6.3 (pipeline + concurrency + timeouts) close the subpackage. Phase 2.7 aggregation closes the projection contract; Phase 9 pins it via integration test on golden fixtures.
+
 ### Witness-token pattern for Ship
 
 **Source decision:** `Ship` cannot be constructed without `FloorPassedProof` token; only `evaluate_floor()` produces tokens.

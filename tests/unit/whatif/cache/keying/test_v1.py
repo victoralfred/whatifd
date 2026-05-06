@@ -29,6 +29,7 @@ from whatif.cache.keying import (
     CacheKeyComponents,
     build_cache_key,
 )
+from whatif.exceptions import InvariantViolationError
 
 _SAMPLE = CacheKeyComponents(
     whatif_schema_version="0.1",
@@ -74,12 +75,12 @@ class TestBuildCacheKey:
         # hash algorithm) fails with a diff against this literal.
         #
         # Recording context:
-        #   - Digest recorded on CPython 3.14, then verified across
-        #     the full CI matrix (3.11, 3.12, 3.13, 3.14). The CI
-        #     test_deterministic_against_known_digest passing on every
-        #     supported version is the verification — if it ever
-        #     diverged, only the recording version would pass and the
-        #     others would fail with a clear digest diff.
+        #   - Digest recorded on local CPython 3.14, then verified
+        #     across the supported CI matrix (3.11, 3.12, 3.13;
+        #     authoritative list at .github/workflows/ci.yml's
+        #     matrix.python-version). If this digest ever diverged
+        #     across versions, only the recording version would pass
+        #     and the others would fail in CI with a clear diff.
         #   - hashlib.sha256 from stdlib (mathematically defined; no
         #     Python-version dependency)
         #   - canonical_json_bytes (whatif.serialization.canonical) which
@@ -182,3 +183,72 @@ class TestCanonicalEncoding:
             )
         )
         assert forward == reordered
+
+
+class TestPreHashedContractEnforced:
+    """`CacheKeyComponents.__post_init__` rejects non-hex values in
+    hash fields. The pre-hash contract is structural (cardinal #5) —
+    raw user content cannot reach a cache filename.
+    """
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "rendered_prompt_hash",
+            "rubric_hash",
+            "scoring_parameters_hash",
+            "score_case_hash",
+        ],
+    )
+    def test_raw_text_raises(self, field: str) -> None:
+        with pytest.raises(InvariantViolationError, match="not a lowercase hex digest"):
+            dataclasses.replace(_SAMPLE, **{field: "what is the capital of France?"})
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "rendered_prompt_hash",
+            "rubric_hash",
+            "scoring_parameters_hash",
+            "score_case_hash",
+        ],
+    )
+    def test_uppercase_hex_raises(self, field: str) -> None:
+        # Uppercase hex is rejected: case-insensitive filesystems would
+        # collapse different cases into the same filename, and our
+        # canonical form is lowercase.
+        with pytest.raises(InvariantViolationError):
+            dataclasses.replace(_SAMPLE, **{field: "AA" * 32})
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "rendered_prompt_hash",
+            "rubric_hash",
+            "scoring_parameters_hash",
+            "score_case_hash",
+        ],
+    )
+    def test_too_short_raises(self, field: str) -> None:
+        # 8 chars (truncated MD5-ish) — below the conservative 16-char
+        # minimum that catches "definitely not a digest" inputs.
+        with pytest.raises(InvariantViolationError):
+            dataclasses.replace(_SAMPLE, **{field: "deadbeef"})
+
+    def test_empty_string_raises(self) -> None:
+        with pytest.raises(InvariantViolationError):
+            dataclasses.replace(_SAMPLE, rendered_prompt_hash="")
+
+    def test_sha1_length_accepted(self) -> None:
+        # SHA-1 hex is 40 chars — algorithm-agnostic acceptance.
+        dataclasses.replace(_SAMPLE, rendered_prompt_hash="a" * 40)
+
+    def test_sha512_length_accepted(self) -> None:
+        # SHA-512 hex is 128 chars — algorithm-agnostic acceptance.
+        dataclasses.replace(_SAMPLE, rendered_prompt_hash="b" * 128)
+
+    def test_error_names_offending_field(self) -> None:
+        # Diagnostic: the field name appears in the error so a caller
+        # debugging a wired-wrong adapter knows which input is wrong.
+        with pytest.raises(InvariantViolationError, match="rubric_hash"):
+            dataclasses.replace(_SAMPLE, rubric_hash="not a hash")

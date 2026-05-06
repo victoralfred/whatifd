@@ -20,9 +20,10 @@ are categorically different:
   file or sent over a network.
 
 Centralizing canonical encoding in this module gives the cache keying
-code (and any future hash-input code) a single source of truth. The
-banned-import lint allowlists `json.dumps` for everything inside
-`whatif/serialization/`; everything else imports from here.
+code (and any future hash-input code) a single source of truth. When
+the Phase 5 banned-import lint lands, it will allow `json.dumps`
+inside `whatif/serialization/` and block it everywhere else;
+everything outside the package imports from here.
 
 ## The canonical encoding
 

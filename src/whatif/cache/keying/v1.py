@@ -72,11 +72,23 @@ encoding there gives:
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import asdict, dataclass
 
+from whatif.exceptions import InvariantViolationError
 from whatif.serialization import canonical_json_bytes
 
 CACHE_KEY_VERSION = "v1"
+
+# Hex-digest validation: any cryptographic hash digest in hex form is
+# a non-empty lowercase-hex string. The pattern is intentionally
+# algorithm-agnostic (matches SHA-1 40-char, SHA-256 64-char,
+# SHA-512 128-char, etc.) — the adapter chooses the algorithm; this
+# module enforces only that the value IS a hex digest, not raw text.
+# The minimum length of 16 characters (SHA-1 truncated would be 40,
+# this catches "obviously not a digest" raw strings) is conservative;
+# stricter algorithm-specific length checks belong on the adapter.
+_HEX_DIGEST_RE = re.compile(r"^[0-9a-f]{16,}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +104,12 @@ class CacheKeyComponents:
     `scoring_parameters_hash`, `score_case_hash`) are pre-hashed by the
     adapter so this module never sees raw judge prompts or
     user-content. That keeps the key construction free of any
-    `Sensitive[T]` exposure (cardinal #5).
+    `Sensitive[T]` exposure (cardinal #5). The pre-hash contract is
+    enforced structurally in `__post_init__` — each hash field must
+    match `^[0-9a-f]{16,}$` (lowercase hex, ≥16 chars). A raw text
+    snippet that accidentally bypassed adapter hashing fails
+    construction with `InvariantViolationError` rather than silently
+    landing in a cache key.
 
     `judge_model_snapshot` is `str | None` because not every provider
     exposes a snapshot/version pin; absent providers MUST pass None
@@ -111,6 +128,27 @@ class CacheKeyComponents:
     scoring_parameters_hash: str
     score_case_serialization_version: str
     score_case_hash: str
+
+    def __post_init__(self) -> None:
+        # Cardinal #5 boundary: pre-hashed inputs only. A non-hex value
+        # in a hash slot means the adapter forgot to hash, and raw
+        # judge prompts / user content would otherwise reach the cache
+        # key (where keys are not redacted on disk).
+        for field_name in (
+            "rendered_prompt_hash",
+            "rubric_hash",
+            "scoring_parameters_hash",
+            "score_case_hash",
+        ):
+            value = getattr(self, field_name)
+            if not _HEX_DIGEST_RE.match(value):
+                raise InvariantViolationError(
+                    f"CacheKeyComponents.{field_name}={value!r} is not a "
+                    "lowercase hex digest of ≥16 characters. The adapter "
+                    "is responsible for hashing this field before passing "
+                    "it to cache keying — passing raw text here would put "
+                    "user content into cache filenames (cardinal #5)."
+                )
 
 
 def build_cache_key(components: CacheKeyComponents) -> str:

@@ -156,6 +156,20 @@ def _flatten_verdict(
     `blocking_findings` field on the wire would invite drift between
     the two.
     """
+    # The three arms are structurally parallel today (all variants
+    # carry `cohort_results` and `findings` with identical wire
+    # treatment) — the dispatch is solely about the verdict-state
+    # literal. They are kept separate rather than collapsed into a
+    # state-only match because:
+    #   - explicit per-variant returns let mypy strict verify each arm
+    #     of the sealed union against the typed return shape, catching
+    #     drift if a future variant gains/loses the read fields;
+    #   - a v1.0 `ConditionallyShip` variant could legitimately diverge
+    #     (e.g., extra `acceptance_record: AcceptanceRecord` field
+    #     surfaced via projection); a state-only match would silently
+    #     drop that field, while explicit arms force the contributor
+    #     to handle it.
+    # If the variants stay parallel through v0.2+, refactor then.
     match verdict:
         case Ship():
             return ("ship", list(verdict.cohort_results), list(verdict.findings))

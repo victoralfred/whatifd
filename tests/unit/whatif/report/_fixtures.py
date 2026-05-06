@@ -142,21 +142,20 @@ def methodology() -> MethodologyDisclosure:
 def runtime() -> RunManifest:
     """Build a known-good `RunManifest` for tests.
 
-    Fields with defaults are intentionally OMITTED here, taking
-    `RunManifest`'s declared defaults:
+    **Omitted (defaulted) fields:** `agent_identity`, `redaction`,
+    `sensitive_unwraps`. Each takes its `RunManifest`-declared default:
 
-    - `agent_identity` defaults to `None` (no operator-attribution
-      override).
-    - `redaction` defaults to `{}` (empty redaction metadata; tests
-      that exercise redaction explicitly populate this).
-    - `sensitive_unwraps` defaults to `[]` (no Sensitive[T] unwraps
-      occurred during the simulated run; tests that exercise the
-      audit trail populate this).
+    - `agent_identity = None` — no operator-attribution override.
+    - `redaction = {}` — empty redaction metadata; tests that
+      exercise redaction explicitly populate this.
+    - `sensitive_unwraps = []` — no `Sensitive[T]` unwraps occurred
+      during the simulated run; tests that exercise the audit trail
+      populate this.
 
-    If a future `RunManifest` change makes any of these REQUIRED, the
-    constructor call here will fail loudly with a missing-arg error
-    — that's the right surface for catching the drift, rather than
-    silently defaulting them in this fixture.
+    If a future `RunManifest` change makes any of those three fields
+    REQUIRED, the constructor call here fails loudly with a
+    missing-arg error — that's the right surface for catching the
+    drift, rather than silently defaulting via the fixture.
     """
     return RunManifest(
         experiment_id="exp-001",

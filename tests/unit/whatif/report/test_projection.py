@@ -239,9 +239,18 @@ class TestCardinalTwoChokepoint:
         # The annotation is `Verdict` which is a Union alias; mypy
         # narrows to Ship | DontShip | Inconclusive. At runtime,
         # typing.get_type_hints resolves it to the underlying union.
+        #
+        # Python-version note: `Ship | DontShip | Inconclusive` (PEP
+        # 604, 3.10+) produces `types.UnionType` — distinct from the
+        # legacy `typing.Union[...]` (`typing._SpecialGenericAlias`).
+        # `typing.get_args` handles BOTH forms uniformly (returns the
+        # variants tuple in both cases). If a future refactor ever
+        # converted `Verdict` to a bare `TypeAlias = X | Y`, get_args
+        # would still see through the alias because PEP 695 type
+        # aliases preserve the union shape. The assertion below works
+        # against any of those representations on Python 3.11+ (the
+        # project's minimum).
         verdict_hint = hints["verdict"]
-        # Verdict is `Ship | DontShip | Inconclusive`. typing.get_args
-        # on a UnionType returns the variants.
         args = set(typing.get_args(verdict_hint))
         assert args == {Ship, DontShip, Inconclusive}, (
             f"project_to_report_v01's `verdict` parameter must be the sealed "

@@ -124,12 +124,21 @@ class TestAutoInteractive:
 
 
 class TestDetectedCiSignal:
-    def test_returns_first_match_in_order(self) -> None:
-        assert _detected_ci_signal({"CI": "true"}) == "CI"
-        assert _detected_ci_signal({"GITHUB_ACTIONS": "true"}) == "GITHUB_ACTIONS"
-        assert _detected_ci_signal({"GITLAB_CI": "true"}) == "GITLAB_CI"
-        assert _detected_ci_signal({"BUILDKITE": "true"}) == "BUILDKITE"
-        assert _detected_ci_signal({"JENKINS_URL": "http://j"}) == "JENKINS_URL"
+    @pytest.mark.parametrize(
+        "env, expected",
+        [
+            ({"CI": "true"}, "CI"),
+            ({"GITHUB_ACTIONS": "true"}, "GITHUB_ACTIONS"),
+            ({"GITLAB_CI": "true"}, "GITLAB_CI"),
+            ({"BUILDKITE": "true"}, "BUILDKITE"),
+            ({"JENKINS_URL": "http://j"}, "JENKINS_URL"),
+        ],
+    )
+    def test_each_supported_signal_detected(self, env: dict[str, str], expected: str) -> None:
+        # Parametrized rather than packed-asserts so a single
+        # signal-detection regression points at the offending var
+        # directly.
+        assert _detected_ci_signal(env) == expected
 
     def test_returns_none_on_empty_env(self) -> None:
         assert _detected_ci_signal({}) is None

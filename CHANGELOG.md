@@ -12,6 +12,14 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 3.1 (cache key construction)
+
+- `src/whatif/cache/keying/v1.py` — `CacheKeyComponents` dataclass + `build_cache_key(components) -> str`. Deterministic SHA-256 over canonical JSON (sorted keys, no whitespace, ASCII) of the full required component set per `references/contracts.md`: whatif schema version, scorer adapter version, scorer type/package, judge provider/model/snapshot, rendered-prompt hash, rubric hash, scoring-parameters hash, score-case serialization version, per-case content hash. Output format: `v1:<64-char hex digest>`. The version prefix is part of the key contract — storage layout uses it to split entries across versions.
+- `src/whatif/cache/__init__.py` + `src/whatif/cache/keying/__init__.py` — package skeleton; `keying` re-exports `v1` so call sites import from the stable surface (`whatif.cache.keying`) rather than the versioned module directly.
+- `tests/unit/whatif/cache/keying/test_v1.py` — 19 tests across four classes: format/version-prefix/hex-digest pins, determinism (against a known-input known-output digest literal so a future encoder change fails loudly), per-field sensitivity (parametrized over all 12 fields — a "mutation didn't change the key" failure surfaces silently-dropped fields), `None`-vs-empty-string distinctness on `judge_model_snapshot`, field-order independence (canary for refactors away from frozen dataclass).
+
+`CACHE_KEY_VERSION = "v1"`. Future PRs that change keying semantics MUST introduce `v2` rather than mutate `v1`.
+
 ### Internal / Docs — Phase 0 closure (0.2 + 0.4)
 
 - `docs/concepts.md`: filled the missing sections (verdict states, floor-vs-policy, evidence/audit bundle); glossary now includes `ci_computable`, `ci_meaningful`, primary endpoint; §4 spells out the sticky-manifest guarantee operates at write AND read time.

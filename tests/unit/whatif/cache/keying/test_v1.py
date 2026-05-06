@@ -74,10 +74,16 @@ class TestBuildCacheKey:
         # hash algorithm) fails with a diff against this literal.
         #
         # Recording context:
-        #   - CPython 3.14 (CI matrix runs 3.11/3.12/3.13/3.14)
+        #   - Digest recorded on CPython 3.14, then verified across
+        #     the full CI matrix (3.11, 3.12, 3.13, 3.14). The CI
+        #     test_deterministic_against_known_digest passing on every
+        #     supported version is the verification — if it ever
+        #     diverged, only the recording version would pass and the
+        #     others would fail with a clear digest diff.
         #   - hashlib.sha256 from stdlib (mathematically defined; no
         #     Python-version dependency)
-        #   - json.dumps with sort_keys=True, separators=(",", ":"),
+        #   - canonical_json_bytes (whatif.serialization.canonical) which
+        #     wraps json.dumps with sort_keys=True, separators=(",", ":"),
         #     ensure_ascii=True (CPython contract stable since 2.6+)
         #
         # This digest SHOULD be invariant across all supported Python

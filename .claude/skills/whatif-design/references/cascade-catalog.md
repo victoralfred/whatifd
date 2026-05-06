@@ -816,24 +816,17 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 **Resolution:** Phase 3 (cache + stats layer) wires the width computation; the policy guard lands in the same PR or immediately after. Test: a cohort with `ci_computable=True, ci_meaningful=False` produces `DontShip`, not `Inconclusive`.
 
-### Banned-import lint scope: cache keying canonical JSON
-
-**Source decision:** Phase 3.1 (PR #31) lands `whatif/cache/keying/v1.py` which uses `json.dumps` to canonicalize `CacheKeyComponents` for SHA-256 hashing. `references/enforcement.md` row 2 documents that the banned-import lint will block `json.dumps` outside `whatif/serialization/` to enforce cardinal #5 (no accidental `Sensitive[T]` serialization on artifact paths). The cache keying module is not an artifact path — its `json.dumps` output is a hash input that never leaves the function — but the lint, when implemented, will not know that distinction without explicit guidance.
-
-**Rippled to:**
-
-- Phase 5 introduces the banned-import lint (ruff custom rule or AST grep). The lint's scope MUST handle `whatif/cache/keying/v1.py` in one of two ways:
-  - **Option A (helper):** add `canonical_json_bytes(obj) -> bytes` to `whatif/serialization/` that performs the same canonical encoding, document it as "for hash inputs only — never artifact bytes." Cache keying imports it.
-  - **Option B (allowlist):** lint config explicitly allowlists `whatif/cache/keying/v1.py`. Module docstring already documents why (hash input, no `Sensitive[T]` exposure, output never escapes the function).
-- Either choice should preserve the v1 digest (the test pins it against a known literal); a different canonical encoder would invalidate every existing cache entry.
-
-**Status:** open
-
-**Resolution:** Phase 5 (serialization + lint config) PR makes the choice. Recommend Option A: a single source of truth for canonical JSON encoding in `whatif/serialization/canonical.py` that both cache keying and any future hash-input-canonicalization use. Module docstring on the helper documents the "hash input only — never artifact" boundary. The lint then has a single allowlisted call site (or zero, if the helper is the only `json.dumps` user inside `whatif/`).
-
-**Trigger for resolution:** Phase 5 PR introducing `whatif/serialization/`.
-
 ## Resolved cascades
+
+### Banned-import lint scope: cache keying canonical JSON (resolved 2026-05-05)
+
+**Source decision:** Phase 3.1 (PR #31) lands `whatif/cache/keying/v1.py` which needs to canonicalize `CacheKeyComponents` for SHA-256 hashing. `references/enforcement.md` row 2 documents that the banned-import lint will block `json.dumps` outside `whatif/serialization/` to enforce cardinal #5 (no accidental `Sensitive[T]` serialization on artifact paths). Two reconciliations were possible: helper centralized in `whatif/serialization/` (Option A) or per-file lint allowlist (Option B).
+
+**Resolved by:** Option A landed within PR #31 itself. `whatif/serialization/canonical.py::canonical_json_bytes(obj) -> bytes` carries the canonical encoding (`sort_keys=True, separators=(",", ":"), ensure_ascii=True`); cache keying imports it. The Phase 5 banned-import lint, when implemented, sees zero `json.dumps` calls outside `whatif/serialization/` — no allowlist needed. The module docstring on `canonical.py` documents the "hash input only — never artifact" boundary so future contributors don't conflate it with the artifact-path encoder.
+
+The v1 digest is preserved across the refactor: the canonical encoding contract is byte-for-byte identical, so the known-digest test in `test_v1.py::test_deterministic_against_known_digest` continues to pass without modification.
+
+
 
 ### Single Ship-construction site — `whatif/decision/verdict.py` (resolved 2026-05-05)
 

@@ -53,33 +53,28 @@ the diff is rejected (cascade-tracked).
 A `v1` key and a `v2` key MUST NOT collide; the version prefix
 guarantees this even if the hashes happened to match.
 
-## Banned-import lint scope (Phase 5 reconciliation)
+## Canonical encoding lives in `whatif/serialization/`
 
-`references/enforcement.md` row 2 documents that the banned-import
-lint will block `json.dumps` outside `whatif/serialization/`. The
-rule exists to enforce cardinal #5 — no accidental `Sensitive[T]`
-serialization on artifact paths. This module's `json.dumps` is NOT an
-artifact path:
+The canonical-JSON helper this module uses (`canonical_json_bytes`)
+lives in `whatif/serialization/canonical.py`. Centralizing canonical
+encoding there gives:
 
-- The output is a hash input, not bytes that leave the process.
-- Every component is pre-hashed by the adapter (`rendered_prompt_hash`,
-  `rubric_hash`, etc.); no `Sensitive[T]` ever reaches this code.
-- The encoded JSON never escapes the function — `hashlib.sha256()`
-  consumes it and emits a hex digest.
-
-When the Phase 5 banned-import lint lands, this file needs either an
-explicit allowlist entry OR a `canonical_json_bytes()` helper in
-`whatif/serialization/` that this module imports. Cascade entry
-"Banned-import lint scope: cache keying canonical JSON" tracks the
-v0.1 reconciliation. The decision (allowlist vs. helper) belongs to
-the Phase 5 PR that introduces the lint, not Phase 3.1.
+- A single source of truth for the hash-input canonical form.
+- Future-proof scope for the Phase 5 banned-import lint
+  (`references/enforcement.md` row 2): all `json.dumps` calls inside
+  `whatif/` already live inside `whatif/serialization/`, so the lint
+  is satisfied without an allowlist.
+- A clear semantic boundary: `canonical_json_bytes` is for hash
+  inputs (no Sensitive[T] redaction needed); the artifact-path
+  encoder (Phase 5) carries the redaction graph walk.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import asdict, dataclass
+
+from whatif.serialization import canonical_json_bytes
 
 CACHE_KEY_VERSION = "v1"
 
@@ -129,11 +124,5 @@ def build_cache_key(components: CacheKeyComponents) -> str:
     every platform. JSON encoding uses `sort_keys=True`, no whitespace,
     `ensure_ascii=True` so the byte stream is platform-independent.
     """
-    canonical = json.dumps(
-        asdict(components),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    )
-    digest = hashlib.sha256(canonical.encode("ascii")).hexdigest()
+    digest = hashlib.sha256(canonical_json_bytes(asdict(components))).hexdigest()
     return f"{CACHE_KEY_VERSION}:{digest}"

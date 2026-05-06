@@ -165,6 +165,57 @@ class TestCacheMissError:
         assert "args" not in details
         assert "arg_count" not in details
 
+    def test_isolated_subprocess_import_works(self) -> None:
+        # The module-level `import whatif.cache` prime in
+        # `whatif/replay/tool_cache.py` is a load-order workaround for
+        # the cascade-tracked "Serialization ↔ report ↔ cache import
+        # cycle". This test pins that the prime is doing its job:
+        # in a fresh subprocess with no prior imports, importing
+        # `whatif.replay.tool_cache` AND exercising the lookup path
+        # (which transitively triggers `ToolCache._key`'s lazy
+        # serialization import) succeeds. Without the prime, the
+        # cycle bites and the import raises ImportError on
+        # `parse_lock_file_content`.
+        #
+        # Cleanup signal: when the cascade entry's resolution lands
+        # (v0.2 layering audit retiring the cycle), this test should
+        # still pass — it doesn't depend on the prime being present,
+        # only on imports working in isolation. To confirm the prime
+        # itself is now redundant, manually comment out the
+        # `import whatif.cache` line in tool_cache.py and re-run THIS
+        # test. If it still passes, the prime can be deleted in the
+        # same PR that retires the other two cycle workarounds
+        # (encoder TYPE_CHECKING, ToolCache._key lazy import).
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "from whatif.replay.tool_cache import "
+                    "make_strict_tool_cache, CacheMissError; "
+                    "c = make_strict_tool_cache({}, trace_id='t-1'); "
+                    "import sys as _s; "
+                    "raised = False\n"
+                    "try:\n"
+                    "    c.lookup('foo', {'a': 1})\n"
+                    "except CacheMissError:\n"
+                    "    raised = True\n"
+                    "_s.exit(0 if raised else 1)"
+                ),
+            ],
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, (
+            f"isolated import + lookup failed (exit {result.returncode}). "
+            "The serialization↔cache import-cycle prime in "
+            "tool_cache.py may have regressed. stderr:\n"
+            f"{result.stderr.decode('utf-8', errors='replace')}"
+        )
+
     def test_details_for_failure_satisfies_registry(self) -> None:
         # Cardinal #1: the registry's `tool_cache_miss` spec lists
         # `required_details=("tool_name",)`. The details map produced

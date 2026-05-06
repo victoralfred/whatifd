@@ -291,3 +291,47 @@ class TestBundle:
         b = _bundle("t-1", _echo_runner)
         with pytest.raises(AttributeError):
             b.trace_id = "t-2"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Trampoline signature coupling
+# ---------------------------------------------------------------------------
+
+
+class TestCallKernelTrampoline:
+    def test_trampoline_forwards_all_bundle_fields_to_kernel(self) -> None:
+        # `_call_kernel` adapts a `ReplayInputBundle` into the
+        # kernel's keyword-only signature. If `replay_one_trace`
+        # gains a parameter (e.g., per-bundle timeout in Phase 6.3c)
+        # the trampoline MUST be updated alongside it. This test
+        # closes the gap by capturing what the kernel actually
+        # received and asserting every bundle field landed on the
+        # right kernel parameter.
+        from whatif.replay.pipeline import _call_kernel
+
+        captured: dict[str, object] = {}
+
+        def runner(ti: TraceInput, cfg: ReplayConfig, tc: ToolCache) -> ReplayOutput:
+            captured["trace_input_msg"] = ti.user_message
+            captured["config_prompt"] = cfg.system_prompt
+            captured["cache_policy"] = tc.policy
+            return ReplayOutput(text="ok")
+
+        b = ReplayInputBundle(
+            trace_id="t-trampoline",
+            cohort="failure",
+            trace_input=TraceInput(user_message="probe-input"),
+            config=ReplayConfig(system_prompt="probe-prompt"),
+            tool_cache=ToolCache(cache={}, policy="use-original"),
+            runner=runner,
+        )
+
+        result = _call_kernel(b, timeout_seconds=2.0)
+
+        # Kernel got the bundle's runner with the bundle's args.
+        assert isinstance(result, ReplaySuccess)
+        assert result.trace_id == "t-trampoline"
+        assert result.cohort == "failure"
+        assert captured["trace_input_msg"] == "probe-input"
+        assert captured["config_prompt"] == "probe-prompt"
+        assert captured["cache_policy"] == "use-original"

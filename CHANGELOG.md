@@ -12,6 +12,15 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 5.2 (projection: internal Verdict → ReportV01)
+
+- `src/whatif/report/projection.py::project_to_report_v01(verdict, *, failures, cache_summary, methodology, runtime) -> ReportV01`. Flattens internal types into the v0.1 wire format. Cardinal #2 enforcement at the type level: the function takes the sealed `Verdict` union (`Ship | DontShip | Inconclusive`) — the only path to obtain a `Ship` is through `compute_verdict`/`evaluate_floor` which produce and consume `FloorPassedProof`. A `verdict_state: str` parameter would re-open the bypass; the `Verdict` input is the structural chokepoint.
+- `_flatten_verdict(verdict) -> tuple[VerdictState, list[CohortResult], list[DecisionFinding]]` — pure helper using `match` + `assert_never` for type-system-enforced exhaustiveness on the sealed union. Returns the verdict's `findings` list (NOT the derived `blocking_findings` subset; consumers compute that view from severity tags).
+- `trust_floor` and `decision_policy` are read from `runtime` (the `RunManifest`) so the report's top-level fields can't drift from what the manifest records.
+- `tests/unit/whatif/report/_fixtures.py` — shared no-arg fixture builders (`trust_floor()`, `decision_policy()`, `cohort()`, `cache_summary()`, `methodology()`, `runtime()`) used by both `test_models_v01.py` and `test_projection.py`. Centralized to avoid drift across the two test files when sub-shapes add required fields.
+- `tests/unit/whatif/report/test_projection.py` — 17 tests across six classes: verdict-state mapping (Ship/DontShip/Inconclusive, real `_ship()` routed through `evaluate_floor`); `_flatten_verdict` direct coverage (state mapping + findings-not-blocking-subset contract); manifest single-source-of-truth (`trust_floor`/`decision_policy` propagate from `runtime`); pass-through (`cache_summary`/`methodology`/`runtime` are same instance; `failures` tuple input → list output); schema constants stamped; cardinal #2 chokepoint pin via `typing.get_type_hints` + `inspect.signature` (refactor that loosened to `verdict_state: str` would fail the test).
+- Module constants `REPORT_SCHEMA_VERSION` / `REPORT_SCHEMA_URI` now typed as their respective Literal types (`_SchemaVersion` / `_SchemaUri`), eliminating the type mismatch when projection passes them to the Literal-typed fields on `ReportV01`.
+
 ### Added — Phase 5.1 (ReportV01 wire-format types)
 
 - `src/whatif/report/__init__.py` + `src/whatif/report/models_v01.py` — hand-written `ReportV01` dataclass per cardinal #6 (public schema is hand-written; internal types refactor freely). Sub-shapes reuse internal types directly: `CohortResult`, `FailureRecord`, `DecisionFinding`, `CacheSummary`, `TrustFloor`, `DecisionPolicy`, `MethodologyDisclosure`, `RunManifest`. The cardinal #6 boundary governs the WHATIF-emitted schema, not the universe of types it composes.

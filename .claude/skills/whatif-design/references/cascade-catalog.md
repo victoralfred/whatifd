@@ -825,6 +825,24 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 **Trigger for resolution:** the PR that introduces bootstrap CI computation (wherever in the phase plan that lands).
 
+### Run-level FloorFailure projection
+
+**Source decision:** Phase 5.2 projection (PR #38) flattens internal `Verdict` into `ReportV01`. The internal `Inconclusive` carries `floor_failures: list[FloorFailure]` aggregating run-level structural failures (including run-scope failures like "required cohort missing" that have no per-cohort home). v0.1 `ReportV01` has no top-level `floor_failures` field; per-cohort failures travel through `cohort_results[].floor_failures`, but the run-level aggregate is dropped on the wire.
+
+**v0.1 design choice:** drop the run-level aggregate. Pinned by `tests/unit/whatif/report/test_projection.py::TestFloorFailuresProjection`. For most run shapes this is information-preserving (the failures appear under their cohort). For the missing-cohort case, the floor failure is lost from the wire — readers see `verdict_state="inconclusive"` and an empty cohort list with no structured explanation of what was missing.
+
+**Rippled to (v0.2 schema decision):**
+- Adding `ReportV01.floor_failures: list[FloorFailure]` is patch-level per `references/contracts.md` §"Schema versioning" (new optional field with default).
+- Projection updates: `_flatten_verdict` returns the run-level aggregate; `project_to_report_v01` stamps it into the new field.
+- Tests in `test_projection.py` update to assert the field is populated for missing-cohort cases.
+- Phase 7 renderer surfaces run-level vs per-cohort floor failures distinctly (the missing-cohort case currently renders awkwardly with no cohort to anchor the failure under).
+
+**Status:** open
+
+**Resolution:** v0.2 minor (or v0.1.x patch since it's purely additive). The decision is whether the missing-cohort case is rare enough to keep dropping (and surface via `decision_findings` only) or worth a dedicated wire field.
+
+**Trigger for resolution:** the first user-facing report that exhibits a missing-cohort case AND the operator complains about the loss of structured floor-failure data, OR the v0.2 schema-bump cycle that revisits ReportV01 fields.
+
 ## Resolved cascades
 
 ### Banned-import lint scope: cache keying canonical JSON (resolved 2026-05-05)

@@ -902,12 +902,13 @@ whatif.serialization.encoder
   → whatif.serialization (back to start)
 ```
 
-**v0.1 mitigation pattern:** `TYPE_CHECKING` for type-annotation-only imports; function-level imports inside method bodies for runtime references. Two confirmed sites in v0.1:
+**v0.1 mitigation pattern:** `TYPE_CHECKING` for type-annotation-only imports; function-level imports inside method bodies for runtime references; module-level prime imports where load-order matters. Three confirmed sites in v0.1:
 
 1. `whatif/serialization/encoder.py::encode_report_v01` — TYPE_CHECKING import for the `ReportV01` annotation, lazy import inside the function body for the runtime `isinstance` guard.
 2. `whatif/contract/__init__.py::ToolCache._key` — lazy import of `canonical_json_bytes` inside `_key()`. A top-level import on `whatif.contract` cycles through `whatif.serialization.lock_io → whatif.cache._types → whatif.cache.lock → whatif.serialization`.
+3. `whatif/replay/tool_cache.py` (Phase 6.2, PR #43) — top-level `import whatif.cache  # noqa: F401` prime. The module loads `whatif.contract.ToolCache` which lazy-imports `canonical_json_bytes` at call time; without the prime, running `whatif.replay` tests in isolation triggers `ImportError: cannot import name 'parse_lock_file_content' from partially initialized module 'whatif.serialization'`. The prime forces `whatif.cache` to load completely before any `_key()` call resolves the `whatif.serialization` import.
 
-The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; lazy imports at call time run after all modules finish loading.
+The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; lazy imports at call time run after all modules finish loading; the prime forces the dependent subpackage to load eagerly so the runtime lazy imports always find a fully-initialized target.
 
 **Rippled to:**
 - Future Phase 5.4 (`assert_no_unredacted_sensitive` graph walk) will face the same cycle and use the same pattern.

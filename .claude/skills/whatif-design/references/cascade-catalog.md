@@ -552,7 +552,7 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 **Rippled to (Phase 3 lock implications, recorded with PR #33):**
 - `whatif/cache/lock.py` is filesystem-local: `fcntl.flock` + lock-file PID/create_time provenance assume a single-host, single-filesystem cache directory. The module docstring documents this scope and refuses unsupported filesystems (NFS surfaces as `ENOLCK`/`EOPNOTSUPP` with a clear error message).
-- Multi-tenant resolution will require either: (a) per-tenant cache subdirectories under a shared root (still filesystem-local — extends naturally from the v0.1 primitive), or (b) a network-coordinated lock (Redis, etcd, or filesystem-with-NFS-safe locking like `O_EXLOCK`). Option (a) preserves the v0.1 lock primitive; option (b) replaces it.
+- Multi-tenant resolution will require either: (a) per-tenant cache subdirectories under a shared root (still filesystem-local — extends naturally from the v0.1 primitive), or (b) a network-coordinated lock (Redis, etcd, or NFS-safe filesystem locking — note that `O_EXLOCK` is BSD/macOS-only and not available on Linux, so a portable NFS-safe path likely means a `lockf`/network-coordinated approach rather than `O_EXLOCK`). Option (a) preserves the v0.1 lock primitive; option (b) replaces it.
 - Whichever route, the `LockFileContent` shape (pid + process_start_time + hostname + started_at) generalizes: `hostname` is already recorded for cross-host diagnostics, and a v0.3 multi-tenant entry would add `tenant_id` via the `CacheMeta.extra` forward-compat path.
 
 **Trigger for resolution:** v0.3.

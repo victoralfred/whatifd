@@ -266,12 +266,11 @@ class TestAgeTakeover:
                 }
             )
         )
-        # Default off → age path NOT taken → flock succeeds anyway
-        # because no one holds it. Sanity check first.
-        # (Skip that to keep the test focused on opt-in path.)
-
         # Opt-in path: stale_after_seconds=0 forces age check to fire
-        # for any non-zero-age lock file. Acquisition succeeds.
+        # for any non-zero-age lock file. Acquisition succeeds. (The
+        # default-off counterpart is covered in isolation by
+        # TestShouldTakeover::test_age_path_off_by_default — no need
+        # to duplicate here.)
         with acquire_cache_lock(cache_root, stale_after_seconds=0, allow_age_takeover=True) as lock:
             assert lock.content.pid == os.getpid()
             assert lock.content.started_at != old_started  # we re-wrote it

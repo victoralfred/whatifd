@@ -818,6 +818,16 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 ## Resolved cascades
 
+### Banned-import lint scope: cache keying canonical JSON (resolved 2026-05-05)
+
+**Source decision:** Phase 3.1 (PR #31) lands `whatif/cache/keying/v1.py` which needs to canonicalize `CacheKeyComponents` for SHA-256 hashing. `references/enforcement.md` row 2 documents that the banned-import lint will block `json.dumps` outside `whatif/serialization/` to enforce cardinal #5 (no accidental `Sensitive[T]` serialization on artifact paths). Two reconciliations were possible: helper centralized in `whatif/serialization/` (Option A) or per-file lint allowlist (Option B).
+
+**Resolved by:** Option A landed within PR #31 itself. `whatif/serialization/canonical.py::canonical_json_bytes(obj) -> bytes` carries the canonical encoding (`sort_keys=True, separators=(",", ":"), ensure_ascii=True`); cache keying imports it. The Phase 5 banned-import lint, when implemented, sees zero `json.dumps` calls outside `whatif/serialization/` — no allowlist needed. The module docstring on `canonical.py` documents the "hash input only — never artifact" boundary so future contributors don't conflate it with the artifact-path encoder.
+
+The v1 digest is preserved across the refactor: the canonical encoding contract is byte-for-byte identical, so the known-digest test in `test_v1.py::test_deterministic_against_known_digest` continues to pass without modification.
+
+
+
 ### Single Ship-construction site — `whatif/decision/verdict.py` (resolved 2026-05-05)
 
 **Source decision:** PR #26 (Phase 2.6a) lands `compute_verdict` as the only function that constructs `Ship` instances. Cardinal #2's witness-token contract (`Ship.proof: FloorPassedProof`) is structurally enforced via the closure-capture in `whatif/decision/floor.py` — only `evaluate_floor` produces proofs. `compute_verdict` is the only call site that calls `evaluate_floor` AND threads the resulting proof into `Ship(proof=...)`.

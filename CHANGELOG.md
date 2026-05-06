@@ -12,6 +12,16 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 3.1 (cache key construction)
+
+- `src/whatif/cache/keying/v1.py` — `CacheKeyComponents` dataclass + `build_cache_key(components) -> str`. Deterministic SHA-256 over canonical JSON of the full required component set per `references/contracts.md`: whatif schema version, scorer adapter version, scorer type/package, judge provider/model/snapshot, rendered-prompt hash, rubric hash, scoring-parameters hash, score-case serialization version, per-case content hash. Output format: `v1:<64-char hex digest>`. The version prefix is part of the key contract — storage layout uses it to split entries across versions.
+- `src/whatif/serialization/canonical.py` — `canonical_json_bytes(obj) -> bytes`. Canonical-JSON encoder for HASH inputs (sort_keys=True, separators=(",", ":"), ensure_ascii=True). Centralized in `whatif/serialization/` so the Phase 5 banned-import lint sees zero `json.dumps` calls outside the serialization package without needing per-file allowlists. Module docstring documents the load-bearing distinction: this helper is for hash inputs only, not artifact bytes; the artifact-path encoder (Phase 5) carries cardinal #5 redaction enforcement separately.
+- `src/whatif/cache/__init__.py` + `src/whatif/cache/keying/__init__.py` — package skeleton; `keying` re-exports `v1` so call sites import from the stable surface (`whatif.cache.keying`) rather than the versioned module directly.
+- `tests/unit/whatif/cache/keying/test_v1.py` — 19 tests pinning format/version prefix/hex digest, determinism against a known-input known-output digest literal (verified across the full CI matrix 3.11/3.12/3.13/3.14), per-field sensitivity parametrized over all 12 fields, `None`-vs-empty-string distinctness on `judge_model_snapshot`, field-order independence.
+- `tests/unit/whatif/serialization/test_canonical.py` — 9 tests pinning the canonical encoding contract: ASCII bytes, sorted keys (including nested dicts), whitespace-free, non-ASCII escaped, list order preserved, `None`/empty-string and int/float distinctness, deterministic across repeated calls.
+
+`CACHE_KEY_VERSION = "v1"`. Future PRs that change keying semantics MUST introduce `v2` rather than mutate `v1`. The cascade entry "Banned-import lint scope: cache keying canonical JSON" landed resolved.
+
 ### Internal / Docs — Phase 0 closure (0.2 + 0.4)
 
 - `docs/concepts.md`: filled the missing sections (verdict states, floor-vs-policy, evidence/audit bundle); glossary now includes `ci_computable`, `ci_meaningful`, primary endpoint; §4 spells out the sticky-manifest guarantee operates at write AND read time.

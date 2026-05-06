@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from whatif.contract import ReplayConfig, ReplayOutput, ToolCache, TraceInput
 from whatif.replay import (
     ReplayFailure,
@@ -229,19 +231,14 @@ class TestOrderCorrect:
 
 
 class TestNeverRaises:
-    def test_kernel_swallows_all_runner_exceptions(self) -> None:
-        # Even a SystemExit from a misbehaving runner should be
-        # caught and converted (SystemExit inherits from BaseException
-        # not Exception, so this would NOT be caught by `except
-        # Exception` — pin that the kernel intentionally lets
-        # BaseException through, since system-exit-during-replay is
-        # a programmer bug, not failure-as-data).
-        #
-        # This pin documents the boundary: cardinal #1 covers
-        # EXPECTED failures. Programmer-bug exceptions (KeyboardInterrupt,
-        # SystemExit) are NOT failure-as-data and propagate.
-        import pytest
-
+    def test_kernel_propagates_base_exception(self) -> None:
+        # Cardinal #1 covers EXPECTED failures (cache miss, timeout,
+        # runner exception). It does NOT cover programmer-bug exit
+        # signals — `KeyboardInterrupt` and `SystemExit` inherit from
+        # `BaseException`, not `Exception`, so the kernel's
+        # `except Exception` does NOT catch them. These propagate
+        # out to the caller, which is the right behavior: a runner
+        # raising SystemExit during replay is a bug, not data.
         def runner(ti: TraceInput, cfg: ReplayConfig, tc: ToolCache) -> ReplayOutput:
             raise SystemExit("don't catch me")
 

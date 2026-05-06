@@ -107,6 +107,17 @@ def replay_one_trace(
     miss is classified correctly even though it IS a Python
     exception.
 
+    Re-raise guarantee: `concurrent.futures.Future.result()`
+    re-raises the worker thread's exception UNWRAPPED. CPython
+    `_invoke_callbacks` stores the exception object via
+    `self._exception = exc`, and `result()` does
+    `raise self._exception`. So `CacheMissError` raised inside the
+    runner thread arrives at this `except` clause as
+    `CacheMissError`, not wrapped in any "thread exception" type.
+    The `test_cache_miss_produces_typed_failure` test pins this end
+    to end (the assertion `result.code == "tool_cache_miss"` would
+    fail under any future Python that wrapped exceptions).
+
     `timeout_seconds` is enforced via `concurrent.futures.Future
     .result(timeout=...)`. On timeout, the underlying thread keeps
     running until the runner completes (Python can't kill threads);
@@ -176,13 +187,12 @@ def _timeout_failure(*, trace_id: str, cohort: str, timeout_seconds: float) -> R
             "runner to make the wall-clock limit a backstop, not the primary "
             "bound."
         ),
-        # `runner_timeout` registry spec: required_details=("timeout_seconds",).
-        # Stored as int when whole, else float — the registry accepts JsonPrimitive.
-        details={
-            "timeout_seconds": int(timeout_seconds)
-            if timeout_seconds == int(timeout_seconds)
-            else timeout_seconds
-        },
+        # `runner_timeout` registry spec: required_details=
+        # ("timeout_seconds",). Always emitted as float for shape
+        # consistency with the parameter type. JsonPrimitive accepts
+        # both int and float, but mixing produces a less predictable
+        # downstream parse (jsonschema number vs integer arms).
+        details={"timeout_seconds": float(timeout_seconds)},
     )
 
 

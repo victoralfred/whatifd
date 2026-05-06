@@ -129,17 +129,35 @@ class WhatifJSONEncoder(json.JSONEncoder):
             return {f.name: getattr(obj, f.name) for f in dataclasses.fields(obj)}
 
         if isinstance(obj, Mapping):
-            # MappingProxyType, dict subclasses with non-str keys, etc.
-            # JSON only allows str keys, so coerce via str() — the
-            # alternative (raise) would block legitimate Mapping uses
-            # like CacheMeta.extra. Callers that use non-str keys
-            # signal that intent by typing the field as Mapping[str, ...].
+            # MappingProxyType, dict subclasses, etc. JSON only allows
+            # string keys, so coerce non-str keys via str().
+            #
+            # Caller contract: every Mapping field on the wire shape
+            # is typed `Mapping[str, ...]` (cardinal #6 — typed
+            # boundaries). Non-str keys reaching this branch indicate
+            # a contract violation upstream; the silent str() coercion
+            # is best-effort emergency dispatch, NOT a sanctioned
+            # feature. A future strict-mode flag could raise on
+            # non-str keys; for v0.1 the type system catches the
+            # contract violation at compile time and the silent
+            # coercion is acceptable for the rare runtime escape.
             return {str(k): v for k, v in obj.items()}
 
         if isinstance(obj, frozenset | set):
-            # Sorted for determinism. Sets in the wire shape are rare
-            # (we prefer tuples for ordered immutability), but if they
-            # appear we don't want a non-deterministic output.
+            # Sorted by str(item) for determinism — lexicographic
+            # order applied via str repr. Sets in the wire shape are
+            # rare (we prefer tuples for ordered immutability), and
+            # the elements are typically string-typed already
+            # (cohort names, model ids, etc.), so str-keyed sort
+            # produces the natural lexicographic order.
+            #
+            # Why str() and not the natural < comparator: heterogeneous
+            # sets (e.g., a future {1, "a", None}) would raise on
+            # natural sort; str() keeps the dispatch total. If a future
+            # caller passes a set with naturally-comparable elements
+            # AND wants natural-order output, they should pre-convert
+            # to a sorted tuple at the boundary rather than rely on
+            # set serialization.
             return sorted(obj, key=str)
 
         # tuple is handled by stdlib (becomes list); no override needed.

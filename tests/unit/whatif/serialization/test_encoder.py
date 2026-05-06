@@ -166,12 +166,20 @@ class TestEncodeReportV01:
         # bytes-substring search for ": " would fail spuriously on
         # such content; structural re-serialization compares the
         # CANONICAL form to itself.
+        #
+        # Note: the re-serialization uses stdlib `json.dumps` directly
+        # (NOT `encode_report_v01`) — intentional. The point is to
+        # verify our encoder's output matches stdlib's canonical form
+        # for a parsed-and-resialized dict. Routing back through
+        # encode_report_v01 would test the encoder against itself
+        # (tautological); routing through stdlib pins that the encoder
+        # produced bytes a stdlib-only consumer would also produce.
         out = self._report_bytes()
         parsed = json.loads(out)
-        canonical_resere = json.dumps(
+        canonical_reserialize = json.dumps(
             parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True
         ).encode("ascii")
-        assert out == canonical_resere
+        assert out == canonical_reserialize
 
     def test_round_trips_to_dict(self) -> None:
         out = self._report_bytes()

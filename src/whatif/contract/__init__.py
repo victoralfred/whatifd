@@ -132,6 +132,13 @@ class ToolCache(BaseModel):
         # cycle" — this is the same workaround used by
         # `whatif.serialization.encoder` for its TYPE_CHECKING
         # ReportV01 reference.
+        #
+        # Per-call overhead: negligible. Python caches the resolved
+        # module in `sys.modules` after the first load; subsequent
+        # `from whatif.serialization import ...` statements are dict
+        # lookups (microsecond-scale), not re-imports. ToolCache._key
+        # is called once per cache lookup; the cost is invisible
+        # against the surrounding I/O.
         from whatif.serialization import canonical_json_bytes
 
         return f"{tool_name}::{canonical_json_bytes(args).decode('ascii')}"

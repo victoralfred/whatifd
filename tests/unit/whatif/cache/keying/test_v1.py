@@ -75,17 +75,26 @@ class TestBuildCacheKey:
         # hash algorithm) fails with a diff against this literal.
         #
         # Recording context:
-        #   - Digest recorded on local CPython 3.14, then verified
-        #     across the supported CI matrix (3.11, 3.12, 3.13;
-        #     authoritative list at .github/workflows/ci.yml's
-        #     matrix.python-version). If this digest ever diverged
-        #     across versions, only the recording version would pass
-        #     and the others would fail in CI with a clear diff.
+        #   - Verification authority: the supported CI matrix
+        #     (3.11, 3.12, 3.13 — all stable releases; authoritative
+        #     list at .github/workflows/ci.yml's matrix.python-version).
+        #     This test passing on every matrix version IS the
+        #     determinism proof. The recording-environment Python
+        #     version is irrelevant to the guarantee — what matters
+        #     is that the digest matches on every version we ship
+        #     against.
         #   - hashlib.sha256 from stdlib (mathematically defined; no
         #     Python-version dependency)
         #   - canonical_json_bytes (whatif.serialization.canonical) which
         #     wraps json.dumps with sort_keys=True, separators=(",", ":"),
         #     ensure_ascii=True (CPython contract stable since 2.6+)
+        #
+        # If a future Python version (e.g., 3.14) were added to the
+        # CI matrix and shifted the digest, this test would fail in
+        # that one version's job with a clear diff — the right response
+        # would be a CACHE_KEY_VERSION bump to v2, NOT updating this
+        # literal in place (which would silently invalidate every
+        # existing cache entry).
         #
         # This digest SHOULD be invariant across all supported Python
         # versions and platforms. If a future stdlib change shifted

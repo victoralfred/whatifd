@@ -54,6 +54,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from whatif.types.sensitive import Sensitive, UnredactedSensitiveError
+
 
 def canonical_json_bytes(obj: Any) -> bytes:
     """Return the canonical JSON encoding of `obj` as ASCII bytes.
@@ -65,11 +67,24 @@ def canonical_json_bytes(obj: Any) -> bytes:
     non-serializable value raises `TypeError` from the stdlib encoder.
 
     Cardinal #5 contract: this function MUST NOT receive `Sensitive[T]`
-    instances. The caller is responsible for ensuring all inputs are
-    redacted scalars (pre-hashed strings, primitive types). Passing a
-    `Sensitive[T]` produces a `TypeError` from the stdlib encoder
-    (intentional — fail loud, don't silently emit a redacted repr).
+    instances. The top-level `isinstance(obj, Sensitive)` check catches
+    direct misuse (caller passes a `Sensitive` as the entire payload)
+    with a clear `UnredactedSensitiveError`. Nested `Sensitive` inside
+    a dict/list IS NOT walked here — that's the Phase 5
+    `assert_no_unredacted_sensitive` graph walk's job, plus the
+    `WhatifJSONEncoder.default()` fallback. For now, a nested
+    `Sensitive` reaches `json.dumps` which raises `TypeError` because
+    `Sensitive` has no JSON encoder hook (intentional — `Sensitive`'s
+    `__reduce__` raises `SensitiveSerializationError` for pickle, and
+    no `__json__` is provided). Either way, fail loud, never silent.
     """
+    if isinstance(obj, Sensitive):
+        raise UnredactedSensitiveError(
+            "canonical_json_bytes received a Sensitive[T] instance "
+            "directly. Cache keying components must be pre-hashed by the "
+            "adapter; raw user content cannot reach the cache key path "
+            "(cardinal #5)."
+        )
     return json.dumps(
         obj,
         sort_keys=True,

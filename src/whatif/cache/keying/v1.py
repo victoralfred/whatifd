@@ -85,9 +85,21 @@ CACHE_KEY_VERSION = "v1"
 # algorithm-agnostic (matches SHA-1 40-char, SHA-256 64-char,
 # SHA-512 128-char, etc.) — the adapter chooses the algorithm; this
 # module enforces only that the value IS a hex digest, not raw text.
-# The minimum length of 16 characters (SHA-1 truncated would be 40,
-# this catches "obviously not a digest" raw strings) is conservative;
-# stricter algorithm-specific length checks belong on the adapter.
+#
+# Why minimum 16 chars (and not, say, 32 = half-SHA-256)?
+# The check exists to catch raw text accidentally bypassing adapter
+# hashing, NOT to enforce cryptographic strength (cardinal #5 boundary,
+# not a security boundary — adapter responsibility per references/
+# contracts.md "cache_key_components"). 16 is the lowest length where
+# arbitrary plain text is unlikely to coincidentally pass: short raw
+# strings are usually 1-2 words containing spaces / punctuation / non-hex
+# letters that fail the [0-9a-f] character class first; legitimate
+# digests start at SHA-1's 40 chars and go up. Tightening to 32 would
+# reject 24-char xxhash3 and similar non-cryptographic-but-deterministic
+# hashes some adapters might choose. If a future cardinal-strength
+# tightening is wanted, the cleaner path is per-algorithm validation
+# (e.g., HashHex newtype with algorithm-tagged subtypes), not raising
+# the floor here.
 _HEX_DIGEST_RE = re.compile(r"^[0-9a-f]{16,}$")
 
 

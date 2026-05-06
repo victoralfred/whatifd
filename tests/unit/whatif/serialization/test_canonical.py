@@ -16,7 +16,10 @@ downstream hash. The tests pin all four.
 
 from __future__ import annotations
 
+import pytest
+
 from whatif.serialization import canonical_json_bytes
+from whatif.types.sensitive import Sensitive, UnredactedSensitiveError
 
 
 class TestCanonicalJsonBytes:
@@ -67,3 +70,25 @@ class TestCanonicalJsonBytes:
         first = canonical_json_bytes(obj)
         second = canonical_json_bytes(obj)
         assert first == second
+
+
+class TestSensitiveRejection:
+    """Top-level cardinal #5 boundary: passing a `Sensitive[T]` directly
+    raises `UnredactedSensitiveError`. Nested `Sensitive` inside a
+    dict/list is the Phase 5 graph walk's territory; the stdlib
+    encoder will raise `TypeError` until then (no `__json__` hook on
+    Sensitive). Either way: fail loud, never silent.
+    """
+
+    def test_top_level_sensitive_raises(self) -> None:
+        s = Sensitive("password123", classification="user_secret")
+        with pytest.raises(UnredactedSensitiveError, match="cardinal #5"):
+            canonical_json_bytes(s)
+
+    def test_nested_sensitive_raises_via_stdlib(self) -> None:
+        # Nested-in-dict: stdlib json.dumps raises TypeError because
+        # Sensitive has no __json__ hook. This is the fallback layer
+        # before Phase 5's graph walk lands.
+        s = Sensitive("password123", classification="user_secret")
+        with pytest.raises(TypeError):
+            canonical_json_bytes({"creds": s})

@@ -12,6 +12,13 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 6.3b (streaming pipeline `replay_stream`)
+
+- `src/whatif/replay/pipeline.py::replay_stream(bundles, *, max_workers=4, timeout_seconds=60.0) -> Iterator[ReplayResult]` — bounded-concurrency wrapper over `replay_one_trace`. Sliding-window submit pattern: prime `max_workers` initial bundles, yield each completion, submit one more. Bounded memory (O(max_workers)), lazy input consumption (large iterables don't materialize), streaming yield (results emitted as they complete; completion order, NOT input order — the report aggregator sorts by trace_id at assembly).
+- `ReplayInputBundle(trace_id, cohort, trace_input, config, tool_cache, runner)` frozen + slotted dataclass. The adapter (Phase 4) builds a generator that yields these from the underlying trace stream.
+- Double-executor pattern: streaming layer holds an outer `ThreadPoolExecutor(max_workers=N)`; kernel holds an inner per-call `ThreadPoolExecutor(max_workers=1)` for timeout enforcement. Peak threads = 2 * max_workers (one outer + one inner per concurrent kernel). The kernel returns synchronously even on timeout via `shutdown(wait=False)` — so the streaming layer's `shutdown(wait=True)` only waits for kernel returns, NOT for leaked runner threads. The cascade-catalog warning about outer-wait-True serializing timeouts is honored: timeouts don't serialize because kernel-return is fast.
+- `tests/unit/whatif/replay/test_pipeline.py` (10 tests) — pins basic correctness (count preservation, no trace_id swap, empty/single bundle), mixed success+failure streams, bounded concurrency probe (lock-protected counter asserts peak ≤ max_workers), `max_workers < 1` rejection, lazy input consumption (input generator records pulled count; first-yield must NOT have drained 100 inputs).
+
 ### Added — Phase 6.3a (per-trace replay kernel)
 
 - `src/whatif/replay/kernel.py::replay_one_trace(*, trace_id, cohort, trace_input, config, tool_cache, runner, timeout_seconds) -> ReplayResult` — synchronous per-trace runner-call wrapper. The boundary that converts the three classes of runner-execution failure into typed `ReplayFailure` records: `CacheMissError` → `tool_cache_miss`; wall-clock timeout → `runner_timeout`; any other exception → `runner_exception`. Clean returns produce `ReplaySuccess` carrying the runner's `ReplayOutput`.

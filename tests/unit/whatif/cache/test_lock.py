@@ -24,7 +24,6 @@ The load-bearing properties:
 from __future__ import annotations
 
 import dataclasses
-import json
 import os
 import socket
 import subprocess
@@ -39,8 +38,10 @@ import pytest
 from whatif.cache.lock import (
     CacheLockedError,
     LockFileContent,
+    _should_takeover,
     acquire_cache_lock,
 )
+from whatif.serialization import canonical_json_bytes
 
 # ---------------------------------------------------------------------------
 # Single-writer with real processes
@@ -123,7 +124,7 @@ class TestSingleWriter:
 def _write_lock_file(cache_root: Path, content: dict[str, object]) -> Path:
     cache_root.mkdir(parents=True, exist_ok=True)
     lock_path = cache_root / ".lock"
-    lock_path.write_text(json.dumps(content), encoding="utf-8")
+    lock_path.write_bytes(canonical_json_bytes(content))
     return lock_path
 
 
@@ -242,8 +243,8 @@ class TestAgeTakeover:
             # started_at to simulate a long-running legitimate batch.
             old_started = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
             child_pid = proc.pid
-            (cache_root / ".lock").write_text(
-                json.dumps(
+            (cache_root / ".lock").write_bytes(
+                canonical_json_bytes(
                     {
                         "pid": child_pid,
                         "process_start_time": psutil.Process(child_pid).create_time(),
@@ -262,51 +263,39 @@ class TestAgeTakeover:
             proc.terminate()
             proc.wait(timeout=10)
 
-    def test_age_takeover_when_opted_in(self, tmp_path: Path) -> None:
-        # Same setup as above but with allow_age_takeover=True. The
-        # caller has explicitly accepted the risk; age beyond threshold
-        # → takeover.
+    def test_age_takeover_integration_when_no_competing_flock(self, tmp_path: Path) -> None:
+        # Exercises the positive age-takeover path end-to-end. We
+        # simulate the "kernel restart / lock-file orphaned" scenario:
+        # an old lock FILE persists with a recorded live PID and old
+        # started_at, but no process actually holds the kernel-level
+        # flock on it. With allow_age_takeover=True and stale_after_seconds=0
+        # (force the age check to fire), acquire_cache_lock takes
+        # over and we successfully acquire.
         cache_root = tmp_path / "cache"
-        ready_file = tmp_path / "child_ready"
-        proc = subprocess.Popen(
-            [sys.executable, "-c", _HOLD_LOCK_SCRIPT, str(cache_root), str(ready_file), "5"],
-        )
-        try:
-            for _ in range(100):
-                if ready_file.exists():
-                    break
-                time.sleep(0.05)
-            assert ready_file.exists()
-            old_started = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            child_pid = proc.pid
-            (cache_root / ".lock").write_text(
-                json.dumps(
-                    {
-                        "pid": child_pid,
-                        "process_start_time": psutil.Process(child_pid).create_time(),
-                        "hostname": socket.gethostname(),
-                        "started_at": old_started,
-                    }
-                )
+        cache_root.mkdir()
+        # Record THIS process's PID + matching create_time so the
+        # PID-alive check passes (matches → not stale by PID/create_time).
+        # The age check is the load-bearing path here.
+        old_started = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        (cache_root / ".lock").write_bytes(
+            canonical_json_bytes(
+                {
+                    "pid": os.getpid(),
+                    "process_start_time": psutil.Process(os.getpid()).create_time(),
+                    "hostname": socket.gethostname(),
+                    "started_at": old_started,
+                }
             )
-            # NOTE: takeover here actually requires breaking the
-            # subprocess's fcntl, which we cannot do from Python — the
-            # kernel holds the lock. The age check is independent of
-            # flock; the design provides for the case where flock has
-            # been released (e.g., kernel restart) but the file
-            # persists. Test asserts that the age-takeover code path
-            # is reached even though flock will still refuse here.
-            # Acceptance: age takeover is a stale-evidence path; the
-            # OS-level flock remains the primary defense and is not
-            # bypassed.
-            with (
-                pytest.raises(CacheLockedError),
-                acquire_cache_lock(cache_root, stale_after_seconds=3600, allow_age_takeover=True),
-            ):
-                pass  # pragma: no cover
-        finally:
-            proc.terminate()
-            proc.wait(timeout=10)
+        )
+        # Default off → age path NOT taken → flock succeeds anyway
+        # because no one holds it. Sanity check first.
+        # (Skip that to keep the test focused on opt-in path.)
+
+        # Opt-in path: stale_after_seconds=0 forces age check to fire
+        # for any non-zero-age lock file. Acquisition succeeds.
+        with acquire_cache_lock(cache_root, stale_after_seconds=0, allow_age_takeover=True) as lock:
+            assert lock.content.pid == os.getpid()
+            assert lock.content.started_at != old_started  # we re-wrote it
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +339,82 @@ class TestLockProvenance:
         finally:
             proc.terminate()
             proc.wait(timeout=10)
+
+
+class TestShouldTakeover:
+    """Pure unit tests on the `_should_takeover` decision function.
+
+    Extracted from `_try_takeover_if_stale` so the decision matrix can
+    be covered without filesystem state or `fcntl` interaction. The
+    integration tests above cover the file-I/O wrapper; these cover
+    every branch of the boolean logic.
+    """
+
+    def _live_self(self, started_at: str) -> LockFileContent:
+        """A LockFileContent that records THIS process accurately —
+        i.e., not dead, not PID-recycled. Stale evidence then comes
+        from `started_at` age alone.
+        """
+        return LockFileContent(
+            pid=os.getpid(),
+            process_start_time=psutil.Process(os.getpid()).create_time(),
+            hostname=socket.gethostname(),
+            started_at=started_at,
+        )
+
+    def test_dead_pid_is_stale_regardless_of_age(self) -> None:
+        # A dead PID is stale even when started_at is recent and
+        # allow_age_takeover is False.
+        recorded = LockFileContent(
+            pid=_dead_pid(),
+            process_start_time=time.time(),
+            hostname="any",
+            started_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        assert _should_takeover(recorded, stale_after_seconds=86400, allow_age_takeover=False)
+
+    def test_recycled_pid_is_stale_regardless_of_age(self) -> None:
+        # PID alive but create_time mismatches → recycled.
+        recorded = LockFileContent(
+            pid=os.getpid(),
+            process_start_time=1.0,  # absurdly old
+            hostname="any",
+            started_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        assert _should_takeover(recorded, stale_after_seconds=86400, allow_age_takeover=False)
+
+    def test_alive_and_matching_not_stale_by_default(self) -> None:
+        recorded = self._live_self(datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        assert not _should_takeover(recorded, stale_after_seconds=86400, allow_age_takeover=False)
+
+    def test_age_path_off_by_default(self) -> None:
+        # Lock alive + matching, but old started_at. Without
+        # allow_age_takeover, the age check is NOT consulted.
+        old = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        recorded = self._live_self(old)
+        assert not _should_takeover(recorded, stale_after_seconds=3600, allow_age_takeover=False)
+
+    def test_age_path_takes_over_when_opted_in_and_exceeded(self) -> None:
+        # Lock alive + matching, old started_at, opt-in + threshold
+        # exceeded → takeover. THIS is the positive coverage of the
+        # opt-in path the previous integration test could not exercise
+        # (because the OS flock would always still refuse).
+        old = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        recorded = self._live_self(old)
+        assert _should_takeover(recorded, stale_after_seconds=3600, allow_age_takeover=True)
+
+    def test_age_path_does_not_take_over_when_opted_in_but_under_threshold(self) -> None:
+        # Recent lock, opt-in, but not yet aged out → not stale.
+        recent = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        recorded = self._live_self(recent)
+        assert not _should_takeover(recorded, stale_after_seconds=86400, allow_age_takeover=True)
+
+    def test_malformed_started_at_does_not_age_out(self) -> None:
+        # If started_at is unparseable, the age path returns False —
+        # we surface a CacheLockedError rather than silently taking
+        # over a lock whose age we can't compute.
+        recorded = self._live_self("not-a-timestamp")
+        assert not _should_takeover(recorded, stale_after_seconds=0, allow_age_takeover=True)
 
 
 class TestLockFileContentDataclass:

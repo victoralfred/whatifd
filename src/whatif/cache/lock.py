@@ -166,7 +166,13 @@ def acquire_cache_lock(
     lock_path = cache_root / _LOCK_FILENAME
     cache_root.mkdir(parents=True, exist_ok=True)
 
-    fp = open(lock_path, "a+", encoding="utf-8")  # noqa: SIM115 — manual lifecycle (released in finally on the conditional-acquired path)
+    # SIM115 (use `with open(...)`) is suppressed: the file's lifetime
+    # spans the entire context manager — we acquire the fcntl lock on
+    # this fd, yield the CacheLock to the caller, and only release +
+    # close in the conditional-acquired finally path below. A `with`
+    # block would close at the wrong scope. `pathlib.Path.open()` has
+    # the same scoping issue and offers no advantage here.
+    fp = open(lock_path, "a+", encoding="utf-8")  # noqa: SIM115
     acquired = False
     try:
         try:
@@ -228,8 +234,11 @@ def _try_takeover_if_stale(
     allow_age_takeover: bool,
 ) -> bool:
     """Inspect the existing lock file; return True if takeover is
-    justified by stale evidence (dead process, recycled PID, or — when
-    opted in — age beyond threshold).
+    justified by stale evidence.
+
+    Wraps the pure decision function `_should_takeover` with the file
+    I/O concerns. The split keeps the decision logic unit-testable
+    without filesystem state — see `tests/.../test_lock.py::TestShouldTakeover`.
     """
     fp.seek(0)
     raw = fp.read()
@@ -249,9 +258,24 @@ def _try_takeover_if_stale(
         # ask, no provenance to respect.
         return True
 
+    return _should_takeover(recorded, stale_after_seconds, allow_age_takeover)
+
+
+def _should_takeover(
+    recorded: LockFileContent,
+    stale_after_seconds: int,
+    allow_age_takeover: bool,
+) -> bool:
+    """Pure decision: is the recorded lock stale?
+
+    Extracted from `_try_takeover_if_stale` so unit tests can cover
+    every branch (process dead, PID recycled, age exceeded with opt-in,
+    age exceeded without opt-in, all-clear) without faking file I/O or
+    `fcntl` state. The integration test (real subprocess) covers the
+    file-I/O wrapper; this function covers the decision matrix.
+    """
     if _process_dead_or_recycled(recorded):
         return True
-
     return allow_age_takeover and _lock_age_exceeded(recorded, stale_after_seconds)
 
 
@@ -306,8 +330,16 @@ def _content_to_dict(content: LockFileContent) -> dict[str, object]:
 
 
 def _build_locked_error(lock_path: Path) -> CacheLockedError:
-    """Read the held lock for diagnostics and raise a typed error
+    """Read the held lock for diagnostics and return a typed error
     naming the holder, hostname, and when it was acquired.
+
+    The blocking condition (lock held) is already established by the
+    caller; this function ENRICHES the error message with provenance
+    when the file is readable. If the file is unreadable (rotated,
+    permission-denied, parse error), we still return `CacheLockedError`
+    — the held lock is the load-bearing fact — but we chain the
+    diagnostic-read error into `__cause__` via `raise ... from` so the
+    enrichment failure isn't silent.
     """
     try:
         raw = lock_path.read_text(encoding="utf-8")
@@ -319,9 +351,17 @@ def _build_locked_error(lock_path: Path) -> CacheLockedError:
             "holding process is no longer running, run `whatif cache unlock`. "
             "If the cache may be corrupted, run `whatif cache rebuild --force`."
         )
-    except (OSError, json.JSONDecodeError, KeyError):
-        return CacheLockedError(
+    except (OSError, json.JSONDecodeError) as diag_err:
+        # Diagnostic-read failure: keep the blocking-condition signal
+        # (typed CacheLockedError) AND surface the parse/read failure
+        # via __cause__ chaining. The error message names what we know
+        # plus what we couldn't read; cardinal #1 satisfied because
+        # nothing is silently swallowed.
+        err = CacheLockedError(
             f"Cache lock at {lock_path} is held but its content is "
-            "unreadable. Run `whatif cache unlock` if the holding process "
-            "is no longer active."
+            f"unreadable ({type(diag_err).__name__}: {diag_err}). Run "
+            "`whatif cache unlock` if the holding process is no longer "
+            "active, or `whatif cache rebuild --force` to reset."
         )
+        err.__cause__ = diag_err
+        return err

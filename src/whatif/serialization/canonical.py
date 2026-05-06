@@ -67,16 +67,28 @@ def canonical_json_bytes(obj: Any) -> bytes:
     non-serializable value raises `TypeError` from the stdlib encoder.
 
     Cardinal #5 contract: this function MUST NOT receive `Sensitive[T]`
-    instances. The top-level `isinstance(obj, Sensitive)` check catches
-    direct misuse (caller passes a `Sensitive` as the entire payload)
-    with a clear `UnredactedSensitiveError`. Nested `Sensitive` inside
-    a dict/list IS NOT walked here — that's the Phase 5
-    `assert_no_unredacted_sensitive` graph walk's job, plus the
-    `WhatifJSONEncoder.default()` fallback. For now, a nested
-    `Sensitive` reaches `json.dumps` which raises `TypeError` because
-    `Sensitive` has no JSON encoder hook (intentional — `Sensitive`'s
-    `__reduce__` raises `SensitiveSerializationError` for pickle, and
-    no `__json__` is provided). Either way, fail loud, never silent.
+    instances. Two layers of defense at v0.1, neither sufficient on
+    its own:
+
+    - **Top-level `isinstance(obj, Sensitive)`**: catches direct misuse
+      (caller passes a `Sensitive` as the entire payload) with a clear
+      `UnredactedSensitiveError`. Does NOT walk nested structures.
+    - **stdlib `json.dumps` TypeError**: a nested `Sensitive` inside a
+      dict/list reaches `json.dumps` which raises `TypeError` because
+      `Sensitive` has no `__json__` hook today (it has `__reduce__`
+      raising `SensitiveSerializationError` for pickle and redacted
+      dunders for str/repr/format, but no JSON serializer hook).
+
+    The full structural defense is the Phase 5
+    `assert_no_unredacted_sensitive` graph walk plus
+    `WhatifJSONEncoder.default()`. Until those land, the v0.1
+    guarantee on nested `Sensitive` depends on `Sensitive` not gaining
+    a JSON encoder hook that returns its redacted repr — a discipline
+    enforced today only by Sensitive's own design, not by this
+    function. Adapter authors using this helper for hash inputs should
+    rely on the explicit pre-hash contract on `CacheKeyComponents`
+    (lowercase-hex validation in `__post_init__`) rather than on this
+    helper's nested-Sensitive coverage.
     """
     if isinstance(obj, Sensitive):
         raise UnredactedSensitiveError(

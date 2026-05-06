@@ -250,11 +250,19 @@ class TestPreHashedContractEnforced:
 
     def test_sha1_length_accepted(self) -> None:
         # SHA-1 hex is 40 chars — algorithm-agnostic acceptance.
-        dataclasses.replace(_SAMPLE, rendered_prompt_hash="a" * 40)
+        # Build the key end-to-end (not just construct) so the test
+        # exercises both __post_init__ validation AND the downstream
+        # canonical-encode + hash path with this length.
+        components = dataclasses.replace(_SAMPLE, rendered_prompt_hash="a" * 40)
+        key = build_cache_key(components)
+        assert key.startswith("v1:")
 
     def test_sha512_length_accepted(self) -> None:
         # SHA-512 hex is 128 chars — algorithm-agnostic acceptance.
-        dataclasses.replace(_SAMPLE, rendered_prompt_hash="b" * 128)
+        # End-to-end like the SHA-1 case above.
+        components = dataclasses.replace(_SAMPLE, rendered_prompt_hash="b" * 128)
+        key = build_cache_key(components)
+        assert key.startswith("v1:")
 
     def test_error_names_offending_field(self) -> None:
         # Diagnostic: the field name appears in the error so a caller

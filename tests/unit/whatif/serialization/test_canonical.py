@@ -75,9 +75,14 @@ class TestCanonicalJsonBytes:
 class TestSensitiveRejection:
     """Top-level cardinal #5 boundary: passing a `Sensitive[T]` directly
     raises `UnredactedSensitiveError`. Nested `Sensitive` inside a
-    dict/list is the Phase 5 graph walk's territory; the stdlib
-    encoder will raise `TypeError` until then (no `__json__` hook on
-    Sensitive). Either way: fail loud, never silent.
+    dict/list is NOT walked here — Phase 5's
+    `assert_no_unredacted_sensitive` is the structural defense for
+    that case. Until Phase 5 lands, the v0.1 fallback for nested
+    Sensitive is the stdlib `TypeError` (no `__json__` hook on
+    Sensitive). The fallback is best-effort, not a hard structural
+    guarantee — a future Sensitive variant that gained a JSON hook
+    returning its redacted repr would silently leak it; the
+    canonical helper's docstring tracks this caveat explicitly.
     """
 
     def test_top_level_sensitive_raises(self) -> None:

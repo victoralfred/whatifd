@@ -25,10 +25,12 @@ from whatif.report.models_v01 import (
     ReportV01,
     VerdictState,
 )
+from whatif.report.projection import project_to_report_v01
 
 __all__ = (
     "REPORT_SCHEMA_URI",
     "REPORT_SCHEMA_VERSION",
     "ReportV01",
     "VerdictState",
+    "project_to_report_v01",
 )

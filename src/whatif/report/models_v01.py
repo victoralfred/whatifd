@@ -87,8 +87,19 @@ from whatif.types.manifest import RunManifest
 from whatif.types.policy import DecisionPolicy, TrustFloor
 from whatif.types.statistical import MethodologyDisclosure
 
-REPORT_SCHEMA_VERSION = "0.1"
-REPORT_SCHEMA_URI = "https://whatif.codes/schema/report/v0.1.json"
+# Type-level pins for schema_version / schema_uri: callers cannot
+# construct a `ReportV01` with a stale or wrong version. mypy strict
+# catches assignments of any other string literal at type-check time;
+# the schema-validation pass at read time catches the rare runtime
+# `cast(...)` bypass. v0.2 will introduce a `ReportV02` module with
+# its own constants; a future `whatif report-migrate` consumes the
+# wire JSON without instantiating the typed dataclass, so this pin
+# does not block migration paths.
+_SchemaVersion = Literal["0.1"]
+_SchemaUri = Literal["https://whatif.codes/schema/report/v0.1.json"]
+
+REPORT_SCHEMA_VERSION: _SchemaVersion = "0.1"
+REPORT_SCHEMA_URI: _SchemaUri = "https://whatif.codes/schema/report/v0.1.json"
 
 VerdictState = Literal["ship", "dont_ship", "inconclusive"]
 """Wire-format verdict literal. The internal `Verdict` sealed union
@@ -113,17 +124,6 @@ sound. Any other shape (e.g., `project_to_report_v01(verdict_state:
 str, ...)`) re-opens the cardinal #2 bypass that the witness pattern
 exists to close.
 """
-
-# Type-level pins for schema_version / schema_uri: callers cannot
-# construct a `ReportV01` with a stale or wrong version. mypy strict
-# catches assignments of any other string literal at type-check time;
-# the schema-validation pass at read time catches the rare runtime
-# `cast(...)` bypass. v0.2 will introduce a `ReportV02` module with
-# its own constants; a future `whatif report-migrate` consumes the
-# wire JSON without instantiating the typed dataclass, so this pin
-# does not block migration paths.
-_SchemaVersion = Literal["0.1"]
-_SchemaUri = Literal["https://whatif.codes/schema/report/v0.1.json"]
 
 
 @dataclass(frozen=True, slots=True)

@@ -30,7 +30,6 @@ Then on the command line:
 
 from __future__ import annotations
 
-import json
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -117,7 +116,14 @@ class ToolCache(BaseModel):
 
     @staticmethod
     def _key(tool_name: str, args: dict[str, Any]) -> str:
-        return f"{tool_name}::{json.dumps(args, sort_keys=True)}"
+        # Hash-input canonical encoding via the centralized helper.
+        # Same pattern as `whatif/cache/keying/v1.py`: hash inputs go
+        # through `whatif/serialization/canonical.py::canonical_json_bytes`
+        # so the Phase 5 banned-import lint sees zero `json.dumps`
+        # outside the serialization package.
+        from whatif.serialization import canonical_json_bytes
+
+        return f"{tool_name}::{canonical_json_bytes(args).decode('ascii')}"
 
 
 # ---------------------------------------------------------------------------

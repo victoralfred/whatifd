@@ -74,11 +74,22 @@ class TestSchemaDrift:
         # Re-run the generator; assert byte equality with the committed
         # file. Catches: a contributor edited `models_v01.py` without
         # running `python scripts/generate_schema.py`.
-        result = subprocess.run(
-            [sys.executable, str(_GENERATOR), "--stdout"],
-            capture_output=True,
-            check=True,
-        )
+        try:
+            result = subprocess.run(
+                [sys.executable, str(_GENERATOR), "--stdout"],
+                capture_output=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            # Distinguish generator failure (e.g., a new unsupported
+            # type added to the wire shape — `NotImplementedError` from
+            # `_type_to_schema`) from drift. The drift message would
+            # mislead a reader debugging a generator crash.
+            raise AssertionError(
+                f"Schema generator failed (exit {exc.returncode}). This is "
+                "NOT a drift failure — the generator itself errored. "
+                f"stderr:\n{exc.stderr.decode('utf-8', errors='replace')}"
+            ) from exc
         committed = _SCHEMA_FILE.read_bytes()
         assert result.stdout == committed, (
             "Schema drift detected. Run `python scripts/generate_schema.py` "

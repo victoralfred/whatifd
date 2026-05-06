@@ -161,10 +161,14 @@ def _dataclass_to_schema(cls: type, defs: dict[str, dict[str, Any]]) -> dict[str
     properties: dict[str, dict[str, Any]] = {}
     required: list[str] = []
     for field in dataclasses.fields(cls):
-        # Skip non-init fields like `delta` (init=False, computed in
-        # __post_init__). Their values are derived; consumers don't see
-        # an inbound contract for them. The internal `TraceDelta` has
-        # such a field; the wire-shape `TraceDeltaReportV01` does not.
+        # General rule: skip computed fields (`init=False`). They are
+        # derived in `__post_init__` from other fields, so they don't
+        # form part of the inbound wire contract — a consumer sending
+        # them in is over-specifying state the producer would
+        # recompute. (Concrete current example: the internal
+        # `TraceDelta.delta` field; the wire-shape
+        # `TraceDeltaReportV01.delta` is `init=True` because the wire
+        # carries the already-computed value.)
         if not field.init:
             continue
         field_tp = hints[field.name]

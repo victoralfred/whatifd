@@ -108,10 +108,9 @@ from __future__ import annotations
 
 import contextlib
 import errno
-import fcntl
-import json
 import os
 import socket
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -119,9 +118,36 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
+# Windows guard: `fcntl` is POSIX-only. Refuse import with a clear
+# typed message rather than letting a bare `ImportError` leak from
+# module load — cardinal #1 (failures-as-data: even import-time
+# environmental failures should be diagnosable, not opaque).
+if sys.platform == "win32":  # pragma: no cover (Linux/macOS-only test matrix)
+    raise ImportError(
+        "whatif.cache.lock requires POSIX `fcntl`; Windows is not supported in v0.1. "
+        "See pyproject.toml classifiers (Operating System :: POSIX :: Linux, MacOS) "
+        "and the module docstring's 'NFS unsupported / cross-host coordination' note. "
+        "Multi-platform locking is the cascade entry 'Multi-tenant cache directories' (v0.3)."
+    )
+
+import fcntl  # POSIX-only; Windows fails the sys.platform check above
+
 import psutil
 
-from whatif.serialization import canonical_json_bytes
+from whatif.serialization import (
+    canonical_json_bytes,
+    parse_lock_file_content,
+    parse_lock_file_for_diagnostics,
+)
+
+# The failure-code registry entry that wraps `CacheLockedError` when
+# Phase 2.6 projection layer converts the exception into a structured
+# `FailureRecord`. Pinning the constant here makes the exception ↔
+# registry link grep-discoverable; the registry already carries the
+# cardinal #8 fix-suggestion at fix_suggestions.py:120
+# (cache_lock_unavailable → "whatif cache rebuild --force",
+# "whatif cache unlock", "whatif cache verify").
+LOCK_FAILURE_CODE = "cache_lock_unavailable"
 
 _LOCK_FILENAME = ".lock"
 _DEFAULT_STALE_AFTER_SECONDS = 86400  # 24 hours
@@ -132,10 +158,30 @@ class CacheLockedError(Exception):
     """The cache lock could not be acquired and is not stale.
 
     DATA condition (a legitimate runtime state — another process holds
-    the lock), not a programmer bug. Callers convert to a
-    `FailureRecord` per cardinal #1. The message includes the
+    the lock), not a programmer bug. The message includes the
     structured lock-file contents so operators can decide whether to
     wait, run `whatif cache unlock`, or run `whatif cache rebuild`.
+
+    ## Structured-failure mapping (cardinal #8)
+
+    Callers at the verdict-projection boundary convert this exception
+    into a `FailureRecord(code=LOCK_FAILURE_CODE, ...)`. The registry
+    entries already exist for the projected code:
+
+    - `FAILURE_CODE_REGISTRY["cache_lock_unavailable"]` — the failure
+      side (operational fact).
+    - `FINDING_CODE_REGISTRY["cache_lock_unavailable"]` — the policy
+      conclusion (`blocks_all` severity → Inconclusive).
+    - `FIX_SUGGESTION_REGISTRY["cache_lock_unavailable"]` — the
+      cardinal #8 actionability template, with the three
+      `whatif cache rebuild`/`unlock`/`verify` recovery paths.
+
+    The free-text strings in this exception's message are
+    *operator-facing diagnostics* (PID/hostname/started_at provenance
+    that the registry templates can't carry without per-instance
+    data); they do NOT replace the registry entries. The structural
+    actionability promise is satisfied by the registry; the message
+    is enrichment.
     """
 
 
@@ -273,25 +319,15 @@ def _try_takeover_if_stale(
     Wraps the pure decision function `_should_takeover` with the file
     I/O concerns. The split keeps the decision logic unit-testable
     without filesystem state — see `tests/.../test_lock.py::TestShouldTakeover`.
+    Deserialization is delegated to
+    `whatif.serialization.parse_lock_file_content`, which returns
+    `None` for empty/corrupted/wrong-shape input — both surface as
+    "stale by definition" here.
     """
     fp.seek(0)
-    raw = fp.read()
-    if not raw:
-        # Empty lock file: nobody recorded who they are. Treat as stale.
+    recorded = parse_lock_file_content(fp.read())
+    if recorded is None:
         return True
-    try:
-        parsed = json.loads(raw)
-        recorded = LockFileContent(
-            pid=int(parsed["pid"]),
-            process_start_time=float(parsed["process_start_time"]),
-            hostname=str(parsed["hostname"]),
-            started_at=str(parsed["started_at"]),
-        )
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-        # Corrupted lock file. Stale by definition — nobody we can
-        # ask, no provenance to respect.
-        return True
-
     return _should_takeover(recorded, stale_after_seconds, allow_age_takeover)
 
 
@@ -391,29 +427,16 @@ def _build_locked_error(lock_path: Path) -> CacheLockedError:
     naming the holder, hostname, and when it was acquired.
 
     The blocking condition (lock held) is already established by the
-    caller; this function ENRICHES the error message with provenance
-    when the file is readable. If the file is unreadable (rotated,
-    permission-denied, parse error), we still return `CacheLockedError`
-    — the held lock is the load-bearing fact — but we chain the
-    diagnostic-read error into `__cause__` via `raise ... from` so the
-    enrichment failure isn't silent.
+    caller; this function ENRICHES the error message with provenance.
+    Diagnostic-read failures (file rotated, permission denied) chain
+    via `__cause__` so nothing is silently swallowed. Deserialization
+    goes through `whatif.serialization.parse_lock_file_for_diagnostics`,
+    which returns an empty dict on parse failure — the helper keeps
+    json operations centralized.
     """
     try:
         raw = lock_path.read_text(encoding="utf-8")
-        parsed = json.loads(raw)
-        return CacheLockedError(
-            f"Cache lock at {lock_path} is held by another live process. "
-            f"PID={parsed.get('pid')!r}, hostname={parsed.get('hostname')!r}, "
-            f"started_at={parsed.get('started_at')!r}. If you know the "
-            "holding process is no longer running, run `whatif cache unlock`. "
-            "If the cache may be corrupted, run `whatif cache rebuild --force`."
-        )
-    except (OSError, json.JSONDecodeError) as diag_err:
-        # Diagnostic-read failure: keep the blocking-condition signal
-        # (typed CacheLockedError) AND surface the parse/read failure
-        # via __cause__ chaining. The error message names what we know
-        # plus what we couldn't read; cardinal #1 satisfied because
-        # nothing is silently swallowed.
+    except OSError as diag_err:
         err = CacheLockedError(
             f"Cache lock at {lock_path} is held but its content is "
             f"unreadable ({type(diag_err).__name__}: {diag_err}). Run "
@@ -426,3 +449,19 @@ def _build_locked_error(lock_path: Path) -> CacheLockedError:
         # equivalent on a returned-but-not-yet-raised exception object.
         err.__cause__ = diag_err
         return err
+
+    parsed = parse_lock_file_for_diagnostics(raw)
+    if parsed:
+        return CacheLockedError(
+            f"Cache lock at {lock_path} is held by another live process. "
+            f"PID={parsed.get('pid')!r}, hostname={parsed.get('hostname')!r}, "
+            f"started_at={parsed.get('started_at')!r}. If you know the "
+            "holding process is no longer running, run `whatif cache unlock`. "
+            "If the cache may be corrupted, run `whatif cache rebuild --force`."
+        )
+    # File read but unparseable — degraded diagnostic, still typed.
+    return CacheLockedError(
+        f"Cache lock at {lock_path} is held but its content is unparseable. "
+        "Run `whatif cache unlock` if the holding process is no longer active, "
+        "or `whatif cache rebuild --force` to reset."
+    )

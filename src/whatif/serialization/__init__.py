@@ -18,5 +18,15 @@ contracts.
 
 from whatif.serialization.canonical import canonical_json_bytes
 from whatif.serialization.decimal import FieldLabel, parse_decimal_string
+from whatif.serialization.lock_io import (
+    parse_lock_file_content,
+    parse_lock_file_for_diagnostics,
+)
 
-__all__ = ["FieldLabel", "canonical_json_bytes", "parse_decimal_string"]
+__all__ = [
+    "FieldLabel",
+    "canonical_json_bytes",
+    "parse_decimal_string",
+    "parse_lock_file_content",
+    "parse_lock_file_for_diagnostics",
+]

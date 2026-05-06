@@ -20,9 +20,13 @@ handles the project's typed shapes:
   primary defense; this encoder catches anything that slipped past.
   No silent redaction at this layer — the artifact write fails
   loud, never produces a leaked-content report.
-- **Frozen dataclasses** → recursively `asdict()`'d. Covers
-  `ReportV01`, `CohortResult`, `FailureRecord`, `DecisionFinding`,
-  `CacheSummary`, `MethodologyDisclosure`, all sub-shapes.
+- **Frozen dataclasses** → shallow field projection
+  (`{f.name: getattr(obj, f.name)}`). Each field's value flows back
+  through `default()` via json's recursive walk; nested dataclasses,
+  Mappings, and sets resolve through the same dispatch.
+  Deliberately NOT `dataclasses.asdict` — that helper deep-copies
+  values via `copy.copy`, which chokes on `MappingProxyType` (used
+  in `CacheSummary.models_distribution` and `CacheMeta.extra`).
 - **`Mapping`** (incl. `MappingProxyType`) → cast to `dict`. The
   forward-compat `extra` field on `CacheMeta` and
   `models_distribution` on `CacheSummary` use these.
@@ -156,9 +160,25 @@ def encode_report_v01(report: ReportV01) -> bytes:
     The function takes `ReportV01` specifically (not `Any`) because
     cardinal #6 says public-schema types are hand-written; the
     artifact-write path consumes the typed wire shape, not arbitrary
-    objects. Tests that need to encode partial structures use
+    objects. mypy strict catches wrong-type calls at type-check
+    time; the `isinstance` guard below is defense-in-depth for
+    runtime callers that bypass type-checking (e.g., dynamic CLI
+    paths, REPL usage, tests that intentionally pass garbage).
+    Tests that need to encode partial structures use
     `WhatifJSONEncoder()` directly with their own kwargs.
     """
+    # Lazy import to avoid the encoder/report/cache circular load.
+    # Documented at the module top where the TYPE_CHECKING import lives.
+    from whatif.report.models_v01 import ReportV01 as _ReportV01
+
+    if not isinstance(report, _ReportV01):
+        raise TypeError(
+            f"encode_report_v01 expects a ReportV01 instance; got "
+            f"{type(report).__name__!r}. Cardinal #6: the artifact-write "
+            "boundary is typed. mypy strict catches this at type-check "
+            "time; the runtime guard exists for callers that bypass "
+            "type-checking."
+        )
     return json.dumps(
         report,
         cls=WhatifJSONEncoder,

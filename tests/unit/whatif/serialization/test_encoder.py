@@ -73,7 +73,12 @@ class TestSensitiveLastLine:
 
 
 class TestEncoderDispatch:
-    def test_frozen_dataclass_encodes_via_asdict(self) -> None:
+    def test_frozen_dataclass_encodes_via_shallow_field_projection(self) -> None:
+        # The encoder dispatches frozen dataclasses by reading each
+        # field via getattr(obj, field.name) — NOT dataclasses.asdict
+        # (which deep-copies and chokes on MappingProxyType). Each
+        # field's value flows back through default() via json's
+        # recursive walk.
         c = cohort("failure")
         result = json.loads(json.dumps(c, cls=WhatifJSONEncoder))
         assert result["name"] == "failure"
@@ -82,7 +87,9 @@ class TestEncoderDispatch:
 
     def test_nested_dataclass_recurses(self) -> None:
         # CohortResult contains FloorFailure list. Verify nested
-        # dataclasses round-trip through dataclasses.asdict().
+        # dataclasses round-trip through the recursive default()
+        # dispatch (NOT dataclasses.asdict — see field-projection
+        # docstring).
         c = cohort()
         result = json.loads(json.dumps(c, cls=WhatifJSONEncoder))
         # CohortResult.floor_failures defaults to [] but the recursive
@@ -148,18 +155,23 @@ class TestEncodeReportV01:
         assert isinstance(out, bytes)
         assert all(b < 128 for b in out)
 
-    def test_no_formatting_whitespace(self) -> None:
-        # Canonical encoding uses `separators=(",", ":")` — no space
-        # after commas or colons. Spaces INSIDE string literals
-        # (e.g., "single primary metric per cohort; no correction
-        # applied") are content, not formatting, and are expected.
-        # Pin the formatting absence by looking for the specific
-        # pretty-print artifacts.
+    def test_canonical_form_no_pretty_printing(self) -> None:
+        # Pin the canonical-form contract structurally: re-serialize
+        # the parsed output with the same canonical kwargs and assert
+        # byte equality. This catches any pretty-printing artifact
+        # (extra newlines, indentation, comma-space, colon-space)
+        # WITHOUT producing false positives on string-literal content
+        # that happens to contain a colon-space (e.g., a future
+        # methodology note like "judge: claude-sonnet-4-6"). A
+        # bytes-substring search for ": " would fail spuriously on
+        # such content; structural re-serialization compares the
+        # CANONICAL form to itself.
         out = self._report_bytes()
-        assert b", " not in out, "comma-space found — separators should be ',' not ', '"
-        assert b": " not in out, "colon-space found — separators should be ':' not ': '"
-        assert b"\n" not in out
-        assert b"\t" not in out
+        parsed = json.loads(out)
+        canonical_resere = json.dumps(
+            parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("ascii")
+        assert out == canonical_resere
 
     def test_round_trips_to_dict(self) -> None:
         out = self._report_bytes()
@@ -170,19 +182,23 @@ class TestEncodeReportV01:
         assert isinstance(parsed["failures"], list)
 
     def test_byte_identical_for_identical_input(self) -> None:
-        # Determinism: same ReportV01 produces same bytes. The
-        # `runtime` fixture has the same fixed timestamps, so the
-        # whole report is deterministic.
+        # Determinism: same ReportV01 produces same bytes. The fixture
+        # invariant this test relies on:
+        #   - `runtime()` fixture stamps fixed timestamps
+        #     ("2026-05-06T10:00:00Z" / "2026-05-06T10:01:00Z") not
+        #     `datetime.now()`.
+        #   - `ship()` constructs a real Ship via evaluate_floor; the
+        #     FloorPassedProof's `floor_version` is sticky ("v1").
+        # If a future fixture change introduces wall-clock state, this
+        # test will flake — the fix is to pin the fixture, not relax
+        # the assertion.
         a = self._report_bytes()
         b = self._report_bytes()
         assert a == b
 
-    def test_keys_are_sorted(self) -> None:
-        out = self._report_bytes()
-        parsed = json.loads(out)
-        # Top-level keys must be sorted (sort_keys=True effect).
-        # Validate by re-encoding with sort_keys and checking equality.
-        assert out == json.dumps(parsed, sort_keys=True, separators=(",", ":")).encode("ascii")
+    # Note: key-sort and pretty-print absence are both covered by
+    # `test_canonical_form_no_pretty_printing` above (re-serializes
+    # parsed output with sort_keys=True and asserts byte equality).
 
     def test_includes_methodology_block(self) -> None:
         # Cardinal #10: methodology is a required field; the wire
@@ -191,3 +207,16 @@ class TestEncodeReportV01:
         assert "methodology" in parsed
         assert parsed["methodology"]["unit_of_analysis"] == "paired_trace_delta"
         assert parsed["methodology"]["per_trace_inference"] == "descriptive_only"
+
+    def test_rejects_non_report_input_at_runtime(self) -> None:
+        # Cardinal #6 defense-in-depth: mypy strict catches wrong-type
+        # calls at type-check time, but the runtime guard exists for
+        # callers that bypass type-checking (dynamic CLI paths, REPL
+        # usage, tests passing garbage). Pin the guard's behavior.
+        with pytest.raises(TypeError, match="expects a ReportV01"):
+            encode_report_v01("not a report")  # type: ignore[arg-type]
+
+        with pytest.raises(TypeError, match="expects a ReportV01"):
+            # Even another frozen dataclass is rejected — the guard
+            # checks for ReportV01 specifically, not "any dataclass".
+            encode_report_v01(cohort())  # type: ignore[arg-type]

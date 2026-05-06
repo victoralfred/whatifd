@@ -121,6 +121,17 @@ class ToolCache(BaseModel):
         # through `whatif/serialization/canonical.py::canonical_json_bytes`
         # so the Phase 5 banned-import lint sees zero `json.dumps`
         # outside the serialization package.
+        #
+        # Lazy import: a top-level
+        # `from whatif.serialization import canonical_json_bytes`
+        # cycles through `whatif.serialization.lock_io` →
+        # `whatif.cache._types` → `whatif.cache.lock` →
+        # `whatif.serialization`. The function-level import resolves
+        # at call time, after all modules finish loading. Documented
+        # in cascade-catalog "Serialization ↔ report ↔ cache import
+        # cycle" — this is the same workaround used by
+        # `whatif.serialization.encoder` for its TYPE_CHECKING
+        # ReportV01 reference.
         from whatif.serialization import canonical_json_bytes
 
         return f"{tool_name}::{canonical_json_bytes(args).decode('ascii')}"

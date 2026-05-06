@@ -3,13 +3,18 @@
 `test_models_v01.py` (Phase 5.1) and `test_projection.py` (Phase 5.2)
 both need fully-typed instances of the dependent sub-shapes
 (`CohortResult`, `CacheSummary`, `MethodologyDisclosure`, `RunManifest`,
-etc.). Centralizing the builders here:
+etc.) AND realistic `Verdict` instances. Centralizing the builders
+here:
 
 - Avoids drift between the two test files' fixture shapes.
 - Gives a single place to update when a sub-shape adds a required
   field (one builder edit, not N).
 - Keeps individual test files focused on the assertion they're
   pinning, not on the construction boilerplate.
+- Centralizes the witness-token path (`ship()` routes through
+  `evaluate_floor` to obtain a real `FloorPassedProof`) so future
+  test files don't re-implement verdict construction and risk
+  diverging from the canonical cardinal #2 path.
 
 Each builder is a no-arg factory returning a known-good instance,
 matching the pattern Phase 3.x test files used internally
@@ -19,6 +24,8 @@ matching the pattern Phase 3.x test files used internally
 from __future__ import annotations
 
 from whatif.cache.summary import CachePolicySnapshot, CacheSummary
+from whatif.decision.finding_codes import make_decision_finding
+from whatif.decision.floor import FloorPassedProof, evaluate_floor
 from whatif.types.cohort import CohortResult
 from whatif.types.manifest import EnvironmentFingerprint, RunManifest
 from whatif.types.policy import DecisionPolicy, PrimaryEndpoint, TrustFloor
@@ -30,6 +37,7 @@ from whatif.types.statistical import (
     MethodologyDisclosure,
     MultiplicityDisclosure,
 )
+from whatif.types.verdict import DontShip, Inconclusive, Ship
 
 
 def trust_floor() -> TrustFloor:
@@ -149,4 +157,78 @@ def runtime() -> RunManifest:
             platform="linux-x86_64",
             whatif_version="0.0.1",
         ),
+    )
+
+
+def ship() -> Ship:
+    """Construct a real `Ship` via the witness-token chain.
+
+    Routes through `evaluate_floor()` so the resulting `Ship` carries
+    a real `FloorPassedProof`. Tests that exercise any projection or
+    verdict-consuming surface MUST go through this path — that's the
+    cardinal #2 enforcement (only `evaluate_floor` produces valid
+    proofs). A direct construction with a fabricated proof would
+    bypass the structural guarantee the witness-token closure-capture
+    exists to enforce.
+    """
+    cohorts = [cohort("failure"), cohort("baseline")]
+    proof_or_failures = evaluate_floor(
+        cohorts,
+        trust_floor(),
+        required_cohorts=("failure", "baseline"),
+    )
+    # Direct isinstance against the witness type — narrows for mypy
+    # AND fails loud if the test fixture's cohorts ever stop passing
+    # the floor (so the failure surfaces here, not deeper in a
+    # consumer test). No `type: ignore` needed.
+    assert isinstance(proof_or_failures, FloorPassedProof), (
+        f"test fixture invariant: cohort()/trust_floor() must produce a "
+        f"floor-passing run; evaluate_floor returned {proof_or_failures!r}"
+    )
+    return Ship(
+        proof=proof_or_failures,
+        cohort_results=cohorts,
+        findings=[],
+    )
+
+
+def dont_ship() -> DontShip:
+    """Construct a `DontShip` with a representative blocking finding.
+
+    Floor passes (Ship's witness-token chain ran upstream); the
+    blocking finding is a `baseline_regression_above_threshold`
+    `blocks_ship`-severity finding, the canonical example.
+    """
+    blocking = make_decision_finding(
+        "baseline_regression_above_threshold",
+        message="baseline cohort regressed",
+        details={"observed": "0.150", "threshold": "0.100"},
+    )
+    return DontShip(
+        cohort_results=[cohort("failure"), cohort("baseline")],
+        findings=[blocking],
+        blocking_findings=[blocking],
+    )
+
+
+def inconclusive() -> Inconclusive:
+    """Construct an `Inconclusive` with a representative blocking finding.
+
+    `ci_unavailable_for_required_cohort` is the canonical
+    `blocks_all`-severity case; its registry spec requires non-empty
+    `derived_from_failures`, so the fixture supplies a placeholder
+    failure-record id that matches the pattern used by
+    `ci_availability_guard` (the deferred Phase 2.6c plumbing replaces
+    the placeholder with real ids).
+    """
+    blocking = make_decision_finding(
+        "ci_unavailable_for_required_cohort",
+        message="CI uncomputable on baseline",
+        details={"cohort": "baseline", "reason": "sample_too_small"},
+        derived_from_failures=["fail-ci-unavailable-1"],
+    )
+    return Inconclusive(
+        cohort_results=[cohort("failure")],
+        findings=[blocking],
+        blocking_findings=[blocking],
     )

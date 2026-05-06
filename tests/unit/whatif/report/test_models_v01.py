@@ -21,8 +21,7 @@ Coverage:
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping
-from types import MappingProxyType
+import typing
 
 import pytest
 
@@ -265,24 +264,28 @@ class TestReportV01Frozen:
     def test_no_dict_str_any_fields(self) -> None:
         # Cardinal #6: every field on ReportV01 is a typed
         # dataclass / sealed literal / list-of-typed / etc. None
-        # are dict[str, Any].
-        import typing
-
+        # are dict[str, Any] — at any depth. A future field like
+        # `list[dict[str, Any]]` or `tuple[Mapping[str, Any], ...]`
+        # would slip past a top-level-only check, so this test
+        # walks recursively through every generic alias's args.
         hints = typing.get_type_hints(ReportV01)
         for name, hint in hints.items():
-            origin = typing.get_origin(hint) or hint
-            # The fields are: str, str, Literal, list, list, list,
-            # CacheSummary, TrustFloor, DecisionPolicy,
-            # MethodologyDisclosure, RunManifest. None should be
-            # `dict` with `Any` value type.
-            if origin is dict:
-                args = typing.get_args(hint)
-                # If a future field is dict[str, X], X must be a
-                # concrete type, not Any.
-                assert args[1] is not typing.Any, (
-                    f"ReportV01.{name} is dict[str, Any] — cardinal #6 "
-                    "forbids untyped boundaries on the public schema."
-                )
+            self._assert_no_any_dict(name, hint)
+
+    def _assert_no_any_dict(self, field_name: str, hint: object) -> None:
+        """Recursively assert no `dict[..., Any]` lurks in `hint`."""
+        origin = typing.get_origin(hint)
+        args = typing.get_args(hint)
+        if origin is dict and len(args) == 2 and args[1] is typing.Any:
+            raise AssertionError(
+                f"ReportV01.{field_name} contains dict[..., Any] in its "
+                "type annotation — cardinal #6 forbids untyped boundaries "
+                "on the public schema, at any depth."
+            )
+        # Recurse into every generic-alias argument (handles list[X],
+        # tuple[X, ...], dict[K, V], Mapping[K, V], Union[...], etc.).
+        for arg in args:
+            self._assert_no_any_dict(field_name, arg)
 
 
 # ---------------------------------------------------------------------------
@@ -372,12 +375,11 @@ class TestImportShape:
         from whatif import report as pkg
 
         assert pkg.REPORT_SCHEMA_VERSION == "0.1"
+        assert pkg.REPORT_SCHEMA_URI == REPORT_SCHEMA_URI
         assert pkg.ReportV01 is ReportV01
-        # VerdictState is a typing alias; the import should succeed.
-        assert pkg.VerdictState is not None  # type: ignore[truthy-function]
-
-
-# Catch unused-import warning for Mapping/MappingProxyType — kept for
-# future test additions that exercise default-factory fields.
-_ = Mapping
-_ = MappingProxyType
+        # `VerdictState` is a typing alias (`Literal[...]`), not a
+        # runtime object. `is not None` would be vacuously true even
+        # for `Optional[X]`. `hasattr` is the right check: it asserts
+        # the symbol is reachable through the package, which is what
+        # downstream tooling actually depends on.
+        assert hasattr(pkg, "VerdictState")

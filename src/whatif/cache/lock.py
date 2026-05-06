@@ -114,7 +114,6 @@ import sys
 import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
@@ -135,7 +134,18 @@ import fcntl  # POSIX-only; Windows fails the sys.platform check above
 
 import psutil
 
+from whatif.cache._types import CacheLock, LockFileContent
 from whatif.serialization import canonical_json_bytes, parse_lock_file_content
+
+# Re-export the shared types so `whatif.cache.lock` remains the stable
+# public surface — external callers should not reach into _types.py.
+__all__ = (
+    "LOCK_FAILURE_CODE",
+    "CacheLock",
+    "CacheLockedError",
+    "LockFileContent",
+    "acquire_cache_lock",
+)
 
 # The failure-code registry entry that wraps `CacheLockedError` when
 # Phase 2.6 projection layer converts the exception into a structured
@@ -148,7 +158,29 @@ LOCK_FAILURE_CODE = "cache_lock_unavailable"
 
 _LOCK_FILENAME = ".lock"
 _DEFAULT_STALE_AFTER_SECONDS = 86400  # 24 hours
-_CREATE_TIME_TOLERANCE_SECONDS = 1.0  # psutil create_time precision varies by platform
+
+# How much drift between recorded process_start_time and the live
+# psutil.Process.create_time() is acceptable before we declare the PID
+# recycled. psutil reports create_time in seconds-since-epoch, but its
+# precision and rounding differ across platforms:
+#
+#   - Linux: read from /proc/<pid>/stat field 22 (start time in jiffies
+#     since boot); jiffy precision is typically 0.01s but the conversion
+#     to wall-clock can introduce sub-second drift.
+#   - macOS: read from kinfo_proc.kp_proc.p_starttime (struct timeval,
+#     microsecond precision); generally matches Linux at the second
+#     boundary but can drift by a few hundred ms in samples taken
+#     across the boundary.
+#
+# 1.0s is the conservative tolerance: wider than observed cross-platform
+# drift, narrower than the smallest legitimate "PID was recycled"
+# scenario (the OS typically reuses a PID only after substantial time
+# elapses; truly back-to-back PID reuse with sub-second create_time
+# match would require a test-bench scenario, not production traffic).
+# Tightening below 1.0s risks false-positive PID-reuse detection on
+# slow-clock platforms; widening above 1.0s narrows the legitimate
+# PID-reuse-detection window without practical benefit.
+_CREATE_TIME_TOLERANCE_SECONDS = 1.0
 
 
 class CacheLockedError(Exception):
@@ -180,42 +212,6 @@ class CacheLockedError(Exception):
     actionability promise is satisfied by the registry; the message
     is enrichment.
     """
-
-
-@dataclass(frozen=True, slots=True)
-class LockFileContent:
-    """The structured payload of `.lock`.
-
-    `pid` and `process_start_time` together identify the holding
-    process unambiguously across PID reuse — `os.getpid()` alone can
-    collide with a recycled PID after process death.
-
-    `hostname` is informational; cross-host locks are not supported in
-    v0.1 (the lock primitive is filesystem-local).
-
-    `started_at` is the wall-clock time the lock was acquired
-    (ISO-8601 UTC). Used for age-based stale detection (opt-in) and
-    for the recovery message in `CacheLockedError`.
-    """
-
-    pid: int
-    process_start_time: float
-    hostname: str
-    started_at: str
-
-
-@dataclass(frozen=True, slots=True)
-class CacheLock:
-    """Handle returned by `acquire_cache_lock`.
-
-    Carries the path of the lock file and the recorded `LockFileContent`
-    so callers can log/manifest who acquired it. The actual `fcntl`
-    handle is held internally by the context manager and released on
-    `__exit__`.
-    """
-
-    lock_path: Path
-    content: LockFileContent
 
 
 @contextmanager

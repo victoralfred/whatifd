@@ -69,15 +69,41 @@ def _wait_for_ready(ready_file: Path, timeout_seconds: float = 30.0) -> None:
 
 
 _HOLD_LOCK_SCRIPT = """
-import sys, time
+import sys
+import time
 from pathlib import Path
+
 from whatif.cache.lock import acquire_cache_lock
 
 cache_root = Path(sys.argv[1])
 ready_file = Path(sys.argv[2])
 hold_seconds = float(sys.argv[3])
+# Optional argv[4]: a started_at value to write into the lock file
+# AFTER acquire_cache_lock has written its own. Used by tests that
+# need to simulate "this lock has been held for a long time" without
+# the parent process reaching into the child's lock file (avoids any
+# perceived TOCTOU window between parent overwrite and child fsync —
+# the child does the overwrite itself, atomically, before signalling
+# ready).
+override_started_at = sys.argv[4] if len(sys.argv) > 4 else None
 
-with acquire_cache_lock(cache_root):
+with acquire_cache_lock(cache_root) as lock:
+    if override_started_at is not None:
+        # Re-canonicalize the lock file with an overridden started_at.
+        # The kernel flock is held throughout; this is the same write
+        # path acquire_cache_lock used internally.
+        from whatif.serialization import canonical_json_bytes
+
+        lock.lock_path.write_bytes(
+            canonical_json_bytes(
+                {
+                    "pid": lock.content.pid,
+                    "process_start_time": lock.content.process_start_time,
+                    "hostname": lock.content.hostname,
+                    "started_at": override_started_at,
+                }
+            )
+        )
     ready_file.write_text("locked")
     time.sleep(hold_seconds)
 """
@@ -204,34 +230,32 @@ class TestStaleTakeover:
 
 class TestAgeTakeover:
     def test_age_takeover_default_off(self, tmp_path: Path) -> None:
-        # Lock recorded against a LIVE process (THIS process), with a
-        # very old started_at. Default behavior does NOT take over by
-        # age alone — but the actual fcntl flock isn't held (we just
-        # wrote the file directly), so the test would acquire trivially.
-        # Use a held flock via subprocess to drive the failure path.
+        # Subprocess holds the kernel flock AND writes an old
+        # started_at into the lock file (via the script's optional
+        # 4th argv). Parent attempts acquire — without
+        # allow_age_takeover, the age path is never consulted, so the
+        # parent gets CacheLockedError.
+        #
+        # The child does the overwrite itself (atomically, before
+        # signalling ready), so the parent never reaches into the
+        # child's lock file. Eliminates any perceived TOCTOU window
+        # between a parent overwrite and a child fsync.
         cache_root = tmp_path / "cache"
         ready_file = tmp_path / "child_ready"
-        # Hold the lock for long enough to write an old started_at and
-        # attempt parent acquisition.
+        old_started = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         proc = subprocess.Popen(
-            [sys.executable, "-c", _HOLD_LOCK_SCRIPT, str(cache_root), str(ready_file), "5"],
+            [
+                sys.executable,
+                "-c",
+                _HOLD_LOCK_SCRIPT,
+                str(cache_root),
+                str(ready_file),
+                "5",
+                old_started,
+            ],
         )
         try:
             _wait_for_ready(ready_file)
-            # Manually overwrite the lock content with an old
-            # started_at to simulate a long-running legitimate batch.
-            old_started = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            child_pid = proc.pid
-            (cache_root / ".lock").write_bytes(
-                canonical_json_bytes(
-                    {
-                        "pid": child_pid,
-                        "process_start_time": psutil.Process(child_pid).create_time(),
-                        "hostname": socket.gethostname(),
-                        "started_at": old_started,
-                    }
-                )
-            )
             # Default: age takeover off → CacheLockedError.
             with (
                 pytest.raises(CacheLockedError),

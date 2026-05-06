@@ -111,6 +111,7 @@ import errno
 import os
 import socket
 import sys
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -304,13 +305,37 @@ def acquire_cache_lock(
         # Cleanup is conditional on acquisition: if we never acquired
         # (CacheLockedError path), we must NOT unlock/unlink — the
         # other process still holds it. Closing the fd is always safe.
+        #
+        # Cardinal #1 + cleanup-path discipline: cleanup errors must
+        # NOT mask the original exception (Python re-raises from
+        # finally would override the in-flight error), but they also
+        # must not be silently dropped. We surface them as
+        # `ResourceWarning` — visible to operators by default in CPython
+        # (`-W default::ResourceWarning`) and routable through
+        # `warnings.filterwarnings(...)` for CI/test discipline.
+        # Matches the precedent in `whatif/serialization/decimal.py`.
         if acquired:
-            with contextlib.suppress(OSError):
+            try:
                 fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
-        with contextlib.suppress(OSError):
+            except OSError as e:
+                warnings.warn(
+                    f"flock(LOCK_UN) failed during cache-lock cleanup: {e!r}",
+                    ResourceWarning,
+                    stacklevel=2,
+                )
+        try:
             fp.close()
+        except OSError as e:
+            warnings.warn(
+                f"close() failed during cache-lock cleanup: {e!r}",
+                ResourceWarning,
+                stacklevel=2,
+            )
         if acquired:
             with contextlib.suppress(FileNotFoundError):
+                # FileNotFoundError on unlink is the expected "another
+                # process took over via stale-detection and unlinked
+                # before us" race; benign and not warning-worthy.
                 lock_path.unlink()
 
 

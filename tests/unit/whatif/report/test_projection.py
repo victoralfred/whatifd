@@ -29,7 +29,12 @@ import typing
 
 import pytest
 
-from tests.unit.whatif.report._fixtures import (
+from whatif.decision.failure_codes import make_failure_record
+from whatif.report.models_v01 import REPORT_SCHEMA_URI, REPORT_SCHEMA_VERSION
+from whatif.report.projection import _flatten_verdict, project_to_report_v01
+from whatif.types.verdict import DontShip, Inconclusive, Ship
+
+from ._fixtures import (
     cache_summary,
     dont_ship,
     inconclusive,
@@ -37,10 +42,6 @@ from tests.unit.whatif.report._fixtures import (
     runtime,
     ship,
 )
-from whatif.decision.failure_codes import make_failure_record
-from whatif.report.models_v01 import REPORT_SCHEMA_URI, REPORT_SCHEMA_VERSION
-from whatif.report.projection import _flatten_verdict, project_to_report_v01
-from whatif.types.verdict import DontShip, Inconclusive, Ship
 
 # ---------------------------------------------------------------------------
 # Verdict-state mapping

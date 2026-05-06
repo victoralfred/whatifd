@@ -12,9 +12,30 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 2.6b (configurable primary_endpoint_guard)
+
+- `src/whatif/decision/guards/primary_endpoint.py` — `primary_endpoint_guard`. Reads `policy.primary_endpoints` and dispatches by `EndpointDirection`: `improvement_above_threshold` evaluates against `policy.min_failure_improvement_ratio`; `non_regression_below_threshold` evaluates against `policy.max_baseline_regression_ratio`. Emits the existing finding codes (`failure_improvement_below_threshold`, `baseline_regression_above_threshold`) — no new registry entries needed. Boundary semantics preserved from Phase 2.5b: strict `<` for improvement, strict `>` for regression. Findings emit in `policy.primary_endpoints` order, not cohort discovery order. Multi-metric (one primary metric per cohort today; v0.2 adds Holm correction) is `MethodologyDisclosure.multiplicity`'s concern, not this guard's.
+- `tests/unit/whatif/decision/guards/test_primary_endpoint.py` — 17 tests across default-policy improvement boundary cases, default-policy non-regression boundary cases, both-cohorts-active scenarios, ordering pin (findings in policy order, not cohort order), and the configurable-policy surface (single-endpoint, custom thresholds, unknown cohort silently skipped).
+
+### Changed — Phase 2.6b consolidation
+
+- `src/whatif/decision/guards/__init__.py` — exports `primary_endpoint_guard`; removes the now-deleted `failure_improvement_guard` and `baseline_regression_guard` exports.
+- `src/whatif/decision/verdict.py::_DEFAULT_GUARDS` — replaces the Phase 2.5b hardcoded pair with `primary_endpoint_guard`. The default guard chain shrinks from 5 to 4 guards; behavior on the default policy is identical.
+- `tests/unit/whatif/decision/guards/test_layer_composition.py` — updated `_LAYER` to `(primary_endpoint, practical_delta)`; the test assertions still pin the same finding-code ordering for the catastrophe scenario (because `primary_endpoint_guard` emits in `policy.primary_endpoints` order, which defaults to failure-then-baseline).
+
+### Removed — Phase 2.6b
+
+- `src/whatif/decision/guards/failure_improvement.py` — consolidated into `primary_endpoint_guard`.
+- `src/whatif/decision/guards/baseline_regression.py` — consolidated into `primary_endpoint_guard`.
+- `tests/unit/whatif/decision/guards/test_failure_improvement.py` and `test_baseline_regression.py` — coverage migrated into `test_primary_endpoint.py`.
+
+### Added — Phase 7 cascade entry (PR #26 review F2)
+
+- Cascade-catalog "Inconclusive renderer must distinguish floor_failures from blocking_findings" — files the rendering rule for the floor-failure-Inconclusive case so a renderer that prints `blocking_findings` without also surfacing `floor_failures` can't ship without addressing it. Cross-references cardinal #3 (disclosure necessary but not sufficient) and walkthrough scenario 4 as the empirical pin.
+
 ### Added — Phase 2.6a (verdict computation)
 
-- `src/whatif/decision/verdict.py` — `compute_verdict(cohort_results, floor, policy, *, guards=None) -> Verdict`. Single entry point composing the existing decision pipeline: `evaluate_floor` (cardinal #2 structural gate) + `run_guards` (cardinal #10 layer chain) + severity-sorted verdict construction. Branches: any `blocks_all` finding → `Inconclusive` (operational catastrophe), any `blocks_ship` finding → `DontShip`, else → `Ship` with the `FloorPassedProof`. The `Ship` branch is the only consumer of the witness token; structurally cannot construct without it. Floor failures produce `Inconclusive` regardless of guard findings (floor precedence is absolute). v0.1 default guard chain has 5 guards in cardinal-#10 layer order: failure_improvement, baseline_regression, practical_delta, improvement_observation, ci_availability.
+- `src/whatif/decision/verdict.py` — `compute_verdict(cohort_results, floor, policy, *, guards=None) -> Verdict`. Single entry point composing the existing decision pipeline: `evaluate_floor` (cardinal #2 structural gate) + `run_guards` (cardinal #10 layer chain) + severity-sorted verdict construction. Branches: any `blocks_all` finding → `Inconclusive` (operational catastrophe), any `blocks_ship` finding → `DontShip`, else → `Ship` with the `FloorPassedProof`. The `Ship` branch is the only consumer of the witness token; structurally cannot construct without it. Floor failures produce `Inconclusive` regardless of guard findings (floor precedence is absolute). v0.1 default guard chain (as of Phase 2.6a) had 5 guards in cardinal-#10 layer order: failure_improvement, baseline_regression, practical_delta, improvement_observation, ci_availability. Phase 2.6b below consolidates the first two into `primary_endpoint`, shrinking the chain to 4.
 - `tests/unit/whatif/decision/test_verdict.py` — 13 tests covering Ship branch (clean run; cohort_results carried), DontShip branch (each blocking finding type — baseline regression, failure improvement below threshold, practical delta below epsilon), Inconclusive via floor failures (min_scored below floor; floor failure overrides clean findings), Inconclusive via blocks_all (CI unavailable; blocks_all overrides blocks_ship), cardinal-#2 trust-chain pins (Ship carries the FloorPassedProof from evaluate_floor; DontShip has no proof field), and the type-input contract (non-TrustFloor raises TypeError per cardinal #1).
 - Phase 2.6a deliberately does NOT consult `policy.accept_no_ci` — the escape-hatch arithmetic is Phase 2.6c work. Tests pin the unconditional emission so Phase 2.6c can flip them cleanly.
 

@@ -724,6 +724,8 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 2. ~~PR adding `ci_unavailable_for_required_cohort` to `FINDING_CODE_REGISTRY` + `FIX_SUGGESTION_REGISTRY` → land `ci_availability_guard`~~ → **resolved by Phase 2.5c**: finding code added (severity=blocks_all, derived_from_failures="always"); fix-suggestion entry added with `--accept-no-ci` escape-hatch guidance; `ci_availability_guard` lands and emits one finding per affected required cohort. Pending: failure-record plumbing (`derived_from_failures` placeholder used; real wiring in Phase 2.6 / projection layer).
 3. Phase 3 cache subsystem PRs → cache metadata reaches `CohortResult` via projection layer → land `cache_staleness_guard`.
 4. Phase 2.6 verdict computation PR → `primary_endpoint_guard` lands as part of the multi-endpoint resolution. Also: `ci_availability_guard`'s emitted findings need real `derived_from_failures` wiring once failure records are threaded end-to-end (placeholder `["pending_phase_2_6_plumbing"]` is in place today).
+   - **Partial resolution by Phase 2.6b (PR after #26):** `primary_endpoint_guard` lands as a configurable rate-based guard that consolidates the Phase 2.5b `failure_improvement_guard` + `baseline_regression_guard` pair. Reads `policy.primary_endpoints` and dispatches by direction (`improvement_above_threshold`, `non_regression_below_threshold`); emits the existing finding codes (`failure_improvement_below_threshold`, `baseline_regression_above_threshold`) — no registry change. The two hardcoded Phase 2.5b guards are deleted; their tests migrate to `test_primary_endpoint.py`.
+   - **Remaining for Phase 2.6c:** real `derived_from_failures` wiring on `ci_availability_guard` (replace `_PHASE_2_6_PLACEHOLDER`); `accept_no_ci` arithmetic in `compute_verdict`.
 
 ### Guard pre-parse caching — Phase 2.6 verdict computation
 
@@ -758,6 +760,47 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 **Resolution:** Phase 5 — `format_decimal_string` lands and pins the canonical shape; `parse_decimal_string` tightens warning → error. The two functions become a round-trip pair: `parse(format(x)) == x` for every numeric x in the determinism budget.
 
 **Trigger for resolution:** Phase 5 serialization layer PR.
+
+### Inconclusive renderer must distinguish floor_failures from blocking_findings
+
+**Source decision:** PR #26 (Phase 2.6a) reviewer F2 noted that the floor-failure-Inconclusive case populates BOTH `Inconclusive.floor_failures` AND `Inconclusive.blocking_findings` from guard outputs. The data structure is honest: the two fields are distinct on the type. But a renderer that prints `blocking_findings` without also surfacing `floor_failures` could mislead a reviewer into thinking the guard finding drove the verdict — when in fact the floor failure is the structural reason.
+
+**Rippled to:**
+- `whatif/render/markdown.py` (Phase 7) — the Inconclusive renderer must:
+  1. ALWAYS surface `floor_failures` first (cardinal #2 structural reason takes precedence).
+  2. Surface `blocking_findings` SECOND, framed as "guard observations" rather than "verdict drivers".
+  3. Never print `blocking_findings` alone for a floor-failure verdict (the misleading-class case).
+- `tests/integration/test_walkthroughs.py` (Phase 9) — walkthrough scenario 4 (Inconclusive insufficient sample) is the empirical reviewer for this rendering rule. The committed walkthrough Markdown shows `floor_failures` first; the renderer test must produce identical output.
+- Doctrine cross-reference: cardinal #3 ("disclosure necessary but not sufficient") — the renderer is the disclosure surface; if it buries the floor reason, disclosure has been compromised even though the data was honest.
+
+**Status:** open
+
+**Resolution:** Phase 7 (rendering) — Inconclusive renderer reads both fields and orders the output per the rule above. Walkthrough scenario 4 round-trip test pins the contract.
+
+**Trigger for resolution:** Phase 7 renderer PR.
+
+### Direction-keyed finding codes for v0.2 multi-cohort `primary_endpoint_guard`
+
+**Source decision:** PR #27 (Phase 2.6b) introduced `primary_endpoint_guard` reading `policy.primary_endpoints`. The guard reuses Phase 2.3's existing finding codes (`failure_improvement_below_threshold`, `baseline_regression_above_threshold`), which hardcode the v0.1 default cohort identities (`failure`, `baseline`) into the code namespace. The findings agent reviewing PR #27 (F1) flagged that this leaks v0.1 cohort assumptions into the public schema: a v0.2 custom policy declaring `PrimaryEndpoint(cohort="warmup", direction="improvement_above_threshold")` would emit `failure_improvement_below_threshold` even though the cohort is `"warmup"` — code and message would disagree about which cohort is at fault. Reader-facing tooling that filters on finding codes would mis-categorize non-canonical cohort runs.
+
+**Why this is acceptable for v0.1:** v0.1 is failure-rescue-only (Phase 0.3 audience-distribution decision). Default cohorts are `failure` + `baseline` only; the finding-code names are truthful for the default. No v0.1 shipped path exercises the mismatch.
+
+**Rippled to:**
+- `src/whatif/decision/guards/primary_endpoint.py` — dispatch logic emits direction-keyed codes (`primary_improvement_below_threshold`, `primary_non_regression_above_threshold`); the cohort name moves to `details["cohort"]`.
+- `src/whatif/decision/finding_codes.py::FINDING_CODE_REGISTRY` — adds the new codes; deprecates the v0.1 codes (kept for one minor cycle per the schema-versioning promotion-path rules in `references/contracts.md`).
+- `src/whatif/decision/fix_suggestions.py::FIX_SUGGESTION_REGISTRY` — adds matching fix-suggestion entries for the new codes.
+- `tests/unit/whatif/decision/guards/test_primary_endpoint.py` — adds a `TestNonCanonicalCohortNames` class exercising the configurable surface with custom cohort names (e.g. `"warmup"`, `"regression"`); the test would have caught the v0.1 mismatch empirically.
+- Doctrine cross-reference: cardinal #6 (public schema is hand-written; internal types refactor freely) — finding codes ARE part of the public schema; the rename is a v0.2 minor bump per the schema versioning rules.
+
+**Sibling concerns folded into this entry (PR #27 bot iter-3):**
+- **Per-endpoint thresholds.** `_evaluate_non_regression` reads `policy.max_baseline_regression_ratio` regardless of which cohort the endpoint targets. A v0.2 `PrimaryEndpoint(cohort="warmup", direction="non_regression_below_threshold")` would silently use the baseline threshold. Symmetric for `_evaluate_improvement`. v0.2 should thread the threshold through `PrimaryEndpoint` (e.g., `threshold: float | None = None` falling back to the policy-level default by direction) so per-endpoint thresholds are explicit.
+- **`primary_endpoints` cohorts ⊆ `required_cohorts` invariant.** Today both fields are independent on `DecisionPolicy`; no validator enforces the subset relation. A user who declares an endpoint on a non-required cohort sees the endpoint silently abstain when the cohort is missing (the guard's intentional silent-skip + the floor's `required_cohort_present` rule catches missing REQUIRED cohorts only). v0.2 either adds a Pydantic validator on `DecisionPolicy` (ergonomic for misconfiguration) OR documents this as best-effort-by-design. The decision lands with the rest of the multi-cohort surface.
+
+**Status:** open (v0.2 work — not blocking v0.1 schema freeze).
+
+**Resolution:** v0.2 minor release. New direction-keyed codes shipped; v0.1 codes deprecated with one-minor-cycle notice; promotion-path rules in `references/contracts.md` followed.
+
+**Trigger for resolution:** v0.2 minor release PR (concurrent with `regression_check` cohort expansion or other multi-cohort work).
 
 ## Resolved cascades
 

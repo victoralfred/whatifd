@@ -34,18 +34,18 @@ the `FloorPassedProof`. The witness token is structurally required —
 
 ## v0.1 guard registration
 
-Phase 2.6a uses the five landed guards (per cardinal #10's three-layer
+Phase 2.6b uses four landed guards (cardinal #10's three-layer
 structure plus the operational CI-availability check):
-- `failure_improvement_guard` (rate-based primary endpoint, blocks_ship)
-- `baseline_regression_guard` (symmetric non-regression, blocks_ship)
+- `primary_endpoint_guard` (rate-based, configurable via
+  `policy.primary_endpoints`, blocks_ship) — replaces the Phase 2.5b
+  hardcoded pair (`failure_improvement_guard` + `baseline_regression_guard`)
+  with a dispatcher that reads each declared `PrimaryEndpoint` and
+  emits the matching finding code based on direction.
 - `practical_delta_guard` (magnitude floor, blocks_ship)
 - `improvement_observation_guard` (observational info)
 - `ci_availability_guard` (cohort-level CI availability, blocks_all)
 
-`primary_endpoint_guard` is deferred to Phase 2.6b along with the
-`DecisionPolicy.primary_endpoints` configurable; today's primary
-endpoint is the failure-rescue rate (handled by `failure_improvement_guard`).
-`cache_staleness_guard` is deferred to Phase 3.
+`cache_staleness_guard` is deferred to Phase 3 (cache subsystem).
 
 ## accept_no_ci handling — Phase 2.6c work
 
@@ -70,11 +70,10 @@ from collections.abc import Sequence
 from whatif.decision.floor import FloorFailureSet, FloorPassedProof, evaluate_floor
 from whatif.decision.guards import (
     Guard,
-    baseline_regression_guard,
     ci_availability_guard,
-    failure_improvement_guard,
     improvement_observation_guard,
     practical_delta_guard,
+    primary_endpoint_guard,
     run_guards,
 )
 from whatif.types.cohort import CohortResult
@@ -83,13 +82,19 @@ from whatif.types.verdict import DontShip, Inconclusive, Ship, Verdict
 
 # v0.1 default guard chain, in registration order. Order matches the
 # cardinal #10 layer structure: rate-based primary endpoints first
-# (load-bearing), magnitude layer, observational layer, then
-# operational guards (CI availability). Test_layer_composition pins
-# the no-mutation contract; the per-guard tests pin the boundary
-# semantics.
+# (load-bearing, configurable via `policy.primary_endpoints`),
+# magnitude layer, observational layer, then operational guards
+# (CI availability). Test_layer_composition pins the no-mutation
+# contract; the per-guard tests pin the boundary semantics.
+#
+# Phase 2.6b consolidation: `primary_endpoint_guard` replaces the
+# Phase 2.5b `failure_improvement_guard` and `baseline_regression_guard`
+# pair. The configurable guard reads `policy.primary_endpoints` and
+# dispatches by direction; for the default policy it emits the same
+# findings the hardcoded pair did. Cascade-catalog "Phase 2.5 deferred
+# guards" entry's bullet 4 partial resolution.
 _DEFAULT_GUARDS: tuple[Guard, ...] = (
-    failure_improvement_guard,
-    baseline_regression_guard,
+    primary_endpoint_guard,
     practical_delta_guard,
     improvement_observation_guard,
     ci_availability_guard,

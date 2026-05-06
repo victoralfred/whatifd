@@ -20,11 +20,14 @@ without forward references.
 """
 
 from whatif.replay.kernel import replay_one_trace
+from whatif.replay.pipeline import ReplayInputBundle, replay_stream
 from whatif.replay.result import ReplayFailure, ReplayResult, ReplaySuccess
 
 __all__ = [
     "ReplayFailure",
+    "ReplayInputBundle",
     "ReplayResult",
     "ReplaySuccess",
     "replay_one_trace",
+    "replay_stream",
 ]

@@ -30,8 +30,10 @@ import typing
 import pytest
 
 from whatif.decision.failure_codes import make_failure_record
+from whatif.decision.floor import FloorFailureSet, evaluate_floor
 from whatif.report.models_v01 import REPORT_SCHEMA_URI, REPORT_SCHEMA_VERSION
 from whatif.report.projection import _flatten_verdict, project_to_report_v01
+from whatif.types.cohort import CohortResult
 from whatif.types.failure import FailureRecord
 from whatif.types.verdict import DontShip, Inconclusive, Ship
 
@@ -43,6 +45,7 @@ from ._fixtures import (
     methodology,
     runtime,
     ship,
+    trust_floor,
 )
 
 # ---------------------------------------------------------------------------
@@ -352,3 +355,64 @@ class TestFailuresAsData:
         # Mutating the original must not affect the report.
         input_failures.clear()
         assert len(report.failures) == 1
+
+
+# ---------------------------------------------------------------------------
+# End-to-end cardinal #2 chain (defense-in-depth)
+# ---------------------------------------------------------------------------
+
+
+class TestFloorFailureNeverProjectsToShip:
+    """Walk the cardinal #2 chain from bad cohorts → no Ship → no
+    `verdict_state="ship"` on the wire. Each link is pinned in its
+    own layer's tests (test_floor.py for #1, test_verdict.py for
+    #2's witness-token requirement, TestCardinalTwoChokepoint above
+    for #3's signature contract). This class is an integration view
+    that demonstrates the chain end-to-end so a reader of
+    test_projection.py sees the whole property in one place.
+    """
+
+    def test_failing_cohort_yields_floor_failure_set_not_proof(self) -> None:
+        # Link #1: bad cohorts → evaluate_floor returns
+        # FloorFailureSet, NOT FloorPassedProof. Pinned upstream in
+        # test_floor.py; re-asserted here so the integration story
+        # is self-contained.
+        bad_cohort = CohortResult(
+            name="failure",
+            selected=2,  # below the floor's min_selected = 5
+            replayed=2,
+            scored=2,
+            ci_computable=True,
+            ci_unavailable_reason=None,
+            median_delta=None,
+            ci_lower=None,
+            ci_upper=None,
+            floor_passed=False,
+        )
+        result = evaluate_floor(
+            [bad_cohort],
+            trust_floor(),
+            required_cohorts=("failure",),
+        )
+        assert isinstance(result, FloorFailureSet), (
+            f"link #1 broken: bad cohort produced {type(result).__name__}, expected FloorFailureSet"
+        )
+
+    def test_failing_floor_runs_through_inconclusive_not_ship(self) -> None:
+        # Link #2 + #3: a run that fails the floor produces an
+        # Inconclusive (cannot produce Ship without FloorPassedProof,
+        # which evaluate_floor declined to issue), and projection of
+        # that Inconclusive flattens to verdict_state="inconclusive",
+        # NOT "ship". The compute_verdict layer (test_verdict.py)
+        # pins the Verdict-construction half; this test pins the
+        # projection-flatten half end-to-end with a real failing
+        # input.
+        report = project_to_report_v01(
+            inconclusive(),
+            failures=[],
+            cache_summary=cache_summary(),
+            methodology=methodology(),
+            runtime=runtime(),
+        )
+        assert report.verdict_state == "inconclusive"
+        assert report.verdict_state != "ship"

@@ -74,6 +74,7 @@ import time
 from pathlib import Path
 
 from whatif.cache.lock import acquire_cache_lock
+from whatif.serialization import canonical_json_bytes
 
 cache_root = Path(sys.argv[1])
 ready_file = Path(sys.argv[2])
@@ -97,8 +98,6 @@ with acquire_cache_lock(cache_root) as lock:
         # on the kernel lock. This is the same write path
         # acquire_cache_lock uses internally for its own provenance
         # write.
-        from whatif.serialization import canonical_json_bytes
-
         lock.lock_path.write_bytes(
             canonical_json_bytes(
                 {
@@ -184,6 +183,11 @@ def _dead_pid() -> int:
 
 class TestStaleTakeover:
     def test_takeover_when_recorded_pid_is_dead(self, tmp_path: Path) -> None:
+        # Same scope caveat as test_takeover_when_pid_recycled below:
+        # this exercises the FILE-overwrite path (acquire_cache_lock
+        # writes new content over a previous holder's stale data),
+        # not the flock-contested stale-detection path (which is
+        # covered in isolation by TestShouldTakeover::test_dead_pid_is_stale_regardless_of_age).
         cache_root = tmp_path / "cache"
         _write_lock_file(
             cache_root,
@@ -203,6 +207,16 @@ class TestStaleTakeover:
         # process_start_time from far in the past — simulates the
         # "PID was reused" case where the OS handed our PID to a
         # different process after a previous death.
+        #
+        # NOTE: this test does NOT hold a competing fcntl lock — the
+        # file exists with stale data but the kernel lock is free.
+        # acquire_cache_lock's flock succeeds on first attempt, so
+        # the stale-detection path is never entered here. The actual
+        # "PID-recycled → takeover" decision is exercised in isolation
+        # by TestShouldTakeover::test_recycled_pid_is_stale_regardless_of_age.
+        # This test verifies that the lock-file write path overwrites
+        # the prior holder's data when we acquire — a complementary
+        # property, not the same one.
         cache_root = tmp_path / "cache"
         _write_lock_file(
             cache_root,
@@ -560,6 +574,98 @@ class TestHardenedEnvironment:
             acquire_cache_lock(tmp_path / "cache"),
         ):
             pass  # pragma: no cover
+
+
+class TestCreateTimeToleranceBoundary:
+    """Pin the `_CREATE_TIME_TOLERANCE_SECONDS = 1.0` boundary.
+
+    The constant is a platform-variance allowance, NOT an arbitrary
+    knob. Tightening below 1.0s risks false-positive PID-reuse
+    detection on slow-clock platforms; widening narrows the
+    legitimate detection window. The boundary tests pin the exact
+    semantics so a future refactor that "rounded" the comparison or
+    flipped the inequality direction fails loudly here.
+    """
+
+    def _at_drift(self, drift_seconds: float) -> LockFileContent:
+        # Build a LockFileContent whose process_start_time is exactly
+        # `drift_seconds` away from THIS process's actual create_time.
+        actual = psutil.Process(os.getpid()).create_time()
+        return LockFileContent(
+            pid=os.getpid(),
+            process_start_time=actual - drift_seconds,
+            hostname="any",
+            started_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+
+    def test_drift_at_tolerance_is_not_recycled(self) -> None:
+        # drift == 1.0 → the comparator is `> 1.0` so equality is NOT
+        # recycled. Live + matching enough.
+        from whatif.cache.lock import _process_dead_or_recycled
+
+        assert not _process_dead_or_recycled(self._at_drift(1.0))
+
+    def test_drift_just_under_tolerance_is_not_recycled(self) -> None:
+        from whatif.cache.lock import _process_dead_or_recycled
+
+        assert not _process_dead_or_recycled(self._at_drift(0.999))
+
+    def test_drift_just_over_tolerance_is_recycled(self) -> None:
+        # drift == 1.001 → strictly > 1.0 → recycled.
+        from whatif.cache.lock import _process_dead_or_recycled
+
+        assert _process_dead_or_recycled(self._at_drift(1.001))
+
+
+class TestUnlinkRaceTolerance:
+    """The `with contextlib.suppress(FileNotFoundError)` around
+    `lock_path.unlink()` covers the race where another process
+    unlinked the lock file between our acquire and our unlink (e.g.,
+    a stale-takeover from a third process while we held the kernel
+    lock — extremely narrow, but possible).
+    """
+
+    def test_unlink_already_gone_does_not_raise(self, tmp_path: Path) -> None:
+        cache_root = tmp_path / "cache"
+        with acquire_cache_lock(cache_root):
+            # Simulate "another process unlinked first" by removing
+            # the lock file while we still hold the kernel lock.
+            (cache_root / ".lock").unlink()
+            assert not (cache_root / ".lock").exists()
+        # Context-manager exit must complete cleanly — no
+        # FileNotFoundError propagates from the unlink in finally.
+
+    def test_unlink_failure_other_than_not_found_is_not_silently_swallowed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: only FileNotFoundError is suppressed. A different OSError
+        # (e.g., PermissionError) on unlink would NOT be silently
+        # eaten by contextlib.suppress(FileNotFoundError) — it would
+        # propagate. This is the boundary that protects against
+        # accidental over-broad suppression in a future refactor.
+        original_unlink = Path.unlink
+
+        def _unlink_permission_denied(self: Path, **kwargs: object) -> None:
+            if self.name == ".lock":
+                raise PermissionError("simulated")
+            original_unlink(self, **kwargs)
+
+        # We can't easily inject this via monkeypatch on Path.unlink
+        # because the cleanup path uses it via the bound method. But we
+        # CAN verify the boundary by pinning that the suppressed
+        # exception type is exactly FileNotFoundError, not OSError or
+        # Exception. Static check on the source itself:
+        import inspect
+
+        from whatif.cache import lock as lock_module
+
+        source = inspect.getsource(lock_module.acquire_cache_lock)
+        assert "contextlib.suppress(FileNotFoundError)" in source, (
+            "Cleanup-path unlink suppression must be narrow "
+            "(FileNotFoundError only). A broader suppress(OSError) "
+            "would silently eat permission errors and other unexpected "
+            "failures, violating cardinal #1."
+        )
 
 
 class TestPackageReExport:

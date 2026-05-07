@@ -26,6 +26,10 @@ Phase 9B: Real-adapter smoke                    (product proof; small suite over
 Phase 10: Release packaging                     (docs, examples, PyPI publication)
 ```
 
+**On the non-monotonic numbering (4A → 5 → … → 9A → 4B → 9B):** the list is build-order, not numeric-order. Phase 4 and Phase 9 each split into a structural half (4A/9A) that lands early to unblock other work, and a real-adapter half (4B/9B) that lands later because it depends on the structural half plus external SDK integration. The numbers stay tied to "which phase concept" (adapters / integration); the letters carry the build-order. Reading top-to-bottom is the correct execution sequence.
+
+**Cascade-catalog check at 4B and 9B closure:** when either Phase 4B or Phase 9B is formally gated as complete, do a sweep of `references/cascade-catalog.md` for any entries whose Status was "open pending real adapter" or "open pending integration smoke" — splitting these phases changes the granularity at which downstream cascades resolve, and an entry that previously read "blocked on Phase 4" may now be load-bearing on 4B specifically (or already satisfied by 4A). The split itself does not auto-resolve any catalog entries; the reviewer must walk them.
+
 ## Phase 0: Walkthroughs and conceptual model (paper artifacts)
 
 **Goal:** Pressure-test the design by writing the actual rendered output for six scenarios. The walkthroughs are the empirical reviewer.

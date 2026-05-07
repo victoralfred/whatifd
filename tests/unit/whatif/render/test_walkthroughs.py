@@ -158,6 +158,19 @@ class TestThreeFormatConsistency:
 
 
 class TestScenarioStructure:
+    """Per-scenario structural pins.
+
+    Note: these tests deliberately do NOT consume the shared
+    `scenario` fixture. They each target ONE specific scenario by
+    importing its builder directly so the assertion can pin
+    scenario-specific shape (e.g., scenario 4's floor table,
+    scenario 5's cache_lock fix-suggestion summary). This excludes
+    them from the parameterized cross-format run, which is the
+    intended trade-off — the parameterized tests in the classes
+    above cover the cross-format properties; this class covers
+    per-scenario specifics.
+    """
+
     def test_scenario_2_dont_ship_regression_surfaces_baseline_regression(
         self,
     ) -> None:

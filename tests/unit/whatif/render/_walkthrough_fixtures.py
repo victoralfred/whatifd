@@ -33,6 +33,7 @@ from typing import NamedTuple
 
 from whatif.cache.summary import CachePolicySnapshot, CacheSummary
 from whatif.decision.finding_codes import make_decision_finding
+from whatif.report.models_v01 import ReportV01
 from whatif.types.cohort import CohortResult, FloorFailure
 from whatif.types.failure import FailureRecord
 from whatif.types.primitives import DecimalString
@@ -407,10 +408,24 @@ def scenario_5_inconclusive_cache_corruption():
     )
 
 
-def scenario_6_rerun_after_fix():
-    """Rerun-after-fix: post-fix Ship verdict (same shape as scenario 1
-    but represents a recovery path)."""
-    return scenario_1_clean_ship()
+def scenario_6_rerun_after_fix() -> ReportV01:
+    """Rerun-after-fix: post-fix Ship verdict.
+
+    Structurally similar to scenario 1 (clean Ship), but represents
+    the recovery path from a previous Inconclusive run. Distinguished
+    via the runtime's `experiment_id` so tests that assert on the
+    walkthrough identity (vs scenario 1) have a discriminator. If
+    scenario 6's walkthrough later diverges in stats, this builder
+    is the place to override.
+    """
+    import dataclasses
+
+    base = scenario_1_clean_ship()
+    rerun_runtime = dataclasses.replace(
+        base.runtime,
+        experiment_id="rerun-after-fix-001",
+    )
+    return dataclasses.replace(base, runtime=rerun_runtime)
 
 
 class Scenario(NamedTuple):
@@ -424,7 +439,7 @@ class Scenario(NamedTuple):
 
     name: str
     expected_verdict_state: str
-    builder: Callable[[], object]
+    builder: Callable[[], ReportV01]
 
 
 # Map by scenario number for parameterized testing.

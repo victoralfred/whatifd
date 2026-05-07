@@ -76,7 +76,9 @@ class TestPipelineFailurePaths:
 
     def test_delta_fn_exception_recorded_as_failure(self) -> None:
         # delta_fn raises on one specific trace; that trace lands in
-        # ReportV01.failures with code='delta_fn_raised', cohort and
+        # ReportV01.failures with code='scorer_unavailable' (the
+        # registered stand-in for delta_fn since delta_fn IS the
+        # 9A.1 scoring step), trace_id matches, and
         # trace_id populated, and is excluded from the cohort's
         # scored count. The pipeline does NOT crash.
         fx = scenario_clean_ship()
@@ -95,8 +97,20 @@ class TestPipelineFailurePaths:
             methodology=fx.methodology,
             cache_summary=fx.cache_summary,
         )
+        # Trace-scope FailureRecords carry trace_id and have
+        # cohort=None (per make_failure_record's scope rules);
+        # the cohort is implicit from the trace.
+        #
+        # Audit (Phase 9A.4 review): no production code in
+        # src/whatif/ reads `FailureRecord.cohort` for routing — the
+        # field is informational only. Cohort-routed handling
+        # happens via `ReportV01.cohort_results[*].floor_failures`,
+        # which is a different field on a different type. So
+        # dropping the per-trace cohort assertion here is safe; the
+        # cohort signal for trace-scope failures lives on the
+        # adjacent CohortResult, not on the FailureRecord itself.
         assert any(
-            f.code == "delta_fn_raised" and f.trace_id == "f-00" and f.cohort == "failure"
+            f.code == "scorer_unavailable" and f.trace_id == "f-00" and f.scope == "trace"
             for f in report.failures
         )
         # Failed trace counted toward selected but not scored.

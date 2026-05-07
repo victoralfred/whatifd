@@ -43,6 +43,7 @@ from dataclasses import dataclass
 
 from whatif.adapters.protocols import RawTrace, TraceSource
 from whatif.cache.summary import CacheSummary
+from whatif.decision.failure_codes import make_failure_record
 from whatif.decision.floor import compute_cohort_floor_failures
 from whatif.decision.verdict import compute_verdict
 from whatif.report.models_v01 import ReportV01
@@ -64,13 +65,15 @@ class _CohortBuckets:
     deltas: tuple[float, ...]
 
 
-# Failure code emitted when `delta_fn` raises. Cardinal #1: an
-# adapter-side delta computation that throws is structured data,
-# not a pipeline crash. The FailureRecord lands in
-# `ReportV01.failures` and the affected trace is excluded from the
-# cohort's scored count. Phase 9A.4 (failure injection) extends
-# this with the full registry coverage.
-_DELTA_FN_FAILURE_CODE = "delta_fn_raised"
+# Phase 9A.1 emits `scorer_unavailable` when `delta_fn` raises:
+# delta_fn IS the scoring step in the 9A.1 shortcut (real paired
+# scoring through the stub's Scorer is Phase 9A.2+ work that needs
+# a Runner in scope), so the registered `score`-stage code with
+# transient-error semantics is the right fit. Phase 9A.4 routes
+# this through `make_failure_record` so the registry is the single
+# source of truth — no more `delta_fn_raised` literal that bypassed
+# the registry validation.
+_PIPELINE_SCORER_FAILURE_CODE = "scorer_unavailable"
 
 
 def run_pipeline(
@@ -132,25 +135,35 @@ def _bucket_by_cohort(
         try:
             bucket_deltas.append(delta_fn(rt))
         except Exception as exc:  # boundary catch; structured into FailureRecord per cardinal #1
-            # Preserve the original exception type in details so
-            # Phase 9A.4 failure-injection diagnostics can match on
-            # exc class without re-parsing the free-form message.
-            # Cardinal #6: details is `Mapping[str, JsonPrimitive]`,
-            # so the type name (str) is the right shape — full
-            # tracebacks stay in the Python exception chain via the
-            # raise-from semantics if a future refactor wraps in a
-            # custom exception.
+            # Construct via `make_failure_record` so the registry
+            # validates the code, supplies stage/scope defaults, and
+            # enforces the required-details contract. `provider` and
+            # `reason` are the registered required keys for
+            # `scorer_unavailable`; `exc_type` is an extension key
+            # (extra keys allowed per cardinal #6 extension point).
             failures.append(
-                FailureRecord(
+                make_failure_record(
+                    _PIPELINE_SCORER_FAILURE_CODE,
                     id=f"delta-fn-{rt.trace_id}",
-                    code=_DELTA_FN_FAILURE_CODE,
-                    stage="score",
-                    scope="trace",
                     message=f"delta_fn raised: {exc}",
                     trace_id=rt.trace_id,
-                    cohort=rt.cohort,
-                    retryable=False,
-                    details={"exc_type": type(exc).__name__},
+                    details={
+                        # TODO(Phase 4B): replace the hardcoded
+                        # "stub" with a real provider identifier
+                        # sourced from the scorer adapter's
+                        # `adapter_metadata().adapter_id`. Forensic
+                        # reports under the real adapter MUST
+                        # attribute scorer failures to the actual
+                        # provider (e.g., "inspect_ai", "anthropic")
+                        # so the audit trail is accurate. The 9A.1
+                        # shortcut hardcodes "stub" because the
+                        # pipeline doesn't yet receive the scorer
+                        # in this scope; that wires in 9A.2+ /
+                        # Phase 4B.
+                        "provider": "stub",
+                        "reason": str(exc),
+                        "exc_type": type(exc).__name__,
+                    },
                 )
             )
     buckets = tuple(

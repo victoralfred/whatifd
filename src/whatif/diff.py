@@ -217,6 +217,10 @@ def _diff_findings(prev: dict[str, Any], new: dict[str, Any]) -> tuple[FindingDe
                 message=f.get("message", ""),
             )
         )
+    # Stable order regardless of the {set difference} iteration:
+    # added rows first (operators triage what's NEW), then removed,
+    # each group sorted by (code, severity).
+    deltas.sort(key=lambda d: (0 if d.direction == "added" else 1, d.code, d.severity))
     return tuple(deltas)
 
 
@@ -301,7 +305,10 @@ def _pair(prev: int, new: int) -> str:
 
 def _pair_str(prev: str | None, new: str | None) -> str:
     """Render a string-valued (median delta) cell. `None` rendered
-    as `n/a`."""
+    as `n/a`. Both-None compares equal as the same `n/a` string, so
+    a cohort that lacks a median in both reports renders as a single
+    `n/a` (unchanged) rather than `n/a→n/a` — the unchanged path is
+    deliberate for None-equality."""
     p = prev if prev is not None else "n/a"
     n = new if new is not None else "n/a"
     if p == n:
@@ -322,6 +329,7 @@ def _verdict_unchanged_and_nothing_else(report: DiffReport) -> bool:
             or c.scored_prev != c.scored_new
             or c.improved_prev != c.improved_new
             or c.regressed_prev != c.regressed_new
+            or c.unchanged_prev != c.unchanged_new
             or c.median_delta_prev != c.median_delta_new
         ):
             return False

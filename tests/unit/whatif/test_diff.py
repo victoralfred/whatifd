@@ -66,6 +66,23 @@ class TestLoadReport:
         with pytest.raises(DiffError, match="must parse to a mapping"):
             load_report(p)
 
+    def test_unreadable_file_raises_diff_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Cardinal #1: OSError at the file-read boundary surfaces as
+        # typed DiffError, not a raw OSError. Mock-based because
+        # producing a real unreadable file portably (chmod 000) is
+        # flaky under test-runner privileges.
+        p = tmp_path / "ok.json"
+        p.write_text(json.dumps(_base_report()), encoding="utf-8")
+
+        def _raise(*args: object, **kwargs: object) -> str:
+            raise OSError("simulated read failure")
+
+        monkeypatch.setattr(Path, "read_text", _raise)
+        with pytest.raises(DiffError, match="cannot read"):
+            load_report(p)
+
     def test_round_trip(self, tmp_path: Path) -> None:
         p = tmp_path / "ok.json"
         p.write_text(json.dumps(_base_report()), encoding="utf-8")
@@ -197,6 +214,32 @@ class TestRenderDiffMarkdown:
         # Changed cells render as prev→new (delta); unchanged as bare value.
         assert "8→9" in out
         assert "+0.05→+0.10" in out
+
+    def test_unchanged_count_shift_is_not_no_change(self) -> None:
+        # Pin: a cohort where only `unchanged_count` shifts (e.g.,
+        # rebalancing between unchanged and improved missed the
+        # improved counter) MUST NOT emit "(No changes detected.)".
+        report = self._empty_report(
+            cohorts=(
+                CohortDelta(
+                    name="failure",
+                    selected_prev=10,
+                    selected_new=10,
+                    scored_prev=8,
+                    scored_new=8,
+                    improved_prev=2,
+                    improved_new=2,
+                    regressed_prev=1,
+                    regressed_new=1,
+                    unchanged_prev=5,
+                    unchanged_new=4,
+                    median_delta_prev=None,
+                    median_delta_new=None,
+                ),
+            ),
+        )
+        out = render_diff_markdown(report)
+        assert "(No changes detected.)" not in out
 
     def test_findings_section(self) -> None:
         report = self._empty_report(

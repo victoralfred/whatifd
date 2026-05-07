@@ -393,9 +393,14 @@ Each format is a pure function `(ReportV01) -> str`. Walkthrough-match tests aga
   - Con: it's a separate CLI surface with its own renderer and its own schema version
 - Recommendation: include in v0.1. The failure-rescue use case is fundamentally iterative, and the diff mode is what makes the iteration legible
 
-**Status:** open (decision pending)
+**Status:** resolved — shipped in v0.1 as Phase 8.4 (PR #55).
 
-**Resolution:** Phase 8 (CLI) decision; if accepted, becomes Phase 8.5 (diff). If deferred to v0.2, scenario 6's design pressure remains unresolved and the README must remove the CLI invocation example.
+**Resolution:** `whatif diff <prev.json> <new.json>` lives at `src/whatif/diff.py` (single module, not a subpackage — no `whatif/render/diff_markdown.py` separation; the renderer is `render_diff_markdown` in the same file). v0.1 scope: verdict-state transitions, cohort row deltas, decision_findings added/removed (keyed on `(code, severity)`), failure-count delta. Renderer emits Markdown only — no `DiffV01` JSON output schema in v0.1 (downstream tooling reads the Markdown or re-runs `compute_diff` against the raw JSON). `whatif/diff.py::load_report` deliberately reads raw dicts rather than reconstructing `ReportV01` so cross-version comparisons during migration don't fail spuriously.
+
+**Deferred to v0.2:**
+- Per-trace evidence diff (which traces newly improved / regressed) — depends on the per-trace evidence schema entry below.
+- `DiffV01` JSON output shape — only motivated when downstream tooling appears that wants structured diff data.
+- Verdict-change matrix tests (Ship→Ship, Ship→DontShip, … 9 cells) — current tests pin the load-bearing transitions; full matrix becomes useful when the renderer grows verdict-specific guidance.
 
 ### Per-trace evidence schema (top improvements / regressions with judge rationale)
 

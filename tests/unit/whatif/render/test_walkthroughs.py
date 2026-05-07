@@ -53,7 +53,7 @@ from whatif.render import (
 
 from ._walkthrough_fixtures import SCENARIOS
 
-_SCENARIO_IDS = [f"scenario_{n}_{slug}" for n, (slug, _, _) in SCENARIOS.items()]
+_SCENARIO_IDS = [f"scenario_{n}_{s.name}" for n, s in SCENARIOS.items()]
 _SCENARIO_PARAMS = list(SCENARIOS.items())
 
 
@@ -62,12 +62,12 @@ _SCENARIO_PARAMS = list(SCENARIOS.items())
     ids=_SCENARIO_IDS,
 )
 def scenario(request):
-    n, (name, expected_verdict_state, builder) = request.param
+    n, s = request.param  # s: Scenario NamedTuple — see _walkthrough_fixtures.
     return {
         "n": n,
-        "name": name,
-        "expected_verdict_state": expected_verdict_state,
-        "report": builder(),
+        "name": s.name,
+        "expected_verdict_state": s.expected_verdict_state,
+        "report": s.builder(),
     }
 
 

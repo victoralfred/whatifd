@@ -27,7 +27,9 @@ equality test without re-discovery.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import MappingProxyType
+from typing import NamedTuple
 
 from whatif.cache.summary import CachePolicySnapshot, CacheSummary
 from whatif.decision.finding_codes import make_decision_finding
@@ -411,27 +413,46 @@ def scenario_6_rerun_after_fix():
     return scenario_1_clean_ship()
 
 
+class Scenario(NamedTuple):
+    """Named record for one walkthrough scenario.
+
+    Replaces a positional `(name, expected_verdict_state, builder)`
+    tuple — explicit fields prevent silent index-shift bugs if the
+    record shape ever grows (e.g., adding `expected_ci_status` for
+    a future byte-equality test).
+    """
+
+    name: str
+    expected_verdict_state: str
+    builder: Callable[[], object]
+
+
 # Map by scenario number for parameterized testing.
-SCENARIOS = {
-    1: ("Clean Ship", "ship", scenario_1_clean_ship),
-    2: ("Don't Ship (regression)", "dont_ship", scenario_2_dont_ship_regression),
-    3: ("Don't Ship (failure rescue gap)", "dont_ship", scenario_3_dont_ship_failure_rescue_gap),
-    4: (
+SCENARIOS: dict[int, Scenario] = {
+    1: Scenario("Clean Ship", "ship", scenario_1_clean_ship),
+    2: Scenario("Don't Ship (regression)", "dont_ship", scenario_2_dont_ship_regression),
+    3: Scenario(
+        "Don't Ship (failure rescue gap)",
+        "dont_ship",
+        scenario_3_dont_ship_failure_rescue_gap,
+    ),
+    4: Scenario(
         "Inconclusive (insufficient sample)",
         "inconclusive",
         scenario_4_inconclusive_insufficient_sample,
     ),
-    5: (
+    5: Scenario(
         "Inconclusive (cache corruption)",
         "inconclusive",
         scenario_5_inconclusive_cache_corruption,
     ),
-    6: ("Rerun after fix", "ship", scenario_6_rerun_after_fix),
+    6: Scenario("Rerun after fix", "ship", scenario_6_rerun_after_fix),
 }
 
 
 __all__ = [
     "SCENARIOS",
+    "Scenario",
     "scenario_1_clean_ship",
     "scenario_2_dont_ship_regression",
     "scenario_3_dont_ship_failure_rescue_gap",

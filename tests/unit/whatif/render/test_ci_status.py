@@ -249,6 +249,32 @@ class TestGlyphCodePointStability:
             )
 
 
+class TestDefensiveFallback:
+    def test_inconclusive_with_no_findings_and_no_floor_failures(self) -> None:
+        # Pin the defensive contract-violation string. The decision
+        # pipeline guarantees a non-Ship verdict has at least one
+        # finding or floor failure (cardinal #2 + #8), but the
+        # renderer is a leaf — engineering a verdict that violates
+        # this upstream contract surfaces the violation as a
+        # recognizable string rather than raising. A future
+        # refactor that changes the string would fail this test,
+        # forcing explicit review.
+        c = dataclasses.replace(
+            cohort("baseline"),
+            floor_passed=True,  # no floor failures
+            floor_failures=[],
+        )
+        verdict = dataclasses.replace(
+            inconclusive(),
+            cohort_results=(c,),
+            findings=(),
+        )
+        line = render_ci_status(_report_for(verdict))
+        assert line == (
+            "⚠ whatif: Inconclusive — (no finding available — contract violation upstream)"
+        )
+
+
 class TestSeverityStrictness:
     def test_unknown_severity_raises_keyerror(self) -> None:
         # `Severity` is a closed Literal; a value outside it

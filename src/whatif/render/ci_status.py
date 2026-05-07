@@ -6,7 +6,7 @@ status row, or Slack notification:
 
   ✓ whatif: Ship — failures 14/20 ↑, baseline 17/20 stable
   ✗ whatif: Don't Ship — baseline regressed 6/20 (median Δ -0.18)
-  ⚠ whatif: Inconclusive — baseline cohort below floor (3 < 5 scored)
+  ⚠ whatif: Inconclusive — baseline cohort below floor (3 < 5 min_scored…)
 
 The format is `<glyph> whatif: <Verdict> — <reason>` where:
 
@@ -83,6 +83,16 @@ _LABEL = {
     "inconclusive": "Inconclusive",
 }
 
+# Canonical cohort names for the v0.1 failure-rescue shape. Source
+# of truth is `DecisionPolicy.required_cohorts` default
+# (`("failure", "baseline")`); these constants name the same values
+# at the renderer's use sites so a future cohort-name rename surfaces
+# in one place. v0.2's regression_check shape will introduce
+# additional names; the renderer's "neither failure nor baseline"
+# fallback already handles unknown names.
+_COHORT_FAILURE = "failure"
+_COHORT_BASELINE = "baseline"
+
 # Severity ranking for picking the "most-blocking" finding when
 # multiple are present. Higher rank = more load-bearing for the
 # CI status's reason text.
@@ -152,8 +162,8 @@ def _ship_reason(cohort_results: list[CohortResult]) -> str:
     is missing, falls back to a per-cohort summary.
     """
     by_name = {c.name: c for c in cohort_results}
-    failure = by_name.get("failure")
-    baseline = by_name.get("baseline")
+    failure = by_name.get(_COHORT_FAILURE)
+    baseline = by_name.get(_COHORT_BASELINE)
     if failure is not None and baseline is not None:
         return (
             f"failures {failure.improved_count}/{failure.scored} ↑, "

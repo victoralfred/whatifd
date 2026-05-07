@@ -12,6 +12,13 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 8.1 (config schema + hint generation + two-affirmation)
+
+- `src/whatif/config.py::WhatifConfig` — Pydantic v2 strict (`extra="forbid"`) at every nesting level. Sections: `source`, `target`, `selection` (per-cohort `failure_cohort` / `baseline_cohort` limits), `change`, `scorer`, `decision`, `reporting`, `timeouts`. A typo at any level raises `ValidationError` rather than silently absorbing.
+- **Cardinal #7 two-affirmation:** `ReportingConfig.profile == "forensic"` requires a populated `reporting.forensic_acknowledgment` block (config-side validator) AND `--profile forensic` on the CLI (cross-surface check via `assert_two_affirmation(cfg, *, cli_profile)`). Single-surface attempts raise `ForensicAffirmationError` with a message naming exactly which surface is missing. The acknowledgment block has `extra="forbid"` so a typo (e.g., `accepted_b` missing y) fails immediately rather than producing half-populated forensic enablement.
+- **Hint generation:** `format_validation_errors(ValidationError) -> str` translates Pydantic errors into a multi-line operator-facing message with field paths + per-error suggestions from a `_HINTS` table covering the top-N misconfigurations (negative limit, ratio out of [0, 1], zero timeout, missing acknowledgment block, etc.). Falls back to the bare Pydantic message for unregistered codes.
+- 17 tests pin: minimal-config construction with defaults applied, strict-mode rejection at every nesting level (top-level, nested field, acknowledgment-block typo), range constraints (negative limit, ratio > 1, zero timeout), forensic config-side enforcement (profile-without-block fails; profile-with-block validates), two-affirmation cross-surface (both/neither/each-alone), hint generator (registered code emits Hint line, unregistered code emits raw Pydantic message, multi-error output lists each).
+
 ### Added — Phase 7.1c (walkthrough structural-fidelity tests)
 
 - `tests/unit/whatif/render/_walkthrough_fixtures.py` — six `ReportV01` builders matching the "Underlying state" sections of `docs/walkthroughs/01..06-*.md`. `SCENARIOS` map keys by scenario number → (name, expected verdict_state, builder). Ship verdicts route through `evaluate_floor()` so the `FloorPassedProof` is real (cardinal #2 enforcement).

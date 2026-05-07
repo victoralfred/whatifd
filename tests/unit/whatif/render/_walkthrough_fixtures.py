@@ -27,7 +27,6 @@ equality test without re-discovery.
 
 from __future__ import annotations
 
-import dataclasses
 from types import MappingProxyType
 
 from whatif.cache.summary import CachePolicySnapshot, CacheSummary
@@ -440,9 +439,3 @@ __all__ = [
     "scenario_5_inconclusive_cache_corruption",
     "scenario_6_rerun_after_fix",
 ]
-
-
-# Suppress F401 — dataclasses imported for the typed contract surface
-# even when not directly referenced by helpers above (kept for parity
-# with the rest of the test fixture style).
-_ = dataclasses

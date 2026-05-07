@@ -12,6 +12,13 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 9A.1 (programmatic integration entry + Clean Ship scenario)
+
+- `src/whatif/pipeline.py::run_pipeline` — adapter-agnostic programmatic entry point that stitches `TraceSource → cohort aggregation → compute_verdict → project_to_report_v01` into a `ReportV01`. v0.1 Phase 9A callers pass the synthetic stub from `whatif.adapters.stub`; Phase 9B will pass real Langfuse / Inspect AI through the same signature.
+- **Two deliberate Phase 9A.1 shortcuts** documented at the call sites: per-trace deltas come from a caller-supplied `delta_fn: Callable[[RawTrace], float]` (real paired scoring through the stub's `Scorer` is Phase 9A.2+ work that needs a Runner in scope), and CI bounds use empirical 5th/95th percentiles of the deltas (proper stratified bootstrap is the broader stats-layer work). Both shortcuts are sufficient for cardinal-#2 floor + verdict resolution; the function signature is the stable contract.
+- `tests/integration/__init__.py` + `tests/integration/_fixtures.py` + `tests/integration/test_pipeline_ship.py` — Phase 9A.1 integration suite. The Clean Ship scenario (walkthrough 1) reproduces end-to-end against the stub: 20 failure traces with 14 improved (delta=0.20) + 6 unchanged, 20 baseline traces with delta=0.01 (under epsilon=0.05). Four pinned properties: verdict resolves to Ship, cohort counts match the fixture's delta function, floor passes on both required cohorts, CI bounds populated as `DecimalString`. Fixtures co-located so Phase 9A.2's remaining five scenarios can extend the same module.
+- 967 unit + integration tests pass. Phase 9A.2 (remaining walkthrough scenarios), 9A.3 (determinism byte-equality), and 9A.4 (failure injection) sit on this foundation.
+
 ### Added — Phase 4A.3 (synthetic stub adapter; Phase 4A complete)
 
 - `src/whatif/adapters/stub.py` — `StubTraceSource` and `StubScorer` implementing the Phase 4A.1 protocols. Fixture-driven: tests construct a stub with `StubTraceSpec` rows (plain strings — the stub wraps them in `Sensitive[str]` at construction per cardinal #5) and an optional `score_fn: Callable[[ScoreCase], float | None]`. `cluster_key_support` is parameterizable so integration tests exercise both the "source provides clusters" and "source does not" branches of the methodology disclosure (cardinal #10). `cache_key_components` produces deterministic 16-hex digests derived from input identifiers (satisfies the `CacheKeyComponents.__post_init__` invariants without ever touching raw judge prompts — cardinal #5).

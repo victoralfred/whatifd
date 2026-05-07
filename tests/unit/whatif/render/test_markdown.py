@@ -243,6 +243,52 @@ class TestStats:
         out = render_full_report(_report_for(verdict))
         assert "(CI not computed)" in out
 
+    def test_ci_unavailable_reason_renders_in_string(self) -> None:
+        # Three-way CI coverage: bounds present (covered by
+        # test_ci_string_when_bounds_present), bounds absent +
+        # reason present (this test), bounds absent + reason
+        # absent (test_ci_not_computed_fallback above).
+        c = dataclasses.replace(
+            cohort("failure"),
+            ci_lower=None,
+            ci_upper=None,
+            ci_unavailable_reason="sample_too_small",
+        )
+        verdict = dataclasses.replace(
+            ship(),
+            cohort_results=(c, *[r for r in ship().cohort_results if r.name != "failure"]),
+        )
+        out = render_full_report(_report_for(verdict))
+        assert "(CI not computed: sample_too_small)" in out
+
+
+# ---------------------------------------------------------------------------
+# Replay validity edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestReplayValidityZeroSelected:
+    def test_zero_selected_does_not_zero_divide(self) -> None:
+        # Defensive pin: a cohort with selected=0 (degenerate, but
+        # possible if a future selection policy yields nothing for
+        # one cohort) must NOT crash the renderer with a
+        # ZeroDivisionError. The percentage falls back to "n/a".
+        c = dataclasses.replace(
+            cohort("failure"),
+            selected=0,
+            replayed=0,
+            scored=0,
+        )
+        verdict = dataclasses.replace(
+            ship(),
+            cohort_results=(c, *[r for r in ship().cohort_results if r.name != "failure"]),
+        )
+        # No raise.
+        out = render_full_report(_report_for(verdict))
+        # The zero-selected cohort's replay-validity line uses
+        # "n/a" for percentages.
+        assert "**failure:** 0 selected, 0 replayed (n/a)" in out
+
 
 # ---------------------------------------------------------------------------
 # Replay validity

@@ -276,18 +276,33 @@ class TestHintGenerator:
 
     def test_empty_loc_renders_as_root(self) -> None:
         # The format_validation_errors fallback renders empty
-        # `loc` as "(root)". Engineer a synthetic Pydantic error
-        # with empty loc to exercise the branch directly — no
-        # production path currently produces empty loc, but the
-        # fallback exists and must be tested.
-        from pydantic_core import InitErrorDetails, PydanticCustomError
+        # `loc` as "(root)". No production path currently produces
+        # empty loc (the model_validator emits loc=('reporting',)),
+        # but the fallback branch exists defensively and must be
+        # tested.
+        #
+        # The test uses pydantic_core internals to synthesize a
+        # ValidationError with loc=(). These names are part of
+        # pydantic-core's documented validation-error construction
+        # API, but they could move between versions. Guarded with
+        # `importorskip` + `hasattr` so a future pydantic-core
+        # API change skips this test rather than crashing the
+        # suite — the defensive branch in format_validation_errors
+        # is a one-liner; an outage of this test isn't load-bearing.
+        pydantic_core = pytest.importorskip("pydantic_core")
+        if not hasattr(pydantic_core, "InitErrorDetails") or not hasattr(
+            pydantic_core, "PydanticCustomError"
+        ):
+            pytest.skip("pydantic_core API changed; synthetic-error path unavailable")
 
         try:
             raise ValidationError.from_exception_data(
                 "Synthetic",
                 [
-                    InitErrorDetails(
-                        type=PydanticCustomError("value_error", "synthetic root error"),
+                    pydantic_core.InitErrorDetails(
+                        type=pydantic_core.PydanticCustomError(
+                            "value_error", "synthetic root error"
+                        ),
                         loc=(),
                         input=None,
                     ),

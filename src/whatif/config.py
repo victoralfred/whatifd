@@ -457,7 +457,12 @@ def load_config(path: Path) -> WhatifConfig:
             f"config file {path} must parse to a mapping; got {type(data).__name__}"
         )
 
-    return WhatifConfig(**data)
+    # `model_validate(data)` rather than `WhatifConfig(**data)` —
+    # the kwargs-unpack form would shadow Pydantic internals if
+    # the YAML included a top-level key like `model_config` or
+    # `model_fields`. `model_validate` accepts the dict directly,
+    # eliminating the keyword-collision class entirely.
+    return WhatifConfig.model_validate(data)
 
 
 __all__ = [

@@ -4,7 +4,7 @@ Cardinal #4: determinism is opt-in per field. The deterministic
 subset of a `ReportV01` (every top-level field tagged
 `x-deterministic: true` in the schema — currently everything
 except `runtime`) MUST be byte-equal across re-runs of the same
-fixture. This test runs three of the Phase 9A scenarios twice
+fixture. This test runs all four of the Phase 9A scenarios twice
 each, extracts the deterministic subset from both runs, and pins
 byte-equality.
 
@@ -33,6 +33,7 @@ import pytest
 from whatif.pipeline import run_pipeline
 from whatif.serialization.canonical import canonical_json_bytes
 from whatif.serialization.determinism import (
+    DeterministicSubsetWarning,
     deterministic_field_names,
     extract_deterministic_subset,
 )
@@ -101,6 +102,23 @@ def test_runtime_field_excluded_from_subset() -> None:
     # doesn't silently sweep `runtime` into the byte-equality check.
     subset = _run_and_extract_subset(scenario_clean_ship())
     assert "runtime" not in subset
+
+
+def test_unknown_key_emits_drift_warning() -> None:
+    # Pin schema-drift surfacing: an extra top-level key not in the
+    # bundled schema's properties triggers DeterministicSubsetWarning
+    # and is dropped from the subset. A future producer running a
+    # newer ReportV01 shape than the consumer's schema would
+    # otherwise lose the drift signal silently.
+    drifted = {
+        "schema_version": "0.1",
+        "schema_uri": "https://whatif.codes/schema/report/v0.1.json",
+        "verdict_state": "ship",
+        "future_field": "produced by a newer schema",
+    }
+    with pytest.warns(DeterministicSubsetWarning, match="future_field"):
+        subset = extract_deterministic_subset(drifted)
+    assert "future_field" not in subset
 
 
 def test_deterministic_field_set_matches_schema() -> None:

@@ -31,23 +31,48 @@ equal across re-runs; for v0.1 that's everything except `runtime`.
 from __future__ import annotations
 
 import json
+import warnings
 from collections.abc import Mapping
 from functools import lru_cache
-from pathlib import Path
+from importlib.resources import files
 from typing import Any
 
-_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "report" / "schema" / "v0.1.schema.json"
+
+class DeterministicSubsetWarning(UserWarning):
+    """Emitted by `extract_deterministic_subset` when the input dict
+    carries keys not present in the schema's top-level properties.
+
+    Triggered by schema drift — typically a producer running a newer
+    `ReportV01` shape than the consumer's bundled schema. Warning
+    (not raise) because dropping the extra key is the safer
+    extraction default; raising would block byte-equality comparisons
+    on otherwise-compatible reports. Future schema-bump migrations
+    can promote this to an error if drift becomes a load-bearing
+    failure mode.
+    """
+
+
+@lru_cache(maxsize=1)
+def _schema_properties() -> dict[str, dict[str, Any]]:
+    """Load the v0.1 schema's `properties` map once.
+
+    `importlib.resources.files` is the forward-compatible loader —
+    works under zipimport, namespace packages, and editable installs
+    without depending on `__file__` resolution.
+    """
+    schema_resource = files("whatif.report.schema").joinpath("v0.1.schema.json")
+    schema = json.loads(schema_resource.read_text(encoding="utf-8"))
+    properties: dict[str, dict[str, Any]] = schema.get("properties", {})
+    return properties
 
 
 @lru_cache(maxsize=1)
 def _deterministic_field_names() -> frozenset[str]:
-    """Read the schema once and cache the set of top-level field
-    names tagged `x-deterministic: true`. Cached because the schema
-    is a committed file — it doesn't change at runtime."""
-    schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
-    properties = schema.get("properties", {})
+    """Cache the set of top-level field names tagged
+    `x-deterministic: true`. Schema is committed; doesn't change at
+    runtime."""
     return frozenset(
-        name for name, prop in properties.items() if prop.get("x-deterministic") is True
+        name for name, prop in _schema_properties().items() if prop.get("x-deterministic") is True
     )
 
 
@@ -66,16 +91,33 @@ def extract_deterministic_subset(report_dict: Mapping[str, Any]) -> dict[str, An
     schema property carries `x-deterministic: true`. Non-deterministic
     keys (currently just `runtime`) are dropped.
 
+    Emits `DeterministicSubsetWarning` for any input key not present
+    in the schema's top-level properties — typically schema drift
+    (producer is newer than the consumer's bundled schema). Warning,
+    not raise, so byte-equality comparisons on otherwise-compatible
+    reports stay possible; the surfaced warning still flags the
+    drift loudly.
+
     This function does NOT serialize — pass it the result of
     `json.loads(WhatifJSONEncoder.encode(report))` (or equivalent).
     Splitting serialization from extraction keeps the determinism
     test composable with any future JSON-shape changes.
     """
+    schema_properties = _schema_properties()
+    unknown = sorted(k for k in report_dict if k not in schema_properties)
+    if unknown:
+        warnings.warn(
+            f"extract_deterministic_subset: keys not in schema (dropped): {unknown!r}. "
+            "Likely schema drift — producer ahead of consumer's bundled v0.1 schema.",
+            DeterministicSubsetWarning,
+            stacklevel=2,
+        )
     keep = _deterministic_field_names()
     return {k: v for k, v in report_dict.items() if k in keep}
 
 
 __all__ = [
+    "DeterministicSubsetWarning",
     "deterministic_field_names",
     "extract_deterministic_subset",
 ]

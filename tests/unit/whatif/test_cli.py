@@ -1,0 +1,225 @@
+"""Tests for `whatif.cli` — Phase 8.2.
+
+Pin properties:
+
+1. `whatif --help` succeeds (typer app loads).
+2. `whatif fork` with valid config exits 2 (Phase 4 adapter
+   integration not yet wired); the message names the gap.
+3. `whatif fork` with missing config file exits 2 with
+   ConfigFileError.
+4. `whatif fork` with invalid config exits 2 with
+   `format_validation_errors` output (Hint: lines visible).
+5. `whatif fork --profile forensic` against non-forensic config
+   exits 2 with ForensicAffirmationError.
+6. `whatif fork --profile forensic` against forensic config (with
+   acknowledgment block) reaches the Phase 4 stub (exit 2 setup-
+   failure with that specific message).
+7. Subcommand stubs (`cache rebuild|unlock|verify`, `diff`,
+   `report-migrate`) all exit 2 with their phase-stub messages.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+from typer.testing import CliRunner
+
+from whatif.cli import (
+    EXIT_INCONCLUSIVE_OR_SETUP_FAILURE,
+    app,
+)
+
+
+@pytest.fixture
+def runner() -> CliRunner:
+    return CliRunner()
+
+
+def _all_output(result) -> str:
+    """Combined stdout/stderr — newer click/typer versions mix
+    streams in `result.output` by default, dropping the
+    `mix_stderr` constructor arg. This helper smooths the
+    difference so assertions read whichever of the two is
+    populated."""
+    return (result.stdout or "") + (getattr(result, "stderr", "") or "") + (result.output or "")
+
+
+def _minimal_config_dict() -> dict:
+    return {
+        "source": {"adapter": "langfuse"},
+        "target": {"runner": "python:my_agent.replay:run"},
+        "selection": {
+            "failure_cohort": {"limit": 20},
+            "baseline_cohort": {"limit": 20},
+        },
+        "change": {"system_prompt": "be concise"},
+        "scorer": {"adapter": "inspect_ai", "cache_mode": "auto"},
+        "decision": {},
+        "reporting": {},
+        "timeouts": {},
+    }
+
+
+def _forensic_config_dict() -> dict:
+    d = _minimal_config_dict()
+    d["reporting"] = {
+        "profile": "forensic",
+        "forensic_acknowledgment": {
+            "accepted_by": "ops",
+            "accepted_at": "2026-05-07",
+            "reason": "audit",
+        },
+    }
+    return d
+
+
+# ---------------------------------------------------------------------------
+# Help / app load
+# ---------------------------------------------------------------------------
+
+
+class TestHelp:
+    def test_help_succeeds(self, runner: CliRunner) -> None:
+        # `whatif --help` exits 0 — typer convention for help.
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "whatif: trust-first" in _all_output(result)
+
+    def test_no_args_prints_help(self, runner: CliRunner) -> None:
+        # no_args_is_help=True on the root app.
+        result = runner.invoke(app, [])
+        # typer convention: exit 2 (usage error) when no args; help
+        # text is shown.
+        assert result.exit_code != 0
+        assert "Usage:" in _all_output(result) or "Usage:" in _all_output(result)
+
+
+# ---------------------------------------------------------------------------
+# `whatif fork` config-load / setup failures
+# ---------------------------------------------------------------------------
+
+
+class TestForkConfigFailures:
+    def test_missing_config_file_exits_2(self, runner: CliRunner, tmp_path) -> None:
+        result = runner.invoke(app, ["fork", "--config", str(tmp_path / "nonexistent.yaml")])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "config error" in _all_output(result)
+        assert "not found" in _all_output(result)
+
+    def test_invalid_config_exits_2_with_hints(self, runner: CliRunner, tmp_path) -> None:
+        # selection.failure_cohort.limit=0 triggers a registered
+        # hint; CLI surfaces format_validation_errors output.
+        d = _minimal_config_dict()
+        d["selection"]["failure_cohort"]["limit"] = 0
+        p = tmp_path / "invalid.json"
+        p.write_text(json.dumps(d), encoding="utf-8")
+
+        result = runner.invoke(app, ["fork", "--config", str(p)])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "selection.failure_cohort.limit" in _all_output(result)
+        assert "Hint:" in _all_output(result)
+
+    def test_unknown_section_exits_2(self, runner: CliRunner, tmp_path) -> None:
+        d = _minimal_config_dict()
+        d["mystery"] = {}
+        p = tmp_path / "extra.json"
+        p.write_text(json.dumps(d), encoding="utf-8")
+
+        result = runner.invoke(app, ["fork", "--config", str(p)])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "mystery" in _all_output(result)
+
+
+# ---------------------------------------------------------------------------
+# Two-affirmation cross-surface (cardinal #7)
+# ---------------------------------------------------------------------------
+
+
+class TestForkTwoAffirmation:
+    def test_cli_forensic_without_config_exits_2(self, runner: CliRunner, tmp_path) -> None:
+        # Default-profile config + --profile forensic → CLI flag
+        # alone is insufficient (cardinal #7).
+        p = tmp_path / "cfg.json"
+        p.write_text(json.dumps(_minimal_config_dict()), encoding="utf-8")
+
+        result = runner.invoke(app, ["fork", "--config", str(p), "--profile", "forensic"])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "CLI flag alone is insufficient" in _all_output(result)
+
+    def test_config_forensic_without_cli_exits_2(self, runner: CliRunner, tmp_path) -> None:
+        # Forensic config + no --profile flag → config alone
+        # insufficient. Pin the cross-surface check fires.
+        p = tmp_path / "forensic.json"
+        p.write_text(json.dumps(_forensic_config_dict()), encoding="utf-8")
+
+        result = runner.invoke(app, ["fork", "--config", str(p)])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "CLI invocation did not include" in _all_output(result)
+
+    def test_both_forensic_reaches_phase_4_stub(self, runner: CliRunner, tmp_path) -> None:
+        # Both surfaces forensic-aligned → two-affirmation passes;
+        # exits at the Phase 4 adapter-integration stub. Pinning
+        # this confirms the witness-token path runs end-to-end.
+        p = tmp_path / "forensic.json"
+        p.write_text(json.dumps(_forensic_config_dict()), encoding="utf-8")
+
+        result = runner.invoke(app, ["fork", "--config", str(p), "--profile", "forensic"])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "Phase 4 adapter integration" in _all_output(result)
+
+
+# ---------------------------------------------------------------------------
+# Default (non-forensic) flow reaches the Phase 4 stub
+# ---------------------------------------------------------------------------
+
+
+class TestForkDefaultFlow:
+    def test_default_profile_reaches_phase_4_stub(self, runner: CliRunner, tmp_path) -> None:
+        # Non-forensic config + no --profile → two-affirmation
+        # returns proof with forensic_active=False; CLI proceeds
+        # to the Phase 4 stub. Setup-failure exit is correct
+        # because the pipeline can't actually run yet.
+        p = tmp_path / "cfg.json"
+        p.write_text(json.dumps(_minimal_config_dict()), encoding="utf-8")
+        result = runner.invoke(app, ["fork", "--config", str(p)])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "Phase 4 adapter integration" in _all_output(result)
+
+
+# ---------------------------------------------------------------------------
+# Subcommand stubs
+# ---------------------------------------------------------------------------
+
+
+class TestSubcommandStubs:
+    def test_cache_rebuild_stub(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["cache", "rebuild"])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "Phase 8.3" in _all_output(result)
+
+    def test_cache_unlock_stub(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["cache", "unlock"])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "Phase 8.3" in _all_output(result)
+
+    def test_cache_verify_stub(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["cache", "verify"])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "Phase 8.3" in _all_output(result)
+
+    def test_diff_stub(self, runner: CliRunner, tmp_path) -> None:
+        prev = tmp_path / "prev.json"
+        new = tmp_path / "new.json"
+        prev.write_text("{}", encoding="utf-8")
+        new.write_text("{}", encoding="utf-8")
+        result = runner.invoke(app, ["diff", str(prev), str(new)])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "Phase 8.4" in _all_output(result)
+
+    def test_report_migrate_stub(self, runner: CliRunner, tmp_path) -> None:
+        report = tmp_path / "report.json"
+        report.write_text("{}", encoding="utf-8")
+        result = runner.invoke(app, ["report-migrate", str(report)])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "Phase 8.5" in _all_output(result)

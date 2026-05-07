@@ -160,12 +160,13 @@ def _cohort(
 
 def scenario_1_clean_ship():
     """Clean Ship: failures 14/20 improved, baseline stable."""
-    from tests.unit.whatif.report._fixtures import (
-        runtime as _runtime,
-    )
     from whatif.report.projection import project_to_report_v01
     from whatif.types.policy import TrustFloor
     from whatif.types.verdict import Ship
+
+    from ..report._fixtures import (
+        runtime as _runtime,
+    )
 
     failure = _cohort(
         "failure",
@@ -216,9 +217,10 @@ def scenario_1_clean_ship():
 
 def scenario_2_dont_ship_regression():
     """Don't Ship: 30% baseline regression."""
-    from tests.unit.whatif.report._fixtures import runtime as _runtime
     from whatif.report.projection import project_to_report_v01
     from whatif.types.verdict import DontShip
+
+    from ..report._fixtures import runtime as _runtime
 
     failure = _cohort(
         "failure",
@@ -265,9 +267,10 @@ def scenario_2_dont_ship_regression():
 
 def scenario_3_dont_ship_failure_rescue_gap():
     """Don't Ship: failure cohort improved only 2/20."""
-    from tests.unit.whatif.report._fixtures import runtime as _runtime
     from whatif.report.projection import project_to_report_v01
     from whatif.types.verdict import DontShip
+
+    from ..report._fixtures import runtime as _runtime
 
     failure = _cohort(
         "failure",
@@ -314,9 +317,10 @@ def scenario_3_dont_ship_failure_rescue_gap():
 
 def scenario_4_inconclusive_insufficient_sample():
     """Inconclusive: baseline floor failure (3 scored < 5 required)."""
-    from tests.unit.whatif.report._fixtures import runtime as _runtime
     from whatif.report.projection import project_to_report_v01
     from whatif.types.verdict import Inconclusive
+
+    from ..report._fixtures import runtime as _runtime
 
     failure = _cohort(
         "failure",
@@ -366,9 +370,10 @@ def scenario_4_inconclusive_insufficient_sample():
 
 def scenario_5_inconclusive_cache_corruption():
     """Inconclusive: scorer cache locked by stale process."""
-    from tests.unit.whatif.report._fixtures import runtime as _runtime
     from whatif.report.projection import project_to_report_v01
     from whatif.types.verdict import Inconclusive
+
+    from ..report._fixtures import runtime as _runtime
 
     finding = make_decision_finding(
         code="cache_lock_unavailable",

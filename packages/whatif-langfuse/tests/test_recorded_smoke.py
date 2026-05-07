@@ -36,12 +36,18 @@ clean of secrets.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-_CASSETTES_DIR = Path(__file__).resolve().parent / "cassettes"
+_MODULE_NAME = Path(__file__).stem
+# pytest-recording lays cassettes out as
+# `cassettes/<module-stem>/<test-name>.yaml`. Track the per-module
+# subdirectory here so the skip-presence check looks in the right
+# place; otherwise every CI run skips even when the cassette exists.
+_CASSETTES_DIR = Path(__file__).resolve().parent / "cassettes" / _MODULE_NAME
 
 _HOST_ENV_KEYS = ("LANGFUSE_HOST", "LANGFUSE_BASE_URL")
 _OTHER_CRED_KEYS = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY")
@@ -68,6 +74,50 @@ def _cassette_for(name: str) -> Path:
     return _CASSETTES_DIR / f"{name}.yaml"
 
 
+_PUBLIC_KEY_RE = re.compile(r"pk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_SECRET_KEY_RE = re.compile(r"sk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_KEY_ID_RE = re.compile(r'"key_id":"[^"]+"')
+
+
+def _scrub_response_body(response: dict[str, object]) -> dict[str, object]:
+    """vcrpy `before_record_response` hook: scrub Langfuse identifiers
+    that the API echoes inside response bodies.
+
+    Langfuse traces carry `resourceAttributes.scope.attributes.public_key`
+    and `metadata.key_id` populated from the recording side. The
+    public key isn't a secret per Langfuse's threat model but it
+    identifies the recording project; the `key_id` looks like an
+    upstream provider key id. Both get scrubbed so the committed
+    cassette is decoupled from the recording project's identity.
+
+    Header filtering catches the request side; this hook catches the
+    response side. Defense in depth — even if a future Langfuse
+    response shape grows new echoed fields, the regex sweep stays
+    aligned because it operates on the body bytes.
+    """
+    body = response.get("body", {})
+    if isinstance(body, dict):
+        raw = body.get("string")
+        if isinstance(raw, str):
+            cleaned = _PUBLIC_KEY_RE.sub("pk-lf-FILTERED-FILTERED-FILTERED-FILTERED-FILTERED", raw)
+            cleaned = _SECRET_KEY_RE.sub(
+                "sk-lf-FILTERED-FILTERED-FILTERED-FILTERED-FILTERED", cleaned
+            )
+            cleaned = _KEY_ID_RE.sub('"key_id":"FILTERED"', cleaned)
+            body["string"] = cleaned
+        elif isinstance(raw, bytes):
+            decoded = raw.decode("utf-8", errors="replace")
+            cleaned = _PUBLIC_KEY_RE.sub(
+                "pk-lf-FILTERED-FILTERED-FILTERED-FILTERED-FILTERED", decoded
+            )
+            cleaned = _SECRET_KEY_RE.sub(
+                "sk-lf-FILTERED-FILTERED-FILTERED-FILTERED-FILTERED", cleaned
+            )
+            cleaned = _KEY_ID_RE.sub('"key_id":"FILTERED"', cleaned)
+            body["string"] = cleaned.encode("utf-8")
+    return response
+
+
 @pytest.fixture(scope="module")
 def vcr_config() -> dict[str, object]:
     """pytest-recording filter config. Strips secrets from cassettes
@@ -84,6 +134,7 @@ def vcr_config() -> dict[str, object]:
         "filter_query_parameters": [
             ("publicKey", "FILTERED"),
         ],
+        "before_record_response": _scrub_response_body,
         "decode_compressed_response": True,
     }
 

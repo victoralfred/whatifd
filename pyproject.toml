@@ -50,6 +50,7 @@ dev = [
   "hypothesis>=6.152.4",
   "pre-commit>=4.4.1",
   "types-psutil>=6.0",
+  "types-PyYAML>=6.0",
 ]
 
 [project.scripts]

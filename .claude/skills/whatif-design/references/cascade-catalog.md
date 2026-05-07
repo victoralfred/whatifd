@@ -192,6 +192,19 @@ Each format is a pure function `(ReportV01) -> str`. Walkthrough-match tests aga
 
 **Resolution:** Phase 7 closes when all three formats render and the six walkthroughs round-trip byte-equal.
 
+### CLI must enforce two-affirmation before forensic-path code
+
+**Source decision:** Phase 8.1 (PR #52) `whatif/config.py::assert_two_affirmation(cfg, *, cli_profile)` enforces the cardinal-#7 cross-surface match between `reporting.profile` and the `--profile` CLI flag. The function is a leaf — it raises if the surfaces disagree; it does NOT short-circuit profile resolution on its own.
+
+**Rippled to:**
+- `whatif/cli.py` (Phase 8.2) — the `whatif fork` entry point MUST call `assert_two_affirmation(cfg, cli_profile=<--profile flag value>)` IMMEDIATELY after `load_config` returns and BEFORE any code path that resolves the redaction profile or constructs the artifact bundle. A failure to call leaves the CLI half of cardinal #7 unenforced; a `--profile forensic` invocation against a non-forensic config (or vice versa) would silently take the dangerous path.
+- Phase 8 integration test — wires up a CLI invocation with mismatched surfaces and asserts non-zero exit + `ForensicAffirmationError` message.
+- v1.0 generalization — additional dangerous flags (persistent acceptance, etc.) follow the same two-affirmation pattern; the CLI has a single chokepoint where all such checks fire before any dangerous capability activates.
+
+**Status:** open (Phase 8.2 is the gate).
+
+**Resolution:** Phase 8.2 wires the `assert_two_affirmation` call at the CLI's earliest pre-action point. `# TODO(cardinal #7)` comment at the call site so a future refactor that moves it sees the marker.
+
 ### Walkthrough scenario 6 fixture delegation
 
 **Source decision:** Phase 7.1c (PR #51) `tests/unit/whatif/render/_walkthrough_fixtures.py::scenario_6_rerun_after_fix` delegates entirely to `scenario_1_clean_ship()` and only overrides `runtime.experiment_id`. Walkthrough 06 (`docs/walkthroughs/06-rerun-after-fix.md`) currently has identical stats to walkthrough 01; the delegation captures that equivalence directly.

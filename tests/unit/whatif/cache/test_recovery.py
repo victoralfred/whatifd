@@ -31,11 +31,20 @@ from whatif.cache.recovery import rebuild, unlock, verify
 def _make_entry(entries_dir: Path, key: str, valid: bool = True) -> Path:
     """Write a minimal CacheEntry-shaped JSON file at the expected
     bucket location. `valid=False` writes garbage so verify flags
-    it as corrupted."""
-    digest = "a" * 64  # placeholder digest; recovery doesn't validate it
+    it as corrupted.
+
+    The digest is derived from the `key` (sha256 hex) so distinct
+    keys land at distinct filenames AND, for non-trivial keys,
+    distinct buckets. The earlier hand-constant `'a' * 64` would
+    have collided if a future test added two entries with the
+    same hardcoded prefix.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
     bucket = entries_dir / digest[:2]
     bucket.mkdir(parents=True, exist_ok=True)
-    path = bucket / f"{digest}-{key}.json"
+    path = bucket / f"{digest}.json"
     if valid:
         payload: dict[str, object] = {
             "key": f"v1:{digest}",

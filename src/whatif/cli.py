@@ -55,6 +55,7 @@ from typing import Annotated
 import typer
 from pydantic import ValidationError
 
+from whatif.cache import DEFAULT_CACHE_ROOT
 from whatif.cache.recovery import rebuild, unlock, verify
 from whatif.config import (
     ConfigFileError,
@@ -68,6 +69,10 @@ from whatif.config import (
 
 # Default config-file path. Operators override via `--config`.
 _DEFAULT_CONFIG_PATH = Path("whatif.config.yaml")
+
+# Default cache root is imported from the package's single source
+# of truth (`whatif.cache.DEFAULT_CACHE_ROOT`) so a future change
+# in the storage-layer canonical path propagates here automatically.
 
 # Exit codes per the cardinal-#2 / phase-8 contract.
 #
@@ -226,9 +231,6 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
 cache_app = typer.Typer(help="Cache management subcommands.")
 app.add_typer(cache_app, name="cache")
 
-# Default cache root matches the storage layer's convention.
-_DEFAULT_CACHE_ROOT = Path(".whatif/cache")
-
 
 @cache_app.command("rebuild")
 def cache_rebuild(
@@ -245,7 +247,7 @@ def cache_rebuild(
     cache_root: Annotated[
         Path,
         typer.Option("--cache-root", help="Cache root (default `.whatif/cache`)."),
-    ] = _DEFAULT_CACHE_ROOT,
+    ] = DEFAULT_CACHE_ROOT,
 ) -> None:
     """Wipe `<cache-root>/entries/`. Preserves `meta.json` and the
     lock file so the storage layer's schema-version contract stays
@@ -290,7 +292,7 @@ def cache_unlock(
     cache_root: Annotated[
         Path,
         typer.Option("--cache-root", help="Cache root (default `.whatif/cache`)."),
-    ] = _DEFAULT_CACHE_ROOT,
+    ] = DEFAULT_CACHE_ROOT,
 ) -> None:
     """Remove `<cache-root>/.lock` after a PID-alive safety check.
 
@@ -330,7 +332,7 @@ def cache_verify(
     cache_root: Annotated[
         Path,
         typer.Option("--cache-root", help="Cache root (default `.whatif/cache`)."),
-    ] = _DEFAULT_CACHE_ROOT,
+    ] = DEFAULT_CACHE_ROOT,
 ) -> None:
     """Verify cache-entry structural integrity.
 

@@ -120,12 +120,20 @@ class VerifyResult:
     `corrupted` is a tuple (not a list) for immutability — the
     `frozen=True` decorator alone doesn't prevent mutation
     through a list-typed field.
+
+    `non_bucket_skipped` mirrors `RebuildResult.non_bucket_skipped`:
+    counts paths directly under `entries/` that aren't bucket
+    directories (stray files; shouldn't normally exist). Without
+    this counter, verify would silently ignore them while rebuild
+    reports them — closing that operational gap so the two
+    operations describe the same anomalies.
     """
 
     total: int
     valid: int
     corrupted: tuple[Path, ...]
     vacuous: bool = False
+    non_bucket_skipped: int = 0
 
 
 def rebuild(cache_root: Path, *, force: bool) -> RebuildResult:
@@ -271,8 +279,14 @@ def verify(cache_root: Path) -> VerifyResult:
     total = 0
     valid = 0
     corrupted: list[Path] = []
+    non_bucket_skipped = 0
     for bucket in entries_dir.iterdir():
         if not bucket.is_dir():
+            # Stray file directly under entries/ — same anomaly
+            # rebuild reports via non_bucket_skipped. Verify
+            # surfaces it too so the two operations describe the
+            # same shape of unexpected state.
+            non_bucket_skipped += 1
             continue
         for entry_file in bucket.iterdir():
             if not entry_file.is_file():
@@ -282,7 +296,12 @@ def verify(cache_root: Path) -> VerifyResult:
                 valid += 1
             else:
                 corrupted.append(entry_file)
-    return VerifyResult(total=total, valid=valid, corrupted=tuple(corrupted))
+    return VerifyResult(
+        total=total,
+        valid=valid,
+        corrupted=tuple(corrupted),
+        non_bucket_skipped=non_bucket_skipped,
+    )
 
 
 def _is_valid_entry(path: Path) -> bool:

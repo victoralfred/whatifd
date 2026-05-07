@@ -58,7 +58,19 @@ class _GoodTraceSource:
 
 
 class _BadTraceSource:
-    # Missing cluster_key_support — should fail isinstance(TraceSource).
+    """Missing `cluster_key_support` — should fail
+    `isinstance(TraceSource)`.
+
+    Note on the limits of this check: `runtime_checkable` Protocol
+    isinstance() only verifies attribute *presence*, not argument
+    counts, parameter names, or return types. A class that defines
+    `cluster_key_support()` as `def cluster_key_support(self,
+    extra_arg): ...` would pass isinstance here but break at the
+    actual call site. The Phase 4A.2 conformance harness is the
+    stronger gate — it invokes each method with realistic inputs and
+    asserts return-shape conformance, catching signature drift this
+    test cannot."""
+
     def iter_traces(self) -> Iterator[RawTrace]:
         yield from ()
 
@@ -242,7 +254,10 @@ class TestLazyLoad:
             ],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
+        )
+        assert result.returncode == 0, (
+            f"subprocess failed (exit {result.returncode}); stderr:\n{result.stderr}"
         )
         assert result.stdout.strip() == "[]", (
             f"`import whatif` triggered adapter imports: {result.stdout!r}"
@@ -266,7 +281,10 @@ class TestLazyLoad:
             ],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
+        )
+        assert result.returncode == 0, (
+            f"subprocess failed (exit {result.returncode}); stderr:\n{result.stderr}"
         )
         assert result.stdout.strip() == "[]", (
             f"core modules triggered adapter imports: {result.stdout!r}"

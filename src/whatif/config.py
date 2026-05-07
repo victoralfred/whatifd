@@ -419,6 +419,14 @@ _HINTS: dict[tuple[str, str], str] = {
     ),
     ("timeouts.replay_seconds", "greater_than"): ("timeouts.replay_seconds must be > 0."),
     ("timeouts.score_seconds", "greater_than"): ("timeouts.score_seconds must be > 0."),
+    # Pydantic emits `model_validator` errors with `loc=
+    # ('reporting',)` because the validator is attached to the
+    # `ReportingConfig` field on `WhatifConfig`. The `loc` tuple
+    # joins via `.` (one element → bare `'reporting'`, no leading
+    # dot). The trailing colon in the rendered output (`reporting:
+    # Value error...`) comes from the f-string in
+    # `format_validation_errors`; the hint key matches the joined
+    # path without the colon.
     ("reporting", "value_error"): (
         "model-level validation on `reporting` failed; see the "
         "message above. The most common cause is "

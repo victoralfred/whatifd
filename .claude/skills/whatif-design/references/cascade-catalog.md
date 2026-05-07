@@ -170,6 +170,28 @@ Initial registry (catalog from doctrine):
 
 **Resolution:** v0.2 subprocess-pool hardening, OR v0.2 stays on threads but documents more aggressively. Trigger condition: a real production user hits a runner-hang scenario where the leaked thread accumulates measurable resource pressure across many traces.
 
+### Render subpackage boundary (`whatif.render`)
+
+**Source decision:** Phase 7 introduces a dedicated `whatif.render` subpackage producing three Markdown / text formats from the same `ReportV01`:
+
+  - **CI status** — ≤80-char one-line summary (Phase 7.3, PR #47, ✅).
+  - **Summary section** — ≤30-line compact Markdown block (Phase 7.2).
+  - **Full report** — five-section Markdown with anchored jump links + methodology block per cardinal #10 (Phase 7.1).
+
+Each format is a pure function `(ReportV01) -> str`. Walkthrough-match tests against the committed `docs/walkthroughs/*.md` fixtures are the Phase 7 gate.
+
+**Rippled to:**
+- `whatif/render/ci_status.py` (Phase 7.3) — verdict glyph + label + reason; severity-ranked finding selection; floor-failure fallback; defensive fallback for contract-violation upstream.
+- `whatif/render/summary.py` (Phase 7.2) — 30-line block; degenerate compact-Ship form; anchored jump links to full-report sections.
+- `whatif/render/markdown.py` (Phase 7.1) — five-section structure (Verdict, Stats, Replay validity, Baseline integrity, Evidence) plus a Methodology block (cardinal #10). Fix-suggestion templates queried from `FIX_SUGGESTION_REGISTRY` for Inconclusive / Don't Ship verdicts.
+- `whatif/render/templates/` — one file per fix-suggestion code; placeholder consistency lint per phases.md.
+- Three-format consistency test (Phase 7 gate) — no contradiction across CI status / summary / full report.
+- Phase 9 integration — render the six golden `ReportV01` fixtures, assert byte-equal to `docs/walkthroughs/*.md`.
+
+**Status:** open. 7.3 ✅ landed; 7.1 + 7.2 + walkthrough-match tests outstanding.
+
+**Resolution:** Phase 7 closes when all three formats render and the six walkthroughs round-trip byte-equal.
+
 ### Replay subpackage boundary (`whatif.replay`)
 
 **Source decision:** Phase 6 introduces a dedicated `whatif.replay` subpackage with a sealed-union typed result (`ReplayResult = ReplaySuccess | ReplayFailure`) as the per-trace pipeline output. `ReplayFailure` is the lightweight in-pipeline shape (registry-validated `code` with `stage="replay"`); the report-level `FailureRecord` is produced at aggregation via `make_failure_record`, which assigns the stable `id` and enforces required-details. Cardinal #1 boundary lives at `ReplayFailure.__post_init__`.

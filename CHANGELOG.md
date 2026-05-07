@@ -12,6 +12,14 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 7.3 (CI status renderer)
+
+- `src/whatif/render/ci_status.py::render_ci_status(report: ReportV01) -> str` — one-line CI status string for a `ReportV01`, ≤80 visible chars. Format: `<glyph> whatif: <Verdict> — <reason>` where the glyph is `✓` (Ship) / `✗` (Don't Ship) / `⚠` (Inconclusive).
+- Reason source rules: Ship → cohort summary (`failures X/Y ↑, baseline Z/Y stable`); Don't Ship / Inconclusive → highest-severity decision finding's message (severity rank: `blocks_all` > `blocks_ship` > `degrades_trust` > `info`); fallback for non-Ship with no findings → top floor-failure rule (`<cohort> cohort below floor (<observed> < <threshold> <rule>)`). Defensive fallback string for non-Ship + no findings + no floor failures (contract violation upstream — surfaces the violation rather than raising).
+- 80-char budget enforced by truncating the reason with `…`; verdict prefix always intact so the verdict is legible even on the most aggressive truncation.
+- `tests/unit/whatif/render/test_ci_status.py` (11 tests) — pins glyph + label per verdict, length budget for all three verdicts, ellipsis truncation on long messages, Ship cohort-summary structure, highest-severity finding selection, floor-failure fallback path, KeyError on unknown verdict_state (defensive boundary).
+- Cardinal alignment: **#8 actionable Inconclusive** (reason surfaces a registered finding or floor rule); **#2 floor cannot be bypassed** (floor failure cited when present); **#10 disclosure necessary** (CI status is the COMPACT form; methodology disclosure lives in the full report).
+
 ### Added — Phase 6.3c (async runner kernel)
 
 - `whatif.contract.AsyncRunner` Protocol — `__call__(...) -> Awaitable[ReplayOutput]`. Runtime-checkable; sibling to the existing `Runner` (sync) protocol. Sync and async runners are NOT interchangeable; the user picks one and uses the matching kernel/stream entry point.

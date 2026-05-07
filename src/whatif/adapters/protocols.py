@@ -186,6 +186,15 @@ class TraceSource(Protocol):
     (`whatif-langfuse`, `whatif/adapters/stub.py`). The conformance
     harness (Phase 4A.2) parameterizes over the protocol and is the
     single source of truth for "what makes a trace source valid".
+
+    TODO(Phase 4A.2): `runtime_checkable` `isinstance(...)` only
+    verifies attribute presence — it does NOT catch signature drift
+    (wrong argument counts, swapped return types, etc.). The
+    conformance harness at `tests/adapters/test_conformance.py`
+    invokes each method with realistic inputs and asserts return
+    shapes, which IS the gate for signature drift. New contributors
+    extending this protocol should add a matching conformance case
+    in the same PR.
     """
 
     def iter_traces(self) -> Iterator[RawTrace]:
@@ -217,6 +226,10 @@ class Scorer(Protocol):
     flow through `cache_key_components()` so the cache subsystem
     can hash them deterministically without ever seeing raw judge
     prompts (cardinal #5: hashes pre-computed at the boundary).
+
+    TODO(Phase 4A.2): same caveat as `TraceSource` — isinstance only
+    checks attribute presence; signature drift is caught by the
+    conformance harness at `tests/adapters/test_conformance.py`.
     """
 
     def score(self, case: ScoreCase) -> JudgeResult:

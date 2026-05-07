@@ -31,7 +31,7 @@ from whatif.adapters import (
     Scorer,
     TraceSource,
 )
-from whatif.adapters.protocols import CacheKeyComponents
+from whatif.cache.keying.v1 import CacheKeyComponents
 from whatif.contract import ScoreCase
 from whatif.types.sensitive import Sensitive
 from whatif.types.statistical import ClusterKeySupport
@@ -224,18 +224,39 @@ class TestAdapterMetadata:
             m.adapter_id = "y"  # type: ignore[misc]
 
     def test_slots_rejects_arbitrary_attrs(self) -> None:
-        # frozen + slots together raise on any setattr — frozen reports
-        # via dataclass machinery (TypeError on the super().__setattr__
-        # path inside `<string>:18`) when the attribute isn't in slots.
-        # Accept either TypeError or AttributeError.
+        # On CPython 3.14, frozen + slots dataclass setattr of a
+        # non-slot attribute raises TypeError from the dataclass-
+        # generated __setattr__ (it calls super().__setattr__ with a
+        # super(cls, self) object whose type doesn't match, surfacing
+        # as `super(type, obj): obj is not an instance...`). Older
+        # CPython versions surfaced AttributeError from the slots
+        # layer first. Accept the union to stay portable, and pin
+        # the current shape with a sub-assertion so a future Python
+        # change that produces a *different* exception class (e.g.,
+        # a new SlotsViolationError) fails loudly here rather than
+        # silently passing through `pytest.raises(Exception)`.
         m = AdapterMetadata(adapter_id="x", package_version="1.0.0")
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises((TypeError, AttributeError)) as excinfo:
             m.mystery = "x"  # type: ignore[attr-defined]
+        assert excinfo.type in (TypeError, AttributeError)
 
 
 # ---------------------------------------------------------------------------
 # Lazy-load contract
 # ---------------------------------------------------------------------------
+
+
+class TestReExports:
+    def test_cluster_key_support_is_canonical_object(self) -> None:
+        # The re-export from `whatif.adapters` MUST be the same object
+        # as the canonical home in `whatif.types.statistical`. Catches
+        # an accidental shadowing (e.g., a future contributor defining
+        # a local `ClusterKeySupport` in adapters/__init__.py) that
+        # would silently fork the type.
+        from whatif.adapters import ClusterKeySupport as Reexported
+        from whatif.types.statistical import ClusterKeySupport as Canonical
+
+        assert Reexported is Canonical
 
 
 class TestLazyLoad:
@@ -259,6 +280,10 @@ class TestLazyLoad:
         assert result.returncode == 0, (
             f"subprocess failed (exit {result.returncode}); stderr:\n{result.stderr}"
         )
+        # Empty-stderr assertion catches a regression that exits 0
+        # but emits a deprecation warning during adapter-adjacent
+        # imports — would otherwise pass silently.
+        assert result.stderr == "", f"unexpected stderr output:\n{result.stderr}"
         assert result.stdout.strip() == "[]", (
             f"`import whatif` triggered adapter imports: {result.stdout!r}"
         )
@@ -286,6 +311,10 @@ class TestLazyLoad:
         assert result.returncode == 0, (
             f"subprocess failed (exit {result.returncode}); stderr:\n{result.stderr}"
         )
+        # Empty-stderr assertion catches a regression that exits 0
+        # but emits a deprecation warning during adapter-adjacent
+        # imports — would otherwise pass silently.
+        assert result.stderr == "", f"unexpected stderr output:\n{result.stderr}"
         assert result.stdout.strip() == "[]", (
             f"core modules triggered adapter imports: {result.stdout!r}"
         )

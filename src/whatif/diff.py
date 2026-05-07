@@ -131,6 +131,9 @@ def load_report(path: Path) -> dict[str, Any]:
     except OSError as exc:
         raise DiffError(f"cannot read {path}: {exc}") from exc
     try:
+        # `json.loads` is fine here: the banned-import lint targets
+        # `json.dumps` outside `whatif/serialization/` (cardinal #5
+        # last-line redaction defense). Reading is unrestricted.
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise DiffError(f"JSON parse error in {path}: {exc}") from exc
@@ -280,7 +283,7 @@ def render_diff_markdown(report: DiffReport) -> str:
             arrow = "+" if f.direction == "added" else "-"
             lines.append(f"- **{arrow}** `{f.code}` ({f.severity}): {f.message}")
         lines.append("")
-    elif _verdict_unchanged_and_nothing_else(report):
+    elif _should_render_no_changes_sentinel(report):
         lines.append("(No changes detected.)")
         lines.append("")
 
@@ -316,9 +319,15 @@ def _pair_str(prev: str | None, new: str | None) -> str:
     return f"{p}→{n}"
 
 
-def _verdict_unchanged_and_nothing_else(report: DiffReport) -> bool:
-    """True iff every diff-relevant field is unchanged. Used to
-    emit a "no changes" sentinel."""
+def _should_render_no_changes_sentinel(report: DiffReport) -> bool:
+    """True iff every diff-relevant scalar/cohort field is unchanged.
+    Precondition: caller has already established that
+    `report.findings` is empty — the renderer only invokes this
+    helper from the no-findings branch. The function does NOT check
+    findings itself, so calling it with non-empty findings would
+    produce a misleading True. Renamed from
+    `_verdict_unchanged_and_nothing_else` to make the precondition
+    legible at every call site."""
     if report.verdict_state_prev != report.verdict_state_new:
         return False
     if report.schema_version_prev != report.schema_version_new:

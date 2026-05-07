@@ -73,6 +73,14 @@ class TestLoadReport:
         # typed DiffError, not a raw OSError. Mock-based because
         # producing a real unreadable file portably (chmod 000) is
         # flaky under test-runner privileges.
+        #
+        # The class-level monkeypatch is safe: pytest's `monkeypatch`
+        # fixture is function-scoped and auto-reverts at teardown,
+        # and pytest runs tests sequentially within a process by
+        # default (pytest-xdist isolates via separate processes, not
+        # concurrent threads). Per-instance scoping isn't practical
+        # for `Path.read_text` because method lookup resolves through
+        # the class, not the instance.
         p = tmp_path / "ok.json"
         p.write_text(json.dumps(_base_report()), encoding="utf-8")
 

@@ -398,7 +398,7 @@ Each format is a pure function `(ReportV01) -> str`. Walkthrough-match tests aga
 **Resolution:** `whatif diff <prev.json> <new.json>` lives at `src/whatif/diff.py` (single module, not a subpackage — no `whatif/render/diff_markdown.py` separation; the renderer is `render_diff_markdown` in the same file). v0.1 scope: verdict-state transitions, cohort row deltas, decision_findings added/removed (keyed on `(code, severity)`), failure-count delta. Renderer emits Markdown only — no `DiffV01` JSON output schema in v0.1 (downstream tooling reads the Markdown or re-runs `compute_diff` against the raw JSON). `whatif/diff.py::load_report` deliberately reads raw dicts rather than reconstructing `ReportV01` so cross-version comparisons during migration don't fail spuriously.
 
 **Deferred to v0.2:**
-- Per-trace evidence diff (which traces newly improved / regressed) — depends on the per-trace evidence schema entry below.
+- Per-trace evidence diff (which traces newly improved / regressed) — **hard dependency edge** on the "Per-trace evidence schema (top improvements / regressions with judge rationale)" entry directly below. The diff cannot land before that schema does, because there is no typed shape to diff over. Any v0.2 milestone that schedules per-trace evidence diff MUST schedule the schema entry first or in the same PR.
 - `DiffV01` JSON output shape — only motivated when downstream tooling appears that wants structured diff data.
 - Verdict-change matrix tests (Ship→Ship, Ship→DontShip, … 9 cells) — current tests pin the load-bearing transitions; full matrix becomes useful when the renderer grows verdict-specific guidance.
 

@@ -87,7 +87,12 @@ class TestRebuild:
         result = rebuild(tmp_path, force=True)
         assert result.error is None
         assert result.entries_removed == 3
-        assert result.bucket_dirs_removed == 2
+        # Three distinct buckets now: sha256("a")[:2],
+        # sha256("b")[:2], and the hand-built "ff/" bucket. Per-key
+        # digests in `_make_entry` mean keys "a" and "b" land in
+        # different buckets (was 2 buckets when both keys hash-
+        # collided with the hardcoded 'a' * 64 digest).
+        assert result.bucket_dirs_removed == 3
         # entries dir itself remains; bucket dirs gone.
         assert entries.exists()
         assert list(entries.iterdir()) == []

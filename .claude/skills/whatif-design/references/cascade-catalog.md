@@ -32,6 +32,15 @@ Format per entry:
 - **Phase 4B real adapters** — `whatif-langfuse`, `whatif-inspect-ai` separate packages. Implement the protocols; pass conformance; consume `RunManifest.adapters` surface.
 - **`RunManifest.adapters` surface** — adapter identity (id / package version / SDK version) flows from `AdapterMetadata` into `RunManifest` for audit. Phase 1.6 manifest types may need a small extension to carry one entry per adapter (trace source + scorer); this entry tracks the decision when 4B lands.
 - **Adapter→core typed-boundary review** — `RawTrace.tool_spans`, `RawTrace.metadata`, `JudgeResult.metadata` are typed `dict[str, Any]` to mirror existing `whatif.contract` shapes (`TraceInput.metadata`, `ReplayOutput.tool_spans`). Cardinal #6 in the project's CLAUDE.md governs the public report schema, NOT the adapter↔core internal boundary, so this is intentional. If/when the contract grows a typed `ToolSpan` model (deferred to v0.2), the adapter projection updates in lockstep.
+- **Transitive import cost of `whatif.adapters` import** — `whatif/adapters/__init__.py` re-exports `ClusterKeySupport` from `whatif.types.statistical`, so `import whatif.adapters` pulls in `whatif.types.statistical` at module load. Adapter-package authors targeting minimal import footprints should be aware: importing the adapter package eagerly loads the statistical types. The lazy-load contract only protects core (`import whatif`) — it does not bound the cost of loading the adapter package itself.
+
+**Phase 4A.2 conformance harness checklist** (registered here so a future refactor of the protocol module doesn't orphan the inline TODOs in `protocols.py`):
+
+- [ ] Harness invokes `TraceSource.iter_traces`, `adapter_metadata`, `cluster_key_support` with realistic inputs and asserts return shape (catches signature drift `runtime_checkable` isinstance() cannot).
+- [ ] Harness invokes `Scorer.score`, `cache_key_components`, `adapter_metadata`; asserts `score.rationale` is `Sensitive[str]`; asserts `cache_key_components(...)` returns a valid `CacheKeyComponents` (hex-digest invariants pass).
+- [ ] Harness asserts `RawTrace.user_message` and `original_response` are `Sensitive[str]` for every emitted trace.
+- [ ] Harness exercises the `score=None` structural-failure path (cardinal #1).
+- [ ] Harness runs against the synthetic stub at 4A.3 and is green; same harness re-runs against `whatif-langfuse` and `whatif-inspect-ai` at 4B.
 
 **Status:** open (4A.1 landed; 4A.2 / 4A.3 / 4B remaining).
 

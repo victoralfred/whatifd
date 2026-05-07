@@ -34,9 +34,17 @@ from whatif.adapters.protocols import (
     Scorer,
     TraceSource,
 )
+from whatif.types.statistical import ClusterKeySupport
 
+# `ClusterKeySupport` is re-exported here so adapter authors can
+# import it from the package's public surface (`from whatif.adapters
+# import ClusterKeySupport`) instead of reaching into
+# `whatif.types.statistical`. The canonical home stays in
+# `whatif.types.statistical` (cardinal #6 typed-boundary discipline);
+# this re-export is for ergonomics at the adapter boundary.
 __all__ = [
     "AdapterMetadata",
+    "ClusterKeySupport",
     "JudgeResult",
     "RawTrace",
     "Scorer",

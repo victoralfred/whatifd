@@ -100,6 +100,16 @@ class RawTrace(BaseModel):
     original_response: Sensitive[str] = Field(
         ..., description="The original agent response. Wrapped at the adapter boundary."
     )
+    # `tool_spans` and `metadata` are typed `dict[str, Any]` to
+    # mirror `whatif.contract.TraceInput.metadata` /
+    # `ReplayOutput.tool_spans` exactly — the adapter projection
+    # produces the contract types unchanged. Cardinal #6 in this
+    # project ("public schema hand-written; internal types refactor
+    # freely") governs the public report schema (`ReportV01`), not
+    # the adapter→core internal boundary. Tightening to a typed
+    # `ToolSpan` here without lifting the contract would diverge
+    # the two shapes; revisit when the runner contract grows a
+    # typed span (currently tracked as a v0.2 cascade).
     tool_spans: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Per-tool spans recorded in the original trace.",

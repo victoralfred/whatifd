@@ -171,6 +171,16 @@ class TestJudgeResult:
         jr = JudgeResult(**kwargs)
         assert jr.score is None  # cardinal #1 surfaces this as FailureRecord
 
+    def test_score_field_is_required(self) -> None:
+        # Cardinal #1: "missing score" and "explicit-None scoring
+        # failure" must be distinguishable. `Field(...)` makes the
+        # field required — omitting it raises ValidationError, while
+        # passing None is the documented structural-failure signal.
+        kwargs = _judge_result_kwargs()
+        del kwargs["score"]
+        with pytest.raises(ValidationError):
+            JudgeResult(**kwargs)
+
     def test_unwrapped_rationale_rejected(self) -> None:
         kwargs = _judge_result_kwargs()
         kwargs["rationale"] = "raw rationale"
@@ -236,4 +246,28 @@ class TestLazyLoad:
         )
         assert result.stdout.strip() == "[]", (
             f"`import whatif` triggered adapter imports: {result.stdout!r}"
+        )
+
+    def test_core_modules_do_not_load_adapters(self) -> None:
+        # Strengthens the lazy-load contract: not just `import whatif`,
+        # but every load-bearing core module. If any of these grows an
+        # adapter import (e.g., a future refactor moves a helper out
+        # of an adapter and a core module reaches back), this test
+        # fails before the lazy-load boundary is silently weakened.
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import whatif.cli, whatif.diff, whatif.config, whatif.contract, "
+                "whatif.cache, whatif.render, sys; "
+                "loaded = sorted(m for m in sys.modules "
+                "if m.startswith('whatif.adapters')); "
+                "print(loaded)",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.strip() == "[]", (
+            f"core modules triggered adapter imports: {result.stdout!r}"
         )

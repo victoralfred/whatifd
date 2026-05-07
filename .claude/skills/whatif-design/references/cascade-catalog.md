@@ -22,6 +22,21 @@ Format per entry:
 
 ## Open cascades (must resolve before schema freeze)
 
+### `whatif.adapters` package introduced (Phase 4A.1)
+
+**Source decision:** Phase 4A.1 (PR #57) introduces `src/whatif/adapters/` with `TraceSource` / `Scorer` Protocols, `RawTrace` / `JudgeResult` Pydantic models (Sensitive[str] user-content fields per cardinal #5), `AdapterMetadata` frozen dataclass, and a re-exported `ClusterKeySupport`. Lazy-load contract: core modules (`whatif.cli`, `whatif.diff`, `whatif.config`, `whatif.contract`, `whatif.cache`, `whatif.render`) MUST NOT import `whatif.adapters`; the subprocess test in `tests/unit/whatif/adapters/test_protocols.py::TestLazyLoad` is the enforcement.
+
+**Rippled to:**
+- **Phase 4A.2** (next sub-phase) — parameterized conformance harness in `tests/adapters/test_conformance.py`. Single source of truth for "what makes an adapter valid"; runs against the stub at 4A.3 and against real adapters at 4B.
+- **Phase 4A.3** (synthetic stub) — `src/whatif/adapters/stub.py`. Must satisfy the conformance harness; lazy-load test extended to also check the stub isn't pulled by core.
+- **Phase 4B real adapters** — `whatif-langfuse`, `whatif-inspect-ai` separate packages. Implement the protocols; pass conformance; consume `RunManifest.adapters` surface.
+- **`RunManifest.adapters` surface** — adapter identity (id / package version / SDK version) flows from `AdapterMetadata` into `RunManifest` for audit. Phase 1.6 manifest types may need a small extension to carry one entry per adapter (trace source + scorer); this entry tracks the decision when 4B lands.
+- **Adapter→core typed-boundary review** — `RawTrace.tool_spans`, `RawTrace.metadata`, `JudgeResult.metadata` are typed `dict[str, Any]` to mirror existing `whatif.contract` shapes (`TraceInput.metadata`, `ReplayOutput.tool_spans`). Cardinal #6 in the project's CLAUDE.md governs the public report schema, NOT the adapter↔core internal boundary, so this is intentional. If/when the contract grows a typed `ToolSpan` model (deferred to v0.2), the adapter projection updates in lockstep.
+
+**Status:** open (4A.1 landed; 4A.2 / 4A.3 / 4B remaining).
+
+**Resolution:** closes when 4B real adapters ship and the conformance harness is green against all three concrete adapters (stub + Langfuse + Inspect AI).
+
 ### TODO: Sweep this catalog at Phase 4B and Phase 9B closure
 
 **Source decision:** Phase 4 and Phase 9 each split into a structural half (4A/9A) and a real-adapter half (4B/9B). See `references/phases.md`.

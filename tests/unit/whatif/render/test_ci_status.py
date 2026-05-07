@@ -186,6 +186,25 @@ class TestFloorFailureFallback:
 
 
 class TestShipFallback:
+    def test_ship_with_non_standard_cohort_names_lists_each(self) -> None:
+        # Pin the generic per-cohort fallback: when cohort_results
+        # is non-empty but contains neither 'failure' nor
+        # 'baseline' (e.g., a future v0.2 regression_check shape
+        # using 'control'/'treatment'), the renderer falls back to
+        # listing each cohort's improved/scored separately. Format:
+        # `<name> <improved>/<scored> ↑, <name> <improved>/<scored> ↑`.
+        c_a = dataclasses.replace(cohort("control"), improved_count=7, scored=10)
+        c_b = dataclasses.replace(cohort("treatment"), improved_count=8, scored=10)
+        verdict = dataclasses.replace(ship(), cohort_results=(c_a, c_b))
+        line = render_ci_status(_report_for(verdict))
+
+        assert line.startswith("✓ whatif: Ship — ")
+        # Each cohort named, with improved/scored summary.
+        assert "control 7/10 ↑" in line
+        assert "treatment 8/10 ↑" in line
+        # The standard failure/baseline phrasing must NOT appear.
+        assert "stable" not in line
+
     def test_ship_with_empty_cohort_results_uses_no_cohorts_string(self) -> None:
         # The Ship-reason builder has a "no cohorts" fallback for
         # the case where neither `failure` nor `baseline` cohorts

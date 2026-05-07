@@ -1,9 +1,15 @@
 ---
 name: whatif-features
-description: Catalog of forward-looking refinement candidates for `whatif` — discovered-but-not-yet-needed improvements that should NOT be pulled into the active phased plan unless a concrete trigger appears. Use this skill when a contributor proposes a new refactor, when reviewing whether an idea belongs in the current phase or in deferred work, or when looking for candidate work after the v0.1 release. Do NOT use this skill to drive in-flight implementation — `whatif-design` (with `references/phases.md`) is the active plan.
+description: Deferred-work catalog for `whatif`. Use when triaging whether an idea belongs in the active plan now or as future work, when proposing a refactor, or when looking for post-v0.1 candidates.
 ---
 
 # whatif-features: forward-work candidates
+
+## Hard constraint: this skill is a workshop, not a driver
+
+**Do NOT use this skill to drive in-flight implementation.** The active plan lives in `whatif-design/references/phases.md` and is the source of truth for what gets built and in what order. This skill is a **read-from / append-to** surface only — entries here promote *into* the active plan when their trigger fires; nothing flows the other way without that trigger.
+
+If you're tempted to start implementing an entry here directly, that's the signal to STOP and either (a) confirm the trigger has fired and promote the entry, or (b) re-read the active plan and find the actual next step.
 
 ## Purpose
 

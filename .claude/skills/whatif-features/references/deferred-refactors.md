@@ -46,6 +46,8 @@ When a trigger fires, move the entry to `whatif-design/references/cascade-catalo
 
 **Trigger to promote:** The first phase that needs methodology disclosures to be honest in published reports — almost certainly Phase 9B (real-adapter smoke) or Phase 10 (release packaging). The `unavailable_reason` string in `_default_methodology()` (`"Phase 9A.1 empirical-percentile shortcut..."`) is the search anchor.
 
+**Honesty obligation while deferred (cardinal #10):** the empirical-percentile shortcut is acceptable ONLY because every report emitted during the shortcut period carries the matching `BootstrapMethodDisclosure(method="unavailable", unavailable_reason="Phase 9A.1 empirical-percentile shortcut; proper stratified bootstrap pending stats-layer integration.")` in its methodology block. If a future PR populates `ci_lower` / `ci_upper` while flipping `method` to `"paired_percentile_bootstrap"` WITHOUT actually implementing the bootstrap, that's a cardinal-#10 violation — the disclosure would lie about how the CI was computed. Phase 9A.3's `test_deterministic_field_set_matches_schema` covers field presence; the honesty pin is that `method` and `resamples` must reflect what actually ran. Add a regression test asserting the disclosure is consistent with the runtime path WHEN this entry is promoted.
+
 ---
 
 ## 5. Cluster-key scenarios in Phase 9A integration
@@ -93,6 +95,15 @@ When a trigger fires, move the entry to `whatif-design/references/cascade-catalo
 **What:** Verify `whatif diff` correctly renders all 9 verdict transitions: Ship→Ship, Ship→DontShip, Ship→Inconclusive, DontShip→Ship, DontShip→DontShip, DontShip→Inconclusive, Inconclusive→Ship, Inconclusive→DontShip, Inconclusive→Inconclusive.
 
 **Why deferred:** Cascade-tracked under "CLI whatif diff for v0.1" → "Deferred to v0.2." Current `tests/unit/whatif/test_diff.py` pins the load-bearing transitions; the full matrix becomes useful when the renderer grows verdict-specific guidance.
+
+**Auditable cross-reference** (verified at PR #64 author time; re-verify when promoting):
+
+- `TestComputeDiff::test_verdict_and_failures` — exercises the dont_ship → ship transition through `compute_diff` (one of the 9 cells; load-bearing because the verdict line is the cardinal-#10 claim).
+- `TestRenderDiffMarkdown::test_verdict_transition_arrow` — pins the `→` rendering for a verdict change in the Markdown output.
+- `TestRenderDiffMarkdown::test_no_changes_sentinel` — pins the unchanged-verdict-and-nothing-else sentinel (covers the diagonal cells of the matrix where prev == new and no other field moved).
+- `TestRenderDiffMarkdown::test_schema_only_change_is_not_no_change` and `test_unchanged_count_shift_is_not_no_change` — pin that specific non-verdict deltas don't accidentally trigger the no-changes path.
+
+These together cover ~3 of the 9 matrix cells with regression-grade pins. The remaining 6 cells (Ship→Inconclusive, Inconclusive→Ship, DontShip→Inconclusive, etc.) are covered only by the `compute_diff` call-shape tests, not by render-output assertions. Promotion of this entry adds the missing 6 cells.
 
 **Trigger to promote:** When the diff renderer adds verdict-transition-aware messaging (e.g., "DontShip → Inconclusive: a previously-blocked verdict now lacks evidence"). The matrix becomes the regression surface for that text.
 

@@ -639,6 +639,14 @@ Recommend option 2 (ContextVar) when concurrent or embedded runs become a real u
 
 ## Deferred cascades (v1.0+, explicit)
 
+### `whatif diff` arrow spacing consistency
+
+**Source decision:** v0.1 ships `whatif diff` with two arrow styles: the verdict line uses spaced ` → ` (`Don't Ship → Ship`), while cohort-table cells use unspaced `→` (`8→9 (+1)`). The unspaced form is deliberate — cohort cells live inside Markdown table columns where the tight form preserves column budget on narrow viewers; the verdict line is full-width prose where spacing reads cleaner.
+
+**Rationale for deferral:** Cosmetic, not a correctness issue. Aligning would either (a) widen cohort cells (worse for narrow viewers) or (b) tighten the verdict line (worse for readability). The right answer probably involves measuring real PR-comment renders before picking.
+
+**Trigger for resolution:** v0.2 renderer pass — when per-trace evidence diff lands and the cohort table grows, revisit the column-width budget holistically.
+
 ### FloorPassedProof binds to specific cohort results
 
 **Source decision:** v0.1 ships token without cohort-results hash; v1.0 strengthens.

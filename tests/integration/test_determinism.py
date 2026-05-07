@@ -31,6 +31,7 @@ import json
 import pytest
 
 from whatif.pipeline import run_pipeline
+from whatif.serialization.canonical import canonical_json_bytes
 from whatif.serialization.determinism import (
     deterministic_field_names,
     extract_deterministic_subset,
@@ -85,13 +86,11 @@ def test_deterministic_subset_byte_equal_across_runs(scenario_factory) -> None:
     subset_a = _run_and_extract_subset(scenario_factory())
     subset_b = _run_and_extract_subset(scenario_factory())
 
-    # Re-encode each subset with the same canonical kwargs the
-    # report encoder uses (sort_keys + tight separators) so the
-    # byte comparison is over normalized JSON, not Python dict-
-    # insertion-order artifacts.
-    bytes_a = json.dumps(subset_a, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    bytes_b = json.dumps(subset_b, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    assert bytes_a == bytes_b
+    # Route re-encoding through `canonical_json_bytes` rather than
+    # raw `json.dumps` so the banned-import lint stays clean (the
+    # serialization package is the single source of canonical JSON
+    # encoding per cardinal #5's three-layer defense).
+    assert canonical_json_bytes(subset_a) == canonical_json_bytes(subset_b)
 
 
 def test_runtime_field_excluded_from_subset() -> None:

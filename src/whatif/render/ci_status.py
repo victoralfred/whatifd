@@ -59,7 +59,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from whatif.types.finding import Severity
+from whatif.render._constants import (
+    COHORT_BASELINE as _COHORT_BASELINE,
+)
+from whatif.render._constants import (
+    COHORT_FAILURE as _COHORT_FAILURE,
+)
+from whatif.render._constants import (
+    SEVERITY_RANK as _SEVERITY_RANK,
+)
 
 if TYPE_CHECKING:
     from whatif.report.models_v01 import ReportV01
@@ -83,25 +91,9 @@ _LABEL = {
     "inconclusive": "Inconclusive",
 }
 
-# Canonical cohort names for the v0.1 failure-rescue shape. Source
-# of truth is `DecisionPolicy.required_cohorts` default
-# (`("failure", "baseline")`); these constants name the same values
-# at the renderer's use sites so a future cohort-name rename surfaces
-# in one place. v0.2's regression_check shape will introduce
-# additional names; the renderer's "neither failure nor baseline"
-# fallback already handles unknown names.
-_COHORT_FAILURE = "failure"
-_COHORT_BASELINE = "baseline"
-
-# Severity ranking for picking the "most-blocking" finding when
-# multiple are present. Higher rank = more load-bearing for the
-# CI status's reason text.
-_SEVERITY_RANK: dict[Severity, int] = {
-    "blocks_all": 4,
-    "blocks_ship": 3,
-    "degrades_trust": 2,
-    "info": 1,
-}
+# Cohort-name and severity-rank constants are imported from
+# `whatif.render._constants` (single source of truth across all
+# Phase 7 renderers).
 
 
 def render_ci_status(report: ReportV01) -> str:

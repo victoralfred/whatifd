@@ -185,6 +185,51 @@ class TestFloorFailureFallback:
 # ---------------------------------------------------------------------------
 
 
+class TestShipFallback:
+    def test_ship_with_empty_cohort_results_uses_no_cohorts_string(self) -> None:
+        # The Ship-reason builder has a "no cohorts" fallback for
+        # the case where neither `failure` nor `baseline` cohorts
+        # are present. The witness-token path normally guarantees
+        # non-empty cohort_results, but the renderer is a leaf
+        # function — test the fallback directly via a constructed
+        # report so a future refactor that drops the branch
+        # surfaces here.
+        report = _report_for(ship())
+        report = dataclasses.replace(report, cohort_results=[])
+        line = render_ci_status(report)
+        assert line == "✓ whatif: Ship — no cohorts"
+
+
+class TestGlyphCodePointStability:
+    def test_glyph_label_keys_match_verdict_states(self) -> None:
+        # Pin the closed set of verdict states the renderer
+        # accepts. A future verdict (e.g., Phase v0.2 "ConditionallyShip")
+        # would need new entries in BOTH _GLYPH and _LABEL — this
+        # test fails until both are updated, surfacing the
+        # extension point explicitly.
+        from whatif.render.ci_status import _GLYPH, _LABEL
+
+        expected_states = {"ship", "dont_ship", "inconclusive"}
+        assert set(_GLYPH.keys()) == expected_states
+        assert set(_LABEL.keys()) == expected_states
+
+    def test_glyphs_are_single_code_point(self) -> None:
+        # Pin the docstring's claim that visible width == len(string).
+        # Each glyph is one code point; the rest of the format is
+        # ASCII. A future contributor adding a multi-codepoint
+        # glyph (e.g., a flag emoji built from two regional
+        # indicators) would silently break the 80-char width
+        # assumption — this test catches that.
+        from whatif.render.ci_status import _GLYPH
+
+        for state, glyph in _GLYPH.items():
+            assert len(glyph) == 1, (
+                f"glyph for {state!r} is {len(glyph)} code points: {glyph!r}. "
+                "ci_status.py docstring claims visible width == len(string); "
+                "multi-codepoint glyphs break that assumption."
+            )
+
+
 class TestDefensiveBoundary:
     def test_unknown_verdict_state_raises_keyerror(self) -> None:
         # A `verdict_state` outside the closed Literal would have

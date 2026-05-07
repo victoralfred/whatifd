@@ -28,11 +28,16 @@ the full string would exceed the budget. The glyph + prefix
 leaving 55-63 chars for the reason on most calls.
 
 NOTE: visible-character count is `len(string)` since the format is
-ASCII + the three glyph code points. We do NOT use Unicode east-
-asian-width measurement; the glyphs are narrow, the ASCII text
-contributes one column per char, and budget-conscious renderers
-(GitHub status, terminal status bars) treat string length and
-visible width identically for this content.
+ASCII + the three single-codepoint glyphs in `_GLYPH` (`✓` U+2713,
+`✗` U+2717, `⚠` U+26A0). We do NOT use Unicode east-asian-width
+measurement; the glyphs are narrow, the ASCII text contributes one
+column per char, and budget-conscious renderers (GitHub status,
+terminal status bars) treat string length and visible width
+identically for this content. The pin
+`TestGlyphCodePointStability::test_glyphs_are_single_code_point`
+fails if a future contributor adds a multi-codepoint glyph (e.g.,
+an emoji built from regional-indicator pairs), forcing them to
+re-evaluate this width claim.
 
 ## Cardinal alignment
 

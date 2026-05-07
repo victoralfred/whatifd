@@ -113,9 +113,14 @@ class DiffReport:
         """True iff every diff-relevant field is unchanged. Co-locates
         the invariant with the data so renderers (and any future
         programmatic consumer) don't re-examine all fields from
-        outside the dataclass. Non-empty findings short-circuit to
-        False so the "(No changes detected.)" sentinel can never
-        co-render with a Findings section."""
+        outside the dataclass. The findings short-circuit is
+        belt-and-suspenders: the renderer already guards via
+        `elif report.is_empty` after the Findings section, so a
+        non-empty `findings` tuple already bypasses this property
+        in practice. The check stays here so a future programmatic
+        caller (test fixture, alternative renderer) can call
+        `is_empty` standalone and get the right answer without
+        replicating the renderer's branching."""
         if self.findings:
             return False
         if self.verdict_state_prev != self.verdict_state_new:
@@ -225,7 +230,7 @@ class _FindingSource:
     `severity_changed` bucket when severity-transition deltas earn
     their own row)."""
 
-    keys: set[tuple[str, str]]
+    keys: frozenset[tuple[str, str]]
     by_key: dict[tuple[str, str], dict[str, Any]]
     direction: Literal["added", "removed"]
 
@@ -241,12 +246,12 @@ def _diff_findings(prev: dict[str, Any], new: dict[str, Any]) -> tuple[FindingDe
     new_keys = {(f["code"], f["severity"]): f for f in new.get("decision_findings", [])}
     sources = (
         _FindingSource(
-            keys=new_keys.keys() - prev_keys.keys(),
+            keys=frozenset(new_keys.keys() - prev_keys.keys()),
             by_key=new_keys,
             direction="added",
         ),
         _FindingSource(
-            keys=prev_keys.keys() - new_keys.keys(),
+            keys=frozenset(prev_keys.keys() - new_keys.keys()),
             by_key=prev_keys,
             direction="removed",
         ),

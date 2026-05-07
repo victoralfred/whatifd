@@ -263,6 +263,35 @@ class TestRenderDiffMarkdown:
         out = render_diff_markdown(report)
         assert "(No changes detected.)" not in out
 
+    def test_pair_str_both_none_renders_single_na(self) -> None:
+        # Pin the deliberate invariant from `_pair_str` docstring:
+        # both-None medians render as a single `n/a` (unchanged),
+        # NOT `n/a→n/a`. Exercised end-to-end via the cohort row.
+        report = self._empty_report(
+            verdict_state_prev="dont_ship",  # force render past no-changes guard
+            verdict_state_new="ship",
+            cohorts=(
+                CohortDelta(
+                    name="failure",
+                    selected_prev=10,
+                    selected_new=10,
+                    scored_prev=8,
+                    scored_new=8,
+                    improved_prev=2,
+                    improved_new=2,
+                    regressed_prev=1,
+                    regressed_new=1,
+                    unchanged_prev=5,
+                    unchanged_new=5,
+                    median_delta_prev=None,
+                    median_delta_new=None,
+                ),
+            ),
+        )
+        out = render_diff_markdown(report)
+        assert "n/a→n/a" not in out
+        assert "| n/a |" in out
+
     def test_findings_section(self) -> None:
         report = self._empty_report(
             findings=(

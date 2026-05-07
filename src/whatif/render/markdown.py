@@ -207,6 +207,12 @@ def _floor_evaluation_section(
 ) -> list[str]:
     """Floor table — only rendered when at least one cohort has a
     floor failure. Clean Ship omits this section entirely."""
+    # Iterate `failing` directly for the rows: the cohorts without
+    # floor_failures are filtered upfront, so the row-emission loop
+    # only walks the cohorts that actually contribute. Avoids
+    # iterating cohorts whose `floor_failures` happens to be empty
+    # (currently harmless via the empty-list short-circuit, but
+    # fragile if the type ever widens to allow `None`).
     failing = [c for c in cohort_results if c.floor_failures]
     if not failing:
         return []
@@ -217,7 +223,7 @@ def _floor_evaluation_section(
         "| Rule | Cohort | Observed | Threshold | Status |",
         "|------|--------|----------|-----------|--------|",
     ]
-    for c in cohort_results:
+    for c in failing:
         for ff in c.floor_failures:
             lines.append(_floor_row(c.name, ff))
     return lines

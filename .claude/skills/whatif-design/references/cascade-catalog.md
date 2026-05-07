@@ -192,6 +192,16 @@ Each format is a pure function `(ReportV01) -> str`. Walkthrough-match tests aga
 
 **Resolution:** Phase 7 closes when all three formats render and the six walkthroughs round-trip byte-equal.
 
+### Walkthrough scenario 6 fixture delegation
+
+**Source decision:** Phase 7.1c (PR #51) `tests/unit/whatif/render/_walkthrough_fixtures.py::scenario_6_rerun_after_fix` delegates entirely to `scenario_1_clean_ship()` and only overrides `runtime.experiment_id`. Walkthrough 06 (`docs/walkthroughs/06-rerun-after-fix.md`) currently has identical stats to walkthrough 01; the delegation captures that equivalence directly.
+
+**Risk:** if walkthrough 06 later diverges from 01 in stats (e.g., post-fix counts differ from the original clean-Ship counts), the delegation silently produces stale data — tests pass against scenario 1's stats, not scenario 6's. The builder's docstring carries the warning, but a reader skimming the SCENARIOS map won't see it.
+
+**Resolution:** when scenario 6's walkthrough diverges, replace the delegation with explicit per-field overrides (or a fresh builder). The drift shows up as soon as any structural fidelity test fails; until then the delegation is the most-faithful representation of "scenario 6 == scenario 1 + recovery context".
+
+**Status:** open (acceptable while walkthroughs 01 and 06 share stats).
+
 ### Replay subpackage boundary (`whatif.replay`)
 
 **Source decision:** Phase 6 introduces a dedicated `whatif.replay` subpackage with a sealed-union typed result (`ReplayResult = ReplaySuccess | ReplayFailure`) as the per-trace pipeline output. `ReplayFailure` is the lightweight in-pipeline shape (registry-validated `code` with `stage="replay"`); the report-level `FailureRecord` is produced at aggregation via `make_failure_record`, which assigns the stable `id` and enforces required-details. Cardinal #1 boundary lives at `ReplayFailure.__post_init__`.

@@ -70,10 +70,12 @@ class TestStubScorerStructuralFailure(StructuralFailureScorerConformance):
     __test__ = True
 
     @pytest.fixture
-    def failing_scorer(self) -> Scorer:
+    def scorer(self) -> Scorer:
         # Configure the stub to emit `score=None` — exercises the
         # cardinal-#1 surface through the harness against the real
         # stub module (not the in-file fake from the self-test).
+        # Subclassing the variant means this fixture ALSO has to
+        # pass every ScorerConformance base-class property.
         return StubScorer(score_fn=lambda _case: None)
 
 

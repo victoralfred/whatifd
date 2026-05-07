@@ -130,7 +130,7 @@ class TestHarnessFailingScorer(StructuralFailureScorerConformance):
     __test__ = True
 
     @pytest.fixture
-    def failing_scorer(self) -> Scorer:
+    def scorer(self) -> Scorer:
         return _FailingScorer()
 
 

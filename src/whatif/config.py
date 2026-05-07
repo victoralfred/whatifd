@@ -62,6 +62,7 @@ way.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -87,9 +88,16 @@ class ForensicAffirmationError(ValueError):
 # Per-section sub-models
 # ---------------------------------------------------------------------------
 
-# Strict Pydantic v2 config: forbid unknown fields so a typo
-# surfaces as a validation error, NOT as a silently-ignored value.
-_STRICT = ConfigDict(extra="forbid", strict=True)
+# Pydantic v2 config: forbid unknown fields so a typo surfaces as
+# a validation error, NOT as a silently-ignored value.
+#
+# Note on `strict` vs `extra`: we use `extra="forbid"` (rejects
+# unknown fields) but NOT `strict=True` (which would reject lax
+# type coercion). YAML parses `60` as int; the `replay_seconds:
+# float` field needs the int→float coercion to accept it. The
+# typo-protection that matters is `extra="forbid"`; strict mode
+# was overzealous.
+_STRICT = ConfigDict(extra="forbid")
 
 
 class SourceConfig(BaseModel):
@@ -300,23 +308,23 @@ def assert_two_affirmation(cfg: WhatifConfig, *, cli_profile: str | None) -> Non
 # Hint generation
 # ---------------------------------------------------------------------------
 
-# Map (loc-tail, error-type) → human-readable hint. The loc-tail is
-# the last element of the Pydantic error's `loc` tuple; the error-
-# type is Pydantic's `type` field. This is intentionally a small
-# table — the goal is to cover the top-N common misconfigurations,
-# not be exhaustive (operators see the raw Pydantic message either
-# way).
 # Map (full-loc-path, error-type) -> human-readable hint. The path
-# is the dotted location string (matching `loc` joined with '.')
-# so identically-named fields in different sections (e.g.,
-# `source.adapter` vs `scorer.adapter`) get distinct hints.
+# is the dotted location string (Pydantic's `loc` tuple joined
+# with `.`). Full-path keys (rather than just the leaf field name)
+# disambiguate identically-named fields in different sections —
+# e.g., a future `source.adapter` and `scorer.adapter` get
+# distinct hints. List indices in `loc` (e.g., `('items', 0)`)
+# join as integers-as-strings (`'items.0'`), which is acceptable
+# for hint-table key purposes but isn't a path the user would
+# type into YAML.
 #
-# The model_validator path for forensic_acknowledgment is
-# intentionally NOT in this table: Pydantic emits those errors
-# with `loc=()` (empty tuple), so there's no field path to key on.
-# The validator's raised message already includes the actionable
-# text, so the bare Pydantic message surfaces correctly without a
-# hint.
+# `model_validator` errors arrive with `loc=()` and `type=
+# 'value_error'` — `format_validation_errors` joins empty `loc`
+# to the literal `'(root)'` string and looks up
+# `('(root)', 'value_error')`. The forensic-acknowledgment
+# validator hits this path; its registered hint below mirrors
+# the validator's raised message for operator-facing
+# consistency.
 _HINTS: dict[tuple[str, str], str] = {
     ("source.adapter", "missing"): ("set `source.adapter` to your tracer name (e.g., 'langfuse')."),
     ("target.runner", "missing"): ("set `target.runner` to a `python:module.path:attr` string."),
@@ -337,6 +345,12 @@ _HINTS: dict[tuple[str, str], str] = {
     ),
     ("timeouts.replay_seconds", "greater_than"): ("timeouts.replay_seconds must be > 0."),
     ("timeouts.score_seconds", "greater_than"): ("timeouts.score_seconds must be > 0."),
+    ("reporting", "value_error"): (
+        "model-level validation on `reporting` failed; see the "
+        "message above. The most common cause is "
+        "`reporting.profile='forensic'` without a populated "
+        "`reporting.forensic_acknowledgment` block."
+    ),
 }
 
 
@@ -368,9 +382,80 @@ def format_validation_errors(exc: ValidationError) -> str:
     return "\n".join(lines) + "\n"
 
 
+class ConfigFileError(Exception):
+    """Raised when the config file cannot be read or parsed.
+
+    Distinct from Pydantic's `ValidationError`: file-system errors
+    (path missing, permission denied) and YAML parse errors are
+    structurally different from schema-validation errors — they
+    arise BEFORE the schema sees the data. Cardinal #1: every
+    expected failure at the load boundary is a typed exception,
+    not a propagated OSError or yaml.YAMLError.
+    """
+
+
+def load_config(path: Path) -> WhatifConfig:
+    """Load and validate a `whatif` config file.
+
+    Returns the validated `WhatifConfig`. Failure modes:
+
+    - `path` does not exist → `ConfigFileError`
+    - `path` is unreadable (permission, I/O) → `ConfigFileError`
+    - YAML parse error → `ConfigFileError`
+    - Schema-validation error → `pydantic.ValidationError` (pass to
+      `format_validation_errors` for an operator-facing message)
+
+    The two distinct exception types reflect distinct operator
+    actions: `ConfigFileError` means "fix the file"; `ValidationError`
+    means "fix the field". Cardinal #1: failure-as-data at the load
+    boundary; the CLI catches both and renders the appropriate
+    message before exiting non-zero.
+
+    `path` accepts both `.yaml`/`.yml` and `.json` extensions; the
+    parser is selected by extension. Other extensions raise
+    `ConfigFileError` rather than guessing.
+    """
+    import json
+
+    if not path.exists():
+        raise ConfigFileError(f"config file not found: {path}")
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigFileError(f"cannot read config file {path}: {exc}") from exc
+
+    suffix = path.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        try:
+            import yaml  # already a project dep via pyyaml
+        except ImportError as exc:  # pragma: no cover (pyyaml is required)
+            raise ConfigFileError("PyYAML is required to load .yaml/.yml configs") from exc
+        try:
+            data = yaml.safe_load(raw)
+        except yaml.YAMLError as exc:
+            raise ConfigFileError(f"YAML parse error in {path}: {exc}") from exc
+    elif suffix == ".json":
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ConfigFileError(f"JSON parse error in {path}: {exc}") from exc
+    else:
+        raise ConfigFileError(
+            f"unsupported config extension {suffix!r} on {path}; use .yaml, .yml, or .json"
+        )
+
+    if not isinstance(data, dict):
+        raise ConfigFileError(
+            f"config file {path} must parse to a mapping; got {type(data).__name__}"
+        )
+
+    return WhatifConfig(**data)
+
+
 __all__ = [
     "ChangeConfig",
     "CohortSelectionConfig",
+    "ConfigFileError",
     "DecisionConfig",
     "ForensicAcknowledgment",
     "ForensicAffirmationError",
@@ -383,4 +468,5 @@ __all__ = [
     "WhatifConfig",
     "assert_two_affirmation",
     "format_validation_errors",
+    "load_config",
 ]

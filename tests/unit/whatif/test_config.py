@@ -19,11 +19,13 @@ import pytest
 from pydantic import ValidationError
 
 from whatif.config import (
+    ConfigFileError,
     ForensicAcknowledgment,
     ForensicAffirmationError,
     WhatifConfig,
     assert_two_affirmation,
     format_validation_errors,
+    load_config,
 )
 
 
@@ -251,3 +253,145 @@ class TestHintGenerator:
             assert "timeouts.replay_seconds" in msg
         else:
             pytest.fail("Expected ValidationError")
+
+    def test_model_validator_error_gets_hint(self) -> None:
+        # Cardinal-#7 model_validator path: forensic profile with
+        # no acknowledgment block. Pydantic emits this with
+        # `loc=('reporting',)` and `type='value_error'`; the
+        # ('reporting', 'value_error') hint entry covers it.
+        d = _minimal_config_dict()
+        d["reporting"] = {"profile": "forensic"}
+        try:
+            WhatifConfig(**d)
+        except ValidationError as exc:
+            msg = format_validation_errors(exc)
+            assert "reporting:" in msg
+            assert "Hint: model-level validation on `reporting`" in msg
+        else:
+            pytest.fail("Expected ValidationError")
+
+    def test_empty_loc_renders_as_root(self) -> None:
+        # The format_validation_errors fallback renders empty
+        # `loc` as "(root)". Engineer a synthetic Pydantic error
+        # with empty loc to exercise the branch directly — no
+        # production path currently produces empty loc, but the
+        # fallback exists and must be tested.
+        from pydantic_core import InitErrorDetails, PydanticCustomError
+
+        try:
+            raise ValidationError.from_exception_data(
+                "Synthetic",
+                [
+                    InitErrorDetails(
+                        type=PydanticCustomError("value_error", "synthetic root error"),
+                        loc=(),
+                        input=None,
+                    ),
+                ],
+            )
+        except ValidationError as exc:
+            msg = format_validation_errors(exc)
+            assert "(root):" in msg
+
+
+# ---------------------------------------------------------------------------
+# Type coercion (lax mode — strict=True dropped to accept YAML int->float)
+# ---------------------------------------------------------------------------
+
+
+class TestCoercion:
+    def test_int_coerces_to_float_for_timeouts(self) -> None:
+        # YAML parses `60` as int; the field is `replay_seconds:
+        # float`. Without strict mode, Pydantic coerces. Pin this
+        # so a future re-introduction of `strict=True` would fail
+        # this test rather than break operator YAML files.
+        d = _minimal_config_dict()
+        d["timeouts"] = {"replay_seconds": 60, "score_seconds": 30}
+        cfg = WhatifConfig(**d)
+        assert cfg.timeouts.replay_seconds == 60.0
+        assert cfg.timeouts.score_seconds == 30.0
+        assert isinstance(cfg.timeouts.replay_seconds, float)
+
+
+# ---------------------------------------------------------------------------
+# load_config — file -> WhatifConfig boundary (cardinal #1)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadConfig:
+    def test_load_yaml_file(self, tmp_path) -> None:
+        p = tmp_path / "whatif.yaml"
+        p.write_text(
+            "source:\n  adapter: langfuse\n"
+            "target:\n  runner: python:my_agent.replay:run\n"
+            "selection:\n"
+            "  failure_cohort:\n    limit: 20\n"
+            "  baseline_cohort:\n    limit: 20\n"
+            "change:\n  system_prompt: be concise\n"
+            "scorer:\n  adapter: inspect_ai\n  cache_mode: auto\n"
+            "decision: {}\n"
+            "reporting: {}\n"
+            "timeouts: {}\n",
+            encoding="utf-8",
+        )
+        cfg = load_config(p)
+        assert cfg.source.adapter == "langfuse"
+
+    def test_load_json_file(self, tmp_path) -> None:
+        import json as _json
+
+        p = tmp_path / "whatif.json"
+        p.write_text(_json.dumps(_minimal_config_dict()), encoding="utf-8")
+        cfg = load_config(p)
+        assert cfg.source.adapter == "langfuse"
+
+    def test_missing_file_raises_config_file_error(self, tmp_path) -> None:
+        with pytest.raises(ConfigFileError, match="not found"):
+            load_config(tmp_path / "does-not-exist.yaml")
+
+    def test_yaml_parse_error_raises_config_file_error(self, tmp_path) -> None:
+        p = tmp_path / "broken.yaml"
+        # Invalid YAML: unclosed bracket.
+        p.write_text("source:\n  adapter: [unclosed", encoding="utf-8")
+        with pytest.raises(ConfigFileError, match="YAML parse error"):
+            load_config(p)
+
+    def test_json_parse_error_raises_config_file_error(self, tmp_path) -> None:
+        p = tmp_path / "broken.json"
+        p.write_text("{not valid json", encoding="utf-8")
+        with pytest.raises(ConfigFileError, match="JSON parse error"):
+            load_config(p)
+
+    def test_unsupported_extension_raises(self, tmp_path) -> None:
+        p = tmp_path / "config.toml"
+        p.write_text("", encoding="utf-8")
+        with pytest.raises(ConfigFileError, match="unsupported config extension"):
+            load_config(p)
+
+    def test_non_mapping_root_raises(self, tmp_path) -> None:
+        p = tmp_path / "list.yaml"
+        p.write_text("- a\n- b\n", encoding="utf-8")
+        with pytest.raises(ConfigFileError, match="must parse to a mapping"):
+            load_config(p)
+
+    def test_validation_error_propagates(self, tmp_path) -> None:
+        # File loads, parses, but schema is invalid → propagates
+        # `ValidationError` (NOT wrapped in ConfigFileError). This
+        # is the documented split: file/parse errors are
+        # ConfigFileError; field/schema errors are ValidationError.
+        p = tmp_path / "invalid.yaml"
+        p.write_text(
+            "source:\n  adapter: langfuse\n"
+            "target:\n  runner: python:x:y\n"
+            "selection:\n"
+            "  failure_cohort:\n    limit: 0\n"  # invalid: ge=1
+            "  baseline_cohort:\n    limit: 20\n"
+            "change: {}\n"
+            "scorer:\n  adapter: inspect_ai\n"
+            "decision: {}\n"
+            "reporting: {}\n"
+            "timeouts: {}\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValidationError):
+            load_config(p)

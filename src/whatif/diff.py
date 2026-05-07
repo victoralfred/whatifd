@@ -108,6 +108,34 @@ class DiffReport:
     cohorts: tuple[CohortDelta, ...]
     findings: tuple[FindingDelta, ...]
 
+    @property
+    def is_empty(self) -> bool:
+        """True iff every diff-relevant field is unchanged. Co-locates
+        the invariant with the data so renderers (and any future
+        programmatic consumer) don't re-examine all fields from
+        outside the dataclass. Non-empty findings short-circuit to
+        False so the "(No changes detected.)" sentinel can never
+        co-render with a Findings section."""
+        if self.findings:
+            return False
+        if self.verdict_state_prev != self.verdict_state_new:
+            return False
+        if self.schema_version_prev != self.schema_version_new:
+            return False
+        if self.failures_prev != self.failures_new:
+            return False
+        for c in self.cohorts:
+            if (
+                c.selected_prev != c.selected_new
+                or c.scored_prev != c.scored_new
+                or c.improved_prev != c.improved_new
+                or c.regressed_prev != c.regressed_new
+                or c.unchanged_prev != c.unchanged_new
+                or c.median_delta_prev != c.median_delta_new
+            ):
+                return False
+        return True
+
 
 def load_report(path: Path) -> dict[str, Any]:
     """Read and parse a whatif report JSON file.
@@ -185,6 +213,23 @@ def _diff_cohorts(prev: dict[str, Any], new: dict[str, Any]) -> tuple[CohortDelt
     return tuple(deltas)
 
 
+@dataclass(frozen=True, slots=True)
+class _FindingSource:
+    """One half of the findings diff: the keys to emit in some
+    direction, paired with the source dict that holds the full
+    record. Bucketed so we can emit `added` (NEW first, for operator
+    triage) before `removed` in a single pass. Frozen + slotted to
+    match the rest of the module; promotes the prior verbose inline
+    `tuple[int, set[...], dict[...], Literal[...]]` annotation into
+    a named shape that's easier to extend in v0.2 (e.g., a
+    `severity_changed` bucket when severity-transition deltas earn
+    their own row)."""
+
+    keys: set[tuple[str, str]]
+    by_key: dict[tuple[str, str], dict[str, Any]]
+    direction: Literal["added", "removed"]
+
+
 def _diff_findings(prev: dict[str, Any], new: dict[str, Any]) -> tuple[FindingDelta, ...]:
     """Identify findings present in one report but not the other.
 
@@ -194,31 +239,27 @@ def _diff_findings(prev: dict[str, Any], new: dict[str, Any]) -> tuple[FindingDe
     """
     prev_keys = {(f["code"], f["severity"]): f for f in prev.get("decision_findings", [])}
     new_keys = {(f["code"], f["severity"]): f for f in new.get("decision_findings", [])}
-    # Build (sort_bucket, source_dict, direction) tuples and walk
-    # them in one pass with a single ordering key — avoids the
-    # earlier two-loops-then-sort pattern. Bucket 0 = added (NEW
-    # surfaces first for operator triage), bucket 1 = removed.
-    sources: tuple[
-        tuple[
-            int,
-            set[tuple[str, str]],
-            dict[tuple[str, str], dict[str, Any]],
-            Literal["added", "removed"],
-        ],
-        ...,
-    ] = (
-        (0, new_keys.keys() - prev_keys.keys(), new_keys, "added"),
-        (1, prev_keys.keys() - new_keys.keys(), prev_keys, "removed"),
+    sources = (
+        _FindingSource(
+            keys=new_keys.keys() - prev_keys.keys(),
+            by_key=new_keys,
+            direction="added",
+        ),
+        _FindingSource(
+            keys=prev_keys.keys() - new_keys.keys(),
+            by_key=prev_keys,
+            direction="removed",
+        ),
     )
     deltas: list[FindingDelta] = []
-    for _bucket, key_set, by_key, direction in sources:
-        for key in sorted(key_set):
-            f = by_key[key]
+    for src in sources:
+        for key in sorted(src.keys):
+            f = src.by_key[key]
             deltas.append(
                 FindingDelta(
                     code=f["code"],
                     severity=f["severity"],
-                    direction=direction,
+                    direction=src.direction,
                     message=f.get("message", ""),
                 )
             )
@@ -281,7 +322,7 @@ def render_diff_markdown(report: DiffReport) -> str:
             arrow = "+" if f.direction == "added" else "-"
             lines.append(f"- **{arrow}** `{f.code}` ({f.severity}): {f.message}")
         lines.append("")
-    elif _should_render_no_changes_sentinel(report):
+    elif report.is_empty:
         lines.append("(No changes detected.)")
         lines.append("")
 
@@ -315,33 +356,6 @@ def _pair_str(prev: str | None, new: str | None) -> str:
     if p == n:
         return n
     return f"{p}→{n}"
-
-
-def _should_render_no_changes_sentinel(report: DiffReport) -> bool:
-    """True iff every diff-relevant field is unchanged. Safe to call
-    from any context — non-empty findings short-circuit to False so
-    the sentinel can never co-render with a Findings section. Uses
-    `if/return` rather than `assert` because asserts strip under
-    `python -O`; the invariant must hold under all run modes."""
-    if report.findings:
-        return False
-    if report.verdict_state_prev != report.verdict_state_new:
-        return False
-    if report.schema_version_prev != report.schema_version_new:
-        return False
-    if report.failures_prev != report.failures_new:
-        return False
-    for c in report.cohorts:
-        if (
-            c.selected_prev != c.selected_new
-            or c.scored_prev != c.scored_new
-            or c.improved_prev != c.improved_new
-            or c.regressed_prev != c.regressed_new
-            or c.unchanged_prev != c.unchanged_new
-            or c.median_delta_prev != c.median_delta_new
-        ):
-            return False
-    return True
 
 
 __all__ = [

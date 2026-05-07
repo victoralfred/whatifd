@@ -35,7 +35,28 @@ import warnings
 from collections.abc import Mapping
 from functools import lru_cache
 from importlib.resources import files
-from typing import Any
+from typing import Any, TypedDict
+
+# Functional TypedDict form because `x-deterministic` carries a
+# hyphen and isn't a valid Python identifier. `total=False` because
+# the schema's per-property keys are optional — a property may
+# carry `type` OR `$ref`, `x-deterministic` may be absent on legacy
+# fields, etc. The extractor uses `.get("x-deterministic")` so
+# absence is safe; the typed shape exists so callers don't see
+# `dict[str, Any]` bleed across the internal/boundary line.
+SchemaProperty = TypedDict(
+    "SchemaProperty",
+    {
+        "type": str,
+        "$ref": str,
+        "items": dict[str, Any],
+        "properties": dict[str, dict[str, Any]],
+        "additionalProperties": bool | dict[str, Any],
+        "description": str,
+        "x-deterministic": bool,
+    },
+    total=False,
+)
 
 
 class DeterministicSubsetWarning(UserWarning):
@@ -53,7 +74,7 @@ class DeterministicSubsetWarning(UserWarning):
 
 
 @lru_cache(maxsize=1)
-def _schema_properties() -> dict[str, dict[str, Any]]:
+def _schema_properties() -> dict[str, SchemaProperty]:
     """Load the v0.1 schema's `properties` map once.
 
     `importlib.resources.files` is the forward-compatible loader —
@@ -62,7 +83,7 @@ def _schema_properties() -> dict[str, dict[str, Any]]:
     """
     schema_resource = files("whatif.report.schema").joinpath("v0.1.schema.json")
     schema = json.loads(schema_resource.read_text(encoding="utf-8"))
-    properties: dict[str, dict[str, Any]] = schema.get("properties", {})
+    properties: dict[str, SchemaProperty] = schema.get("properties", {})
     return properties
 
 

@@ -139,4 +139,14 @@ def test_deterministic_field_set_matches_schema() -> None:
         "decision_policy",
         "methodology",
     }
-    assert deterministic_field_names() == expected
+    actual = deterministic_field_names()
+    added = actual - expected
+    removed = expected - actual
+    # Explicit drift message so a schema change surfaces actionable
+    # information instead of a raw set-equality failure.
+    assert actual == expected, (
+        f"Deterministic-field-set drift: added={sorted(added)!r}, "
+        f"removed={sorted(removed)!r}. Update the `expected` literal AND the "
+        f"`test_deterministic_subset_byte_equal_across_runs` parametrization "
+        f"so the new field is covered by byte-equality."
+    )

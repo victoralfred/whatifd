@@ -54,7 +54,7 @@ Format per entry:
 **Rippled to:**
 - **CI gate (future):** the determinism comparison surface is now a known artifact. A future Phase 9B / Phase 10 CI check that diffs deterministic subsets across runs (e.g., on PRs that touch the pipeline) should reuse `extract_deterministic_subset` rather than re-implement the schema lookup.
 - **Schema-bump migrations (v0.2+):** when the schema adds a new top-level field with `x-deterministic: true`, `test_deterministic_field_set_matches_schema` MUST be updated in the same PR so the byte-equality assertion covers the new field. Producer-ahead-of-consumer drift surfaces as `DeterministicSubsetWarning` at runtime; missing schema-extractor sync surfaces as a test failure.
-- **Banned-import discipline:** the test file routes its re-encode through `canonical_json_bytes` (in `whatif.serialization`); any future helper that encodes for byte-comparison MUST live in the serialization package per cardinal #5's three-layer defense.
+- **Banned-import discipline:** the test file routes its re-encode through `canonical_json_bytes` (in `whatif.serialization`); any future helper that encodes for byte-comparison MUST live in the serialization package per the project's `json.dumps`-only-inside-`whatif/serialization/` lint rule. The lint rule itself is one layer of cardinal #5's three-layer defense (it prevents bypassing `WhatifJSONEncoder`'s Sensitive-rejection check), but the immediate governing rule is the banned-import discipline, not cardinal #5 itself.
 
 **Status:** open (extractor shipped; CI diff gate is downstream work).
 

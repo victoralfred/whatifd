@@ -12,6 +12,16 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 7.1a (full Markdown report skeleton)
+
+- `src/whatif/render/markdown.py::render_full_report(report: ReportV01) -> str` — the canonical Markdown artifact `whatif fork` writes alongside the JSON report. Sections: verdict header, bold reason, Stats (per-cohort breakdown with median Δ + CI), Replay validity (with `<a id="replay-validity">` anchor), Floor evaluation table (rendered IFF a floor failure is present), Suggested next steps (`<a id="fix">` anchor), Methodology, Manifest pointer.
+- **Anchors resolve the summary's forward-reference jump links:** `#fix` and `#replay-validity` live here so when Phase 8 CLI splices summary + full-report into one Markdown file, the summary's jump links become live in-document navigation.
+- **Floor evaluation table** rendered only when at least one floor failure is present. Clean Ship omits the table for compactness; non-Ship verdicts surface the failed rule(s) per cohort.
+- **Methodology block (cardinal #10):** every required disclosure field rendered, including the five reliability concepts (reproducibility / reliability / validity / calibration / bias) — surfaced explicitly even when False, never silently omitted (the disclosure-vs-silence test pins this).
+- **CI bounds:** rendered as `CI [lower, upper]` when present; `(CI not computed: <reason>)` when `ci_unavailable_reason` is set; bare `(CI not computed)` fallback when neither.
+- 22 tests pin: verdict header per state, anchors present for every verdict, methodology renders all five reliability concepts by name, floor table omitted on clean Ship and rendered on floor failure, suggested-next-steps surfaces blocking findings, stats/CI/replay-validity content.
+- **Phase 7.1 split:** this delivery is **7.1a** (skeleton + sections + anchors + methodology). Outstanding: **7.1b** wires `FIX_SUGGESTION_REGISTRY` templates into the Suggested-next-steps section (placeholder text retained until then; pinned by `test_phase_7_1b_placeholder_message`); **7.1c** walkthrough-match tests for all six `docs/walkthroughs/*.md` scenarios (Phase 7 gate).
+
 ### Added — Phase 7.2 (compact summary renderer)
 
 - `src/whatif/render/summary.py::render_summary(report: ReportV01) -> str` — compact-form Markdown summary, ≤30 lines. Suitable for PR comments / Slack posts. Format: verdict header, bold reason line, per-cohort stats (failure / baseline first, then any others), replay-validity + cache one-liner, trailing jump-link bar.

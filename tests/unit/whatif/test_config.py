@@ -431,6 +431,43 @@ class TestLoadConfig:
         with pytest.raises(ConfigFileError, match="must parse to a mapping"):
             load_config(p)
 
+    def test_forensic_yaml_to_proof_end_to_end(self, tmp_path) -> None:
+        # File→config→affirmation seam: write a YAML with the
+        # forensic profile + acknowledgment block, load it, and
+        # assert_two_affirmation with --profile forensic should
+        # produce a TwoAffirmationProof with forensic_active=True.
+        # This pins the integration the cascade-catalog entry
+        # warns about: Phase 8.2 CLI must call assert_two_affirmation
+        # after load_config; no test was previously exercising the
+        # full file-load→witness path.
+        p = tmp_path / "forensic.yaml"
+        p.write_text(
+            "source:\n  adapter: langfuse\n"
+            "target:\n  runner: python:my_agent.replay:run\n"
+            "selection:\n"
+            "  failure_cohort:\n    limit: 20\n"
+            "  baseline_cohort:\n    limit: 20\n"
+            "change: {}\n"
+            "scorer:\n  adapter: inspect_ai\n"
+            "decision: {}\n"
+            "reporting:\n"
+            "  profile: forensic\n"
+            "  forensic_acknowledgment:\n"
+            "    accepted_by: ops\n"
+            "    accepted_at: '2026-05-07'\n"
+            "    reason: regulatory audit\n"
+            "timeouts: {}\n",
+            encoding="utf-8",
+        )
+        cfg = load_config(p)
+        proof = assert_two_affirmation(cfg, cli_profile="forensic")
+        assert proof.forensic_active is True
+
+        # Cross-check: the same loaded config with --profile NOT
+        # forensic raises (CLI half missing).
+        with pytest.raises(ForensicAffirmationError):
+            assert_two_affirmation(cfg, cli_profile=None)
+
     def test_validation_error_propagates(self, tmp_path) -> None:
         # File loads, parses, but schema is invalid → propagates
         # `ValidationError` (NOT wrapped in ConfigFileError). This

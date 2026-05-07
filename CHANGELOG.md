@@ -12,6 +12,13 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 4A.3 (synthetic stub adapter; Phase 4A complete)
+
+- `src/whatif/adapters/stub.py` — `StubTraceSource` and `StubScorer` implementing the Phase 4A.1 protocols. Fixture-driven: tests construct a stub with `StubTraceSpec` rows (plain strings — the stub wraps them in `Sensitive[str]` at construction per cardinal #5) and an optional `score_fn: Callable[[ScoreCase], float | None]`. `cluster_key_support` is parameterizable so integration tests exercise both the "source provides clusters" and "source does not" branches of the methodology disclosure (cardinal #10). `cache_key_components` produces deterministic 16-hex digests derived from input identifiers (satisfies the `CacheKeyComponents.__post_init__` invariants without ever touching raw judge prompts — cardinal #5).
+- The stub is shipped under `whatif.adapters` (not `tests/`) so tests outside this repo (skill-benchmarks, future contributor reproductions) can import it. The lazy-load contract from Phase 4A.1 already includes `whatif.adapters.stub` in its scan — `import whatif` does not pull the stub.
+- `tests/adapters/test_stub_conformance.py` — the inverse of the 4A.2 self-test: subclasses every conformance base class with stub fixtures and pins three additional stub-specific behaviors (fixture ordering preserved, cache keys deterministic for identical cases, distinct keys for distinct cases). The Phase 9A integration suite will rely on these.
+- Closes the cascade-catalog Phase 4A.2 conformance-harness checklist's "harness runs against the synthetic stub at 4A.3" item. **Phase 4A is complete.** Phase 4B (real Langfuse + Inspect AI adapters in separate packages) and Phase 9A (stub end-to-end) are now unblocked.
+
 ### Added — Phase 4A.2 (adapter conformance harness)
 
 - `tests/adapters/conformance.py` — parameterized base classes (`TraceSourceConformance`, `ScorerConformance`, `StructuralFailureScorerConformance`) that any concrete adapter subclasses to inherit a battery of conformance tests. Single source of truth for "what makes an adapter valid"; runs against the synthetic stub at Phase 4A.3 and against `whatif-langfuse` / `whatif-inspect-ai` at Phase 4B. Base classes carry `__test__ = False` so pytest does not collect them with the unimplemented fixture; concrete subclasses set `__test__ = True`.

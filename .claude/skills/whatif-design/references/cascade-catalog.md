@@ -36,15 +36,16 @@ Format per entry:
 
 **Phase 4A.2 conformance harness checklist** (registered here so a future refactor of the protocol module doesn't orphan the inline TODOs in `protocols.py`):
 
-- [ ] Harness invokes `TraceSource.iter_traces`, `adapter_metadata`, `cluster_key_support` with realistic inputs and asserts return shape (catches signature drift `runtime_checkable` isinstance() cannot).
-- [ ] Harness invokes `Scorer.score`, `cache_key_components`, `adapter_metadata`; asserts `score.rationale` is `Sensitive[str]`; asserts `cache_key_components(...)` returns a valid `CacheKeyComponents` (hex-digest invariants pass).
-- [ ] Harness asserts `RawTrace.user_message` and `original_response` are `Sensitive[str]` for every emitted trace.
-- [ ] Harness exercises the `score=None` structural-failure path (cardinal #1).
-- [ ] Harness runs against the synthetic stub at 4A.3 and is green; same harness re-runs against `whatif-langfuse` and `whatif-inspect-ai` at 4B.
+- [x] Harness invokes `TraceSource.iter_traces`, `adapter_metadata`, `cluster_key_support` with realistic inputs and asserts return shape (Phase 4A.2, PR #58).
+- [x] Harness invokes `Scorer.score`, `cache_key_components`, `adapter_metadata`; asserts `score.rationale` is `Sensitive[str]`; asserts `cache_key_components(...)` returns a valid `CacheKeyComponents` (Phase 4A.2, PR #58).
+- [x] Harness asserts `RawTrace.user_message` and `original_response` are `Sensitive[str]` for every emitted trace (Phase 4A.2, PR #58).
+- [x] Harness exercises the `score=None` structural-failure path via `StructuralFailureScorerConformance` (Phase 4A.2, PR #58).
+- [x] Harness runs against the synthetic stub at 4A.3 and is green (`tests/adapters/test_stub_conformance.py`, this PR).
+- [ ] Same harness re-runs against `whatif-langfuse` and `whatif-inspect-ai` at 4B.
 
-**Status:** open (4A.1 landed; 4A.2 / 4A.3 / 4B remaining).
+**Status:** Phase 4A complete (4A.1 / 4A.2 / 4A.3 all landed). 4B real adapters remaining.
 
-**Resolution:** closes when 4B real adapters ship and the conformance harness is green against all three concrete adapters (stub + Langfuse + Inspect AI).
+**Resolution:** closes when 4B real adapters ship and the conformance harness is green against both real adapters in addition to the stub.
 
 ### TODO: Sweep this catalog at Phase 4B and Phase 9B closure
 

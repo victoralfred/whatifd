@@ -77,10 +77,18 @@ def make_score_case(trace_id: str = "t-1", cohort: str = "failure") -> ScoreCase
     """Construct a realistic `ScoreCase` for the harness to feed
     into `Scorer.score` and `Scorer.cache_key_components`. Lives at
     module level so adapter-specific subclasses can extend with
-    additional cases without re-deriving the shape."""
+    additional cases without re-deriving the shape.
+
+    Raises `ValueError` for cohort values other than `"failure"` or
+    `"baseline"` — silent fallback to `"failure"` would mask a typo
+    in a downstream fixture, producing a misleading test rather than
+    a loud failure.
+    """
+    if cohort not in ("failure", "baseline"):
+        raise ValueError(f"make_score_case: cohort must be 'failure' or 'baseline'; got {cohort!r}")
     return ScoreCase(
         trace_id=trace_id,
-        cohort="failure" if cohort not in ("failure", "baseline") else cohort,
+        cohort=cohort,
         input=TraceInput(user_message="hello"),
         original_output=TraceOutput(text="orig"),
         replayed_output=ReplayOutput(text="replay"),
@@ -93,6 +101,15 @@ class TraceSourceConformance:
     Subclass and override the `trace_source` fixture to point at a
     concrete adapter. `__test__ = False` so pytest does not collect
     the base — only concrete subclasses are run.
+
+    **Real-adapter authors (Phase 4B):** `test_emitted_traces_wrap_user_content`
+    materializes the entire stream via `list()` to assert
+    `Sensitive[str]` wrapping on every emitted trace. The harness
+    deliberately does NOT impose a slice (would weaken cardinal-#5
+    coverage to first-N only). If your adapter's fixture is large
+    enough to risk OOM, slice the source itself before passing it
+    to the harness — see the comment inside the test method for
+    the recommended `itertools.islice` shape and rationale.
     """
 
     __test__ = False
@@ -137,6 +154,17 @@ class TraceSourceConformance:
         # already enforces this at construction; this test re-asserts
         # at the harness boundary so a regression that bypasses
         # construction (e.g., model_construct) fails loudly.
+        #
+        # Note for real-adapter authors: list() materializes the
+        # entire stream. That's fine for harness fixtures (stub +
+        # small Langfuse smoke fixture), but a real-adapter test
+        # against a large backfill fixture should slice (e.g.,
+        # `itertools.islice(trace_source.iter_traces(), 100)`) before
+        # collecting, to avoid OOM. The harness deliberately does
+        # NOT impose a slice here because that would weaken the
+        # cardinal-#5 coverage to the first N — adapters that wrap
+        # the first 100 but leak unwrapped strings on trace 101
+        # would pass silently.
         emitted = list(trace_source.iter_traces())
         if not emitted:
             pytest.skip(
@@ -190,28 +218,34 @@ class ScorerConformance:
         assert isinstance(components, CacheKeyComponents)
 
 
-class StructuralFailureScorerConformance:
+class StructuralFailureScorerConformance(ScorerConformance):
     """Optional conformance variant: scorers that can be configured
     to emit `score=None` should subclass this to exercise the
     cardinal-#1 surface explicitly. Adapters whose backend cannot
     produce structural-failure outputs (e.g., a deterministic stub
     that always succeeds) skip this class.
+
+    Extends `ScorerConformance` so the failing scorer ALSO has to
+    pass every base-class property (isinstance, adapter_metadata,
+    score-shape, cache_key_components). A subclass that bound
+    `failing_scorer` to a non-Scorer object would previously have
+    passed the variant silently; now it must satisfy the full
+    contract first.
+
+    Subclasses provide the `scorer` fixture as usual; the fixture
+    MUST return a scorer configured to emit `score=None`. The
+    inherited `test_score_returns_judge_result` already accepts
+    `score is None or isinstance(result.score, float)`, so it stays
+    green; `test_score_none_path` adds the load-bearing assertion
+    that `score IS None` for this fixture.
     """
 
     __test__ = False
 
-    @pytest.fixture
-    def failing_scorer(self) -> Scorer:
-        raise NotImplementedError(
-            "Subclass `StructuralFailureScorerConformance` and override "
-            "the `failing_scorer` fixture to return a scorer that emits "
-            "score=None for the next call."
-        )
-
-    def test_score_none_path(self, failing_scorer: Scorer) -> None:
-        result = failing_scorer.score(make_score_case())
+    def test_score_none_path(self, scorer: Scorer) -> None:
+        result = scorer.score(make_score_case())
         assert result.score is None, (
-            "failing_scorer fixture must emit score=None to exercise the "
-            "cardinal-#1 structural-failure path."
+            "scorer fixture in StructuralFailureScorerConformance must emit "
+            "score=None to exercise the cardinal-#1 structural-failure path."
         )
         assert isinstance(result.rationale, Sensitive)

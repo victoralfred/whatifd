@@ -60,10 +60,15 @@ _SCENARIO_PARAMS = list(SCENARIOS.items())
 
 
 @pytest.fixture(
+    scope="module",
     params=_SCENARIO_PARAMS,
     ids=_SCENARIO_IDS,
 )
 def scenario(request):
+    # `scope="module"`: each Scenario.builder() runs ONCE per module
+    # rather than per-test, cutting ~54 builds (6 scenarios x 9 tests)
+    # to 6. Reports are frozen dataclasses so cross-test mutation isn't
+    # a concern.
     n, s = request.param  # s: Scenario NamedTuple — see _walkthrough_fixtures.
     return {
         "n": n,
@@ -150,21 +155,26 @@ class TestThreeFormatConsistency:
 
     def test_cohort_counts_consistent_summary_vs_full(self, scenario) -> None:
         # If the report has cohort_results, the summary's per-cohort
-        # `(N)` count and the full report's `(N)` count must match.
+        # `(N):` count and the full report's `(N):` count must match.
         # (Both source from `CohortResult.scored`.)
+        #
+        # Scoped to `({scored}):` (with trailing colon) rather than
+        # bare `({scored})` — the colon is part of the cohort-line
+        # format `**Label (N):**` and avoids spurious matches when
+        # the integer string `(0)` could appear elsewhere in the
+        # rendered output (e.g., a future "Cache: 0 misses" line).
         report = scenario["report"]
         if not report.cohort_results:
             pytest.skip("scenario has no cohort_results")
+        summary = render_summary(report)
+        full = render_full_report(report)
         for c in report.cohort_results:
-            count_str = f"({c.scored})"
-            summary = render_summary(report)
-            full = render_full_report(report)
-            # Each cohort count appears in both formats. The rendering
-            # may differ in label (e.g., "Failures" vs c.name) but the
-            # `(N)` substring is shared.
-            assert count_str in summary, f"cohort {c.name!r} count {count_str} missing from summary"
-            assert count_str in full, (
-                f"cohort {c.name!r} count {count_str} missing from full report"
+            count_marker = f"({c.scored}):"
+            assert count_marker in summary, (
+                f"cohort {c.name!r} count marker {count_marker!r} missing from summary"
+            )
+            assert count_marker in full, (
+                f"cohort {c.name!r} count marker {count_marker!r} missing from full report"
             )
 
 

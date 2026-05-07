@@ -66,10 +66,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from whatif.render.ci_status import (
-    _COHORT_BASELINE,
-    _COHORT_FAILURE,
-    _SEVERITY_RANK,
+from whatif.render._constants import (
+    COHORT_BASELINE as _COHORT_BASELINE,
+)
+from whatif.render._constants import (
+    COHORT_FAILURE as _COHORT_FAILURE,
+)
+from whatif.render._constants import (
+    SEVERITY_RANK as _SEVERITY_RANK,
 )
 
 if TYPE_CHECKING:
@@ -182,7 +186,18 @@ def _cohort_line(label: str, c: CohortResult) -> str:
 
 def _replay_validity_line(report: ReportV01) -> str | None:
     """Single line summarizing replay + cache stats. Returns None
-    if no cohort_results (degenerate; nothing to summarize)."""
+    if no cohort_results (degenerate; nothing to summarize).
+
+    The simple sum across cohorts assumes every cohort uses the
+    same `selected/replayed/scored` semantics: each trace is
+    counted once at each stage in exactly one cohort. v0.1
+    failure-rescue and the planned v0.2 regression-check shapes
+    both satisfy this — cohorts partition traces, they don't
+    overlap. If a future shape introduces overlapping cohorts
+    (e.g., the same trace appearing in both `regression_baseline`
+    and `treatment`), this sum would double-count and the line
+    needs reweighting.
+    """
     if not report.cohort_results:
         return None
     total_replayed = sum(c.replayed for c in report.cohort_results)

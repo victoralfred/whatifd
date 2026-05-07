@@ -23,10 +23,12 @@ from __future__ import annotations
 import json
 
 import pytest
+from click.testing import Result
 from typer.testing import CliRunner
 
 from whatif.cli import (
     EXIT_INCONCLUSIVE_OR_SETUP_FAILURE,
+    EXIT_SHIP,
     app,
 )
 
@@ -36,7 +38,7 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
-def _all_output(result) -> str:
+def _all_output(result: Result) -> str:
     """Combined stdout/stderr — newer click/typer versions mix
     streams in `result.output` by default, dropping the
     `mix_stderr` constructor arg. This helper smooths the
@@ -45,7 +47,7 @@ def _all_output(result) -> str:
     return (result.stdout or "") + (getattr(result, "stderr", "") or "") + (result.output or "")
 
 
-def _minimal_config_dict() -> dict:
+def _minimal_config_dict() -> dict[str, object]:
     return {
         "source": {"adapter": "langfuse"},
         "target": {"runner": "python:my_agent.replay:run"},
@@ -61,7 +63,7 @@ def _minimal_config_dict() -> dict:
     }
 
 
-def _forensic_config_dict() -> dict:
+def _forensic_config_dict() -> dict[str, object]:
     d = _minimal_config_dict()
     d["reporting"] = {
         "profile": "forensic",
@@ -192,6 +194,37 @@ class TestForkDefaultFlow:
 # ---------------------------------------------------------------------------
 
 
+class TestWitnessThreading:
+    def test_run_fork_pipeline_signature_requires_proof(self) -> None:
+        # Cardinal #2 / #7 mirror: the dispatcher's signature is
+        # the structural contract surface. A future Phase 4
+        # contributor can extend the body but cannot drop the
+        # `proof: TwoAffirmationProof` parameter without breaking
+        # this test (and every typed caller). Pin the resolved
+        # annotations via `get_type_hints` (the module uses
+        # `from __future__ import annotations` so raw signature
+        # values are strings; `get_type_hints` evaluates them).
+        import inspect
+        import typing
+
+        from whatif.cli import _run_fork_pipeline
+        from whatif.config import TwoAffirmationProof, WhatifConfig
+
+        sig = inspect.signature(_run_fork_pipeline)
+        params = list(sig.parameters.values())
+        assert len(params) == 2
+        assert params[0].name == "cfg"
+        assert params[1].name == "proof"
+        # Both parameters required (no defaults).
+        assert params[0].default is inspect.Parameter.empty
+        assert params[1].default is inspect.Parameter.empty
+        # Resolved annotations match the declared types.
+        hints = typing.get_type_hints(_run_fork_pipeline)
+        assert hints["cfg"] is WhatifConfig
+        assert hints["proof"] is TwoAffirmationProof
+        assert hints["return"] is int
+
+
 class TestSubcommandStubs:
     def test_cache_rebuild_stub(self, runner: CliRunner) -> None:
         result = runner.invoke(app, ["cache", "rebuild"])
@@ -217,9 +250,13 @@ class TestSubcommandStubs:
         assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
         assert "Phase 8.4" in _all_output(result)
 
-    def test_report_migrate_stub(self, runner: CliRunner, tmp_path) -> None:
+    def test_report_migrate_no_op_exits_zero(self, runner: CliRunner, tmp_path) -> None:
+        # v0.1 has no schema bumps to migrate; the no-op IS a
+        # success, not a setup failure. Exit 0 (Ship-equivalent)
+        # so automated pipelines can wire this without false
+        # alarms.
         report = tmp_path / "report.json"
         report.write_text("{}", encoding="utf-8")
         result = runner.invoke(app, ["report-migrate", str(report)])
-        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
-        assert "Phase 8.5" in _all_output(result)
+        assert result.exit_code == EXIT_SHIP
+        assert "No-op success" in _all_output(result)

@@ -58,6 +58,8 @@ from pydantic import ValidationError
 from whatif.config import (
     ConfigFileError,
     ForensicAffirmationError,
+    TwoAffirmationProof,
+    WhatifConfig,
     assert_two_affirmation,
     format_validation_errors,
     load_config,
@@ -134,13 +136,39 @@ def fork(
         typer.echo(f"whatif: {exc}", err=True)
         raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE) from exc
 
-    # Phase 8.2 stub: the downstream pipeline (replay → score →
-    # decision → render) requires Phase 4 adapter integration. Until
-    # that lands, exit 2 with a clear setup-failure message rather
-    # than crashing with NotImplementedError. The proof is held in a
-    # local so a future contributor wiring Phase 4 sees the threading
-    # surface.
-    _ = proof  # downstream consumers (Phase 4+) accept this
+    # Phase 8.2 dispatches into _run_fork_pipeline, which holds
+    # the typed-proof contract: callers MUST pass a
+    # TwoAffirmationProof. The compiler now rejects any future
+    # refactor that bypasses the witness — the threading is
+    # structural, not by comment convention.
+    exit_code = _run_fork_pipeline(cfg, proof)
+    raise typer.Exit(code=exit_code)
+
+
+def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
+    """Execute the fork pipeline (replay → score → decision →
+    render) and return the appropriate exit code.
+
+    The `proof: TwoAffirmationProof` parameter is the load-bearing
+    witness — Phase 4 / Phase 9 wiring of the runner / scorer /
+    decision / render stages MUST go through this signature. The
+    compiler enforces that callers obtain the proof via
+    `assert_two_affirmation`; there is no Optional default and no
+    Any fallback. Mirrors cardinal #2's `FloorPassedProof` threading.
+
+    v0.1 8.2 ships the dispatcher SHELL — Phase 4 adapter
+    integration wires the runner; Phase 9 wires the full pipeline.
+    Until that lands, this function returns the setup-failure exit
+    code with a clear stderr message naming the missing wiring.
+    The Phase-4 contributor extends this body in place; the
+    function signature is the stable contract surface.
+    """
+    # `cfg` and `proof` are accepted but not yet consumed — Phase 4
+    # wires the runner from cfg.target.runner, the scorer from
+    # cfg.scorer.adapter, etc. `proof.forensic_active` gates the
+    # redaction profile at the artifact-bundle write boundary.
+    _ = cfg
+    _ = proof
     typer.echo(
         "whatif: fork pipeline requires Phase 4 adapter integration, "
         "which is not yet wired into the v0.1 CLI. Config and "
@@ -150,7 +178,7 @@ def fork(
         'boundary" for the remaining wiring.',
         err=True,
     )
-    raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE)
+    return EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
 
 
 # ---------------------------------------------------------------------------
@@ -202,17 +230,21 @@ def diff(
 def report_migrate(
     report: Annotated[Path, typer.Argument(help="Report file to migrate")],
 ) -> None:
-    """Migrate a report to the current schema (Phase 8.5 stub).
+    """Migrate a report to the current schema.
 
-    v0.1: no schema bumps yet, so this is a no-op stub. Real
-    migration logic lands in v0.2+ when v0.2 schema diverges from
-    v0.1.
+    v0.1 has no schema bumps to migrate from, so this is an
+    intentional no-op. Exits 0 (success) because there's nothing
+    to fix — conflating "intentional no-op" with "setup failure"
+    in the exit-code contract would mislead operators wiring this
+    into automated pipelines.
+
+    Real migration logic lands in v0.2+ when v0.2 schema diverges
+    from v0.1.
     """
     typer.echo(
-        f"whatif report-migrate: v0.1 has no migrations to apply ({report}). Phase 8.5 stub.",
-        err=True,
+        f"whatif report-migrate: v0.1 has no migrations to apply ({report}). No-op success.",
     )
-    raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE)
+    raise typer.Exit(code=EXIT_SHIP)  # exit 0: intentional no-op
 
 
 def main() -> None:

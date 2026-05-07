@@ -249,6 +249,26 @@ class TestGlyphCodePointStability:
             )
 
 
+class TestSeverityStrictness:
+    def test_unknown_severity_raises_keyerror(self) -> None:
+        # `Severity` is a closed Literal; a value outside it
+        # arriving at the renderer is schema drift (e.g., a Phase
+        # v0.2 addition that didn't update _SEVERITY_RANK).
+        # Surface the drift loudly rather than silently demoting
+        # to below info — which would produce a wrong CI status if
+        # the new severity is meant to be the highest.
+        from whatif.types.finding import DecisionFinding
+
+        bogus = DecisionFinding(
+            code="bogus",
+            severity="bogus_severity",  # type: ignore[arg-type]
+            message="x",
+        )
+        verdict = dataclasses.replace(dont_ship(), findings=(bogus,))
+        with pytest.raises(KeyError):
+            render_ci_status(_report_for(verdict))
+
+
 class TestDefensiveBoundary:
     def test_unknown_verdict_state_raises_keyerror(self) -> None:
         # A `verdict_state` outside the closed Literal would have

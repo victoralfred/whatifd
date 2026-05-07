@@ -170,10 +170,20 @@ def _highest_severity_finding(
     findings: list[DecisionFinding],
 ) -> DecisionFinding | None:
     """Pick the finding with the highest severity; ties broken by
-    list order (stable, deterministic)."""
+    list order (stable, deterministic).
+
+    Uses strict subscript `_SEVERITY_RANK[f.severity]` (NOT
+    `.get(..., 0)`): `Severity` is a closed Literal, and a value
+    outside the Literal arriving here is schema drift — most likely
+    a Phase v0.2 severity added to the type without updating this
+    rank table. Surfacing the drift as `KeyError` here is
+    preferable to silently demoting the new severity below `info`,
+    which would produce a wrong CI status (the new severity might
+    semantically be the highest).
+    """
     if not findings:
         return None
-    return max(findings, key=lambda f: _SEVERITY_RANK.get(f.severity, 0))
+    return max(findings, key=lambda f: _SEVERITY_RANK[f.severity])
 
 
 def _top_floor_failure_rule(cohort_results: list[CohortResult]) -> str | None:

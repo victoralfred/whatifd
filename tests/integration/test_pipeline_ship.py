@@ -15,16 +15,24 @@ Phase 9A.4 adds failure injection.
 
 from __future__ import annotations
 
+import pytest
+
 from whatif.pipeline import run_pipeline
+from whatif.report.models_v01 import ReportV01
 from whatif.types.policy import DecisionPolicy, TrustFloor
 
 from ._fixtures import scenario_clean_ship
 
 
 class TestCleanShipScenario:
-    def test_verdict_is_ship(self) -> None:
+    @pytest.fixture(scope="class")
+    def report(self) -> ReportV01:
+        # Class-scoped: run_pipeline is deterministic for a given
+        # fixture, so each test method asserts a different property
+        # of the same report. Halves fixture setup cost; clarifies
+        # intent as Phase 9A.2 adds more scenarios to similar classes.
         fx = scenario_clean_ship()
-        report = run_pipeline(
+        return run_pipeline(
             fx.trace_source,
             delta_fn=fx.delta_fn,
             floor=TrustFloor(),
@@ -33,19 +41,11 @@ class TestCleanShipScenario:
             methodology=fx.methodology,
             cache_summary=fx.cache_summary,
         )
+
+    def test_verdict_is_ship(self, report: ReportV01) -> None:
         assert report.verdict_state == "ship"
 
-    def test_cohort_counts_match_fixture(self) -> None:
-        fx = scenario_clean_ship()
-        report = run_pipeline(
-            fx.trace_source,
-            delta_fn=fx.delta_fn,
-            floor=TrustFloor(),
-            policy=DecisionPolicy(),
-            runtime=fx.runtime,
-            methodology=fx.methodology,
-            cache_summary=fx.cache_summary,
-        )
+    def test_cohort_counts_match_fixture(self, report: ReportV01) -> None:
         cohorts = {c.name: c for c in report.cohort_results}
         assert cohorts["failure"].selected == 20
         assert cohorts["failure"].scored == 20
@@ -57,32 +57,12 @@ class TestCleanShipScenario:
         # All 20 baseline deltas are 0.01 < epsilon=0.05 — unchanged.
         assert cohorts["baseline"].unchanged_count == 20
 
-    def test_floor_passed_on_required_cohorts(self) -> None:
-        fx = scenario_clean_ship()
-        report = run_pipeline(
-            fx.trace_source,
-            delta_fn=fx.delta_fn,
-            floor=TrustFloor(),
-            policy=DecisionPolicy(),
-            runtime=fx.runtime,
-            methodology=fx.methodology,
-            cache_summary=fx.cache_summary,
-        )
+    def test_floor_passed_on_required_cohorts(self, report: ReportV01) -> None:
         for c in report.cohort_results:
             assert c.floor_passed, f"cohort {c.name} did not pass the floor"
             assert c.floor_failures == []
 
-    def test_ci_bounds_populated(self) -> None:
-        fx = scenario_clean_ship()
-        report = run_pipeline(
-            fx.trace_source,
-            delta_fn=fx.delta_fn,
-            floor=TrustFloor(),
-            policy=DecisionPolicy(),
-            runtime=fx.runtime,
-            methodology=fx.methodology,
-            cache_summary=fx.cache_summary,
-        )
+    def test_ci_bounds_populated(self, report: ReportV01) -> None:
         for c in report.cohort_results:
             assert c.ci_computable, f"cohort {c.name} CI not computed"
             assert c.median_delta is not None

@@ -47,10 +47,11 @@ from whatif.decision.floor import compute_cohort_floor_failures
 from whatif.decision.verdict import compute_verdict
 from whatif.report.models_v01 import ReportV01
 from whatif.report.projection import project_to_report_v01
-from whatif.types.cohort import CohortResult
+from whatif.types.cohort import CIUnavailableReason, CohortResult
 from whatif.types.failure import FailureRecord
 from whatif.types.manifest import RunManifest
 from whatif.types.policy import DecisionPolicy, TrustFloor
+from whatif.types.primitives import DecimalString
 from whatif.types.statistical import MethodologyDisclosure
 
 
@@ -131,6 +132,14 @@ def _bucket_by_cohort(
         try:
             bucket_deltas.append(delta_fn(rt))
         except Exception as exc:  # boundary catch; structured into FailureRecord per cardinal #1
+            # Preserve the original exception type in details so
+            # Phase 9A.4 failure-injection diagnostics can match on
+            # exc class without re-parsing the free-form message.
+            # Cardinal #6: details is `Mapping[str, JsonPrimitive]`,
+            # so the type name (str) is the right shape — full
+            # tracebacks stay in the Python exception chain via the
+            # raise-from semantics if a future refactor wraps in a
+            # custom exception.
             failures.append(
                 FailureRecord(
                     id=f"delta-fn-{rt.trace_id}",
@@ -141,6 +150,7 @@ def _bucket_by_cohort(
                     trace_id=rt.trace_id,
                     cohort=rt.cohort,
                     retryable=False,
+                    details={"exc_type": type(exc).__name__},
                 )
             )
     buckets = tuple(
@@ -174,20 +184,22 @@ def _cohort_result_from_bucket(
     scored = len(bucket.deltas)
     replayed = scored  # 9A.1 shortcut: stub treats every selected trace as replayed
 
-    median: str | None = None
-    ci_lower: str | None = None
-    ci_upper: str | None = None
+    median: DecimalString | None = None
+    ci_lower: DecimalString | None = None
+    ci_upper: DecimalString | None = None
     ci_computable = False
-    ci_unavailable_reason: object = "sample_too_small"
+    ci_unavailable_reason: CIUnavailableReason | None = "sample_too_small"
     if scored >= floor.min_scored_per_required_cohort:
-        median = f"{statistics.median(bucket.deltas):.3f}"
+        median = DecimalString(f"{statistics.median(bucket.deltas):.3f}")
         # Empirical percentile CI — Phase 9A.1 shortcut. Real
         # stratified bootstrap lands later in the stats layer.
-        sorted_deltas = sorted(bucket.deltas)
-        lo_idx = max(0, int(0.05 * len(sorted_deltas)))
-        hi_idx = min(len(sorted_deltas) - 1, int(0.95 * len(sorted_deltas)))
-        ci_lower = f"{sorted_deltas[lo_idx]:.3f}"
-        ci_upper = f"{sorted_deltas[hi_idx]:.3f}"
+        # `statistics.quantiles(..., n=20)` produces 19 cut points;
+        # index 0 is the 5th percentile, index 18 is the 95th.
+        # `method="exclusive"` (the default) is appropriate for
+        # sample-based CI bounds.
+        quantiles = statistics.quantiles(bucket.deltas, n=20)
+        ci_lower = DecimalString(f"{quantiles[0]:.3f}")
+        ci_upper = DecimalString(f"{quantiles[-1]:.3f}")
         ci_computable = True
         ci_unavailable_reason = None
 
@@ -204,10 +216,10 @@ def _cohort_result_from_bucket(
         replayed=replayed,
         scored=scored,
         ci_computable=ci_computable,
-        ci_unavailable_reason=ci_unavailable_reason,  # type: ignore[arg-type]
-        median_delta=median,  # type: ignore[arg-type]
-        ci_lower=ci_lower,  # type: ignore[arg-type]
-        ci_upper=ci_upper,  # type: ignore[arg-type]
+        ci_unavailable_reason=ci_unavailable_reason,
+        median_delta=median,
+        ci_lower=ci_lower,
+        ci_upper=ci_upper,
         floor_passed=True,  # provisional; corrected below
         floor_failures=[],
         improved_count=improved,

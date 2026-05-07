@@ -63,15 +63,26 @@ def _default_methodology() -> MethodologyDisclosure:
         primary_metric="faithfulness",
         primary_endpoints=("failure.faithfulness", "baseline.faithfulness"),
         cohorts=("failure", "baseline"),
+        # Phase 9A.1 ships an empirical-percentile shortcut, NOT
+        # real bootstrap. The methodology disclosure says
+        # `method="unavailable"` so consumers (renderers, future
+        # determinism tests) don't read inconsistent state — there's
+        # no real bootstrap to disclose. The `unavailable_reason`
+        # spells out the shortcut. Phase 9A.3+ flips this to
+        # `paired_percentile_bootstrap` with non-zero `resamples`
+        # when the stats layer lands.
         bootstrap=BootstrapMethodDisclosure(
-            method="paired_percentile_bootstrap",
-            resamples=0,
-            seed=42,
+            method="unavailable",
+            resamples=None,
+            seed=None,
             sample_unit="paired_trace_delta",
             ci_level="0.950",
             cluster_key=None,
-            assumptions=("trace_independence",),
-            unavailable_reason=None,
+            assumptions=(),
+            unavailable_reason=(
+                "Phase 9A.1 empirical-percentile shortcut; proper "
+                "stratified bootstrap pending stats-layer integration."
+            ),
         ),
         multiplicity=MultiplicityDisclosure(
             primary_endpoint_count=2,

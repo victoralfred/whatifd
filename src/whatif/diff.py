@@ -194,31 +194,34 @@ def _diff_findings(prev: dict[str, Any], new: dict[str, Any]) -> tuple[FindingDe
     """
     prev_keys = {(f["code"], f["severity"]): f for f in prev.get("decision_findings", [])}
     new_keys = {(f["code"], f["severity"]): f for f in new.get("decision_findings", [])}
+    # Build (sort_bucket, source_dict, direction) tuples and walk
+    # them in one pass with a single ordering key — avoids the
+    # earlier two-loops-then-sort pattern. Bucket 0 = added (NEW
+    # surfaces first for operator triage), bucket 1 = removed.
+    sources: tuple[
+        tuple[
+            int,
+            set[tuple[str, str]],
+            dict[tuple[str, str], dict[str, Any]],
+            Literal["added", "removed"],
+        ],
+        ...,
+    ] = (
+        (0, new_keys.keys() - prev_keys.keys(), new_keys, "added"),
+        (1, prev_keys.keys() - new_keys.keys(), prev_keys, "removed"),
+    )
     deltas: list[FindingDelta] = []
-    for key in sorted(new_keys.keys() - prev_keys.keys()):
-        f = new_keys[key]
-        deltas.append(
-            FindingDelta(
-                code=f["code"],
-                severity=f["severity"],
-                direction="added",
-                message=f.get("message", ""),
+    for _bucket, key_set, by_key, direction in sources:
+        for key in sorted(key_set):
+            f = by_key[key]
+            deltas.append(
+                FindingDelta(
+                    code=f["code"],
+                    severity=f["severity"],
+                    direction=direction,
+                    message=f.get("message", ""),
+                )
             )
-        )
-    for key in sorted(prev_keys.keys() - new_keys.keys()):
-        f = prev_keys[key]
-        deltas.append(
-            FindingDelta(
-                code=f["code"],
-                severity=f["severity"],
-                direction="removed",
-                message=f.get("message", ""),
-            )
-        )
-    # Stable order regardless of the {set difference} iteration:
-    # added rows first (operators triage what's NEW), then removed,
-    # each group sorted by (code, severity).
-    deltas.sort(key=lambda d: (0 if d.direction == "added" else 1, d.code, d.severity))
     return tuple(deltas)
 
 
@@ -315,14 +318,13 @@ def _pair_str(prev: str | None, new: str | None) -> str:
 
 
 def _should_render_no_changes_sentinel(report: DiffReport) -> bool:
-    """True iff every diff-relevant scalar/cohort field is unchanged.
-    Precondition: caller has already established that
-    `report.findings` is empty — the renderer only invokes this
-    helper from the no-findings branch. The function does NOT check
-    findings itself, so calling it with non-empty findings would
-    produce a misleading True. Renamed from
-    `_verdict_unchanged_and_nothing_else` to make the precondition
-    legible at every call site."""
+    """True iff every diff-relevant field is unchanged. Safe to call
+    from any context — non-empty findings short-circuit to False so
+    the sentinel can never co-render with a Findings section. Uses
+    `if/return` rather than `assert` because asserts strip under
+    `python -O`; the invariant must hold under all run modes."""
+    if report.findings:
+        return False
     if report.verdict_state_prev != report.verdict_state_new:
         return False
     if report.schema_version_prev != report.schema_version_new:

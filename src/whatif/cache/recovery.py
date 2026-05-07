@@ -57,18 +57,26 @@ _LOCK_FILENAME = ".lock"
 
 @dataclass(frozen=True, slots=True)
 class RebuildResult:
-    """Outcome of `rebuild`. `entries_removed` counts the JSON files
-    deleted; `bucket_dirs_removed` counts the two-char digest-prefix
-    directories the storage layer creates. `non_bucket_skipped`
-    counts non-directory paths the rebuild walked past (stray
-    files directly under entries/ — shouldn't normally exist;
-    surface them so an operator notices the anomaly). `error` is
-    set when the cache root or entries dir didn't exist (a no-op
-    rebuild)."""
+    """Outcome of `rebuild`.
+
+    - `entries_removed`: JSON files deleted from bucket dirs.
+    - `bucket_dirs_removed`: two-char digest-prefix directories
+      removed (one per bucket the storage layer created).
+    - `non_bucket_skipped`: non-directory paths directly under
+      `entries/` (stray files; shouldn't normally exist).
+    - `non_file_skipped_in_bucket`: non-file paths INSIDE bucket
+      directories (e.g., nested subdirs). Storage layout is
+      bucket/<file>; anything else is structurally unexpected.
+      Surfaced separately from `non_bucket_skipped` because the
+      anomaly is at a different layer (inside vs above buckets).
+    - `error`: set when the cache root or entries dir didn't
+      exist (a no-op rebuild).
+    """
 
     entries_removed: int
     bucket_dirs_removed: int
     non_bucket_skipped: int = 0
+    non_file_skipped_in_bucket: int = 0
     error: str | None = None
 
 
@@ -148,6 +156,7 @@ def rebuild(cache_root: Path, *, force: bool) -> RebuildResult:
     entries_removed = 0
     bucket_dirs_removed = 0
     non_bucket_skipped = 0
+    non_file_skipped_in_bucket = 0
     for bucket in entries_dir.iterdir():
         if not bucket.is_dir():
             # Stray file directly under entries/ — shouldn't
@@ -166,16 +175,30 @@ def rebuild(cache_root: Path, *, force: bool) -> RebuildResult:
             # trigger.
             non_bucket_skipped += 1
             continue
+        bucket_had_only_files = True
         for entry_file in bucket.iterdir():
             if entry_file.is_file():
                 entry_file.unlink()
                 entries_removed += 1
-        bucket.rmdir()
-        bucket_dirs_removed += 1
+            else:
+                # Non-file inside a bucket (e.g., a nested subdir
+                # — should never exist with the v0.1 storage
+                # layout). Count + skip; an operator will see the
+                # number and can investigate. Don't recurse blindly
+                # to avoid silent data loss in case the structure
+                # is something we don't understand yet.
+                non_file_skipped_in_bucket += 1
+                bucket_had_only_files = False
+        if bucket_had_only_files:
+            bucket.rmdir()
+            bucket_dirs_removed += 1
+        # else: leave the bucket dir behind so the operator can
+        # inspect the unexpected non-file children.
     return RebuildResult(
         entries_removed=entries_removed,
         bucket_dirs_removed=bucket_dirs_removed,
         non_bucket_skipped=non_bucket_skipped,
+        non_file_skipped_in_bucket=non_file_skipped_in_bucket,
     )
 
 

@@ -18,7 +18,12 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
+
+import psutil
+import pytest
 
 from whatif.cache.recovery import rebuild, unlock, verify
 
@@ -96,6 +101,39 @@ class TestRebuild:
         # The stray file is preserved (rebuild doesn't touch it).
         assert (entries / "stray.json").exists()
 
+    def test_non_file_in_bucket_counted_and_preserved(self, tmp_path: Path) -> None:
+        # Storage layout is bucket/<file>. A nested subdir inside a
+        # bucket is structurally unexpected — rebuild surfaces it
+        # via non_file_skipped_in_bucket and leaves the bucket dir
+        # behind for operator inspection rather than recursing
+        # blindly (which could delete data the rebuild doesn't
+        # understand).
+        entries = tmp_path / "entries"
+        bucket = entries / "aa"
+        bucket.mkdir(parents=True)
+        # Add a regular entry file
+        entry = bucket / ("aa" + "a" * 62 + "-x.json")
+        entry.write_text(
+            json.dumps({"key": "v1:x", "value": {}, "metadata": {}}),
+            encoding="utf-8",
+        )
+        # Add an unexpected nested subdir
+        nested = bucket / "unexpected_subdir"
+        nested.mkdir()
+
+        result = rebuild(tmp_path, force=True)
+        assert result.error is None
+        assert result.entries_removed == 1
+        assert result.non_file_skipped_in_bucket == 1
+        # The bucket dir is preserved (had a non-file child).
+        assert bucket.exists()
+        assert nested.exists()
+        # The entry file IS removed.
+        assert not entry.exists()
+        # bucket_dirs_removed counts only buckets that were
+        # cleanly emptied.
+        assert result.bucket_dirs_removed == 0
+
     def test_preserves_meta_and_lock_files(self, tmp_path: Path) -> None:
         entries = tmp_path / "entries"
         _make_entry(entries, "a")
@@ -120,30 +158,21 @@ class TestUnlock:
         assert result.error == "no_lock_file"
         assert result.removed is False
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason=(
+            "POSIX-only: `true` isn't a standard executable on Windows; "
+            "cache subsystem refuses Windows at module load (psutil "
+            "conditional + lock.py guard)."
+        ),
+    )
     def test_stale_lock_removed(self, tmp_path: Path) -> None:
-        # Skip on Windows: `true` isn't a standard executable
-        # there, and the cache subsystem is Linux/macOS-only at
-        # the module level (psutil conditional + lock.py refuses
-        # Windows at import). The dead-PID acquisition mechanism
-        # picks `true` because every POSIX system has it; a
-        # cross-platform alternative would add complexity without
-        # benefit since the runtime path doesn't run on Windows.
-        import sys
-
-        if sys.platform == "win32":
-            import pytest
-
-            pytest.skip("Linux/macOS only — cache subsystem refuses Windows")
         # Use a freshly-exited subprocess for a hermetic dead PID.
         # The earlier "PID 999999 is virtually guaranteed dead"
         # approach flaked on Linux systems with `kernel.pid_max`
         # set high enough that 999999 could be a live process.
         # Spawning + waiting for `true` guarantees the PID was
         # alive when allocated and dead by the time we use it.
-        import subprocess
-
-        import psutil
-
         proc = subprocess.Popen(["true"])
         proc.wait()
         dead_pid = proc.pid

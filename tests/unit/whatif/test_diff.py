@@ -1,0 +1,212 @@
+"""Tests for `whatif.diff` — Phase 8.4.
+
+Pinned properties:
+
+1. `load_report` raises `DiffError` for missing file, unreadable
+   file, malformed JSON, and non-mapping JSON. Genuine reports
+   round-trip.
+2. `compute_diff` surfaces verdict transitions, schema-version
+   transitions, failure-count deltas, per-cohort row deltas, and
+   findings added/removed (keyed on (code, severity)).
+3. `render_diff_markdown` produces a Markdown body that ends with
+   a single trailing newline; the verdict-unchanged + nothing-else
+   case emits the "(No changes detected.)" sentinel; the
+   verdict-changed case emits a `prev → new` arrow.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from whatif.diff import (
+    CohortDelta,
+    DiffError,
+    DiffReport,
+    FindingDelta,
+    compute_diff,
+    load_report,
+    render_diff_markdown,
+)
+
+
+def _base_report(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "verdict_state": "ship",
+        "schema_version": "v0.1",
+        "cohort_results": [],
+        "decision_findings": [],
+        "failures": [],
+    }
+    base.update(overrides)
+    return base
+
+
+# ---------------------------------------------------------------------------
+# load_report
+# ---------------------------------------------------------------------------
+
+
+class TestLoadReport:
+    def test_missing_file(self, tmp_path: Path) -> None:
+        with pytest.raises(DiffError, match="not found"):
+            load_report(tmp_path / "missing.json")
+
+    def test_malformed_json(self, tmp_path: Path) -> None:
+        p = tmp_path / "bad.json"
+        p.write_text("not json{", encoding="utf-8")
+        with pytest.raises(DiffError, match="JSON parse error"):
+            load_report(p)
+
+    def test_non_mapping_root(self, tmp_path: Path) -> None:
+        p = tmp_path / "list.json"
+        p.write_text("[1, 2, 3]", encoding="utf-8")
+        with pytest.raises(DiffError, match="must parse to a mapping"):
+            load_report(p)
+
+    def test_round_trip(self, tmp_path: Path) -> None:
+        p = tmp_path / "ok.json"
+        p.write_text(json.dumps(_base_report()), encoding="utf-8")
+        data = load_report(p)
+        assert data["verdict_state"] == "ship"
+
+
+# ---------------------------------------------------------------------------
+# compute_diff
+# ---------------------------------------------------------------------------
+
+
+class TestComputeDiff:
+    def test_verdict_and_failures(self) -> None:
+        prev = _base_report(verdict_state="dont_ship", failures=[{"code": "x"}])
+        new = _base_report(verdict_state="ship")
+        report = compute_diff(prev, new)
+        assert report.verdict_state_prev == "dont_ship"
+        assert report.verdict_state_new == "ship"
+        assert report.failures_prev == 1
+        assert report.failures_new == 0
+
+    def test_cohort_deltas_keyed_by_name(self) -> None:
+        prev = _base_report(
+            cohort_results=[
+                {
+                    "name": "failure",
+                    "selected": 10,
+                    "scored": 8,
+                    "improved_count": 2,
+                    "regressed_count": 1,
+                    "unchanged_count": 5,
+                    "median_delta": "+0.05",
+                }
+            ]
+        )
+        new = _base_report(
+            cohort_results=[
+                {
+                    "name": "failure",
+                    "selected": 10,
+                    "scored": 9,
+                    "improved_count": 5,
+                    "regressed_count": 0,
+                    "unchanged_count": 4,
+                    "median_delta": "+0.10",
+                }
+            ]
+        )
+        report = compute_diff(prev, new)
+        assert len(report.cohorts) == 1
+        c = report.cohorts[0]
+        assert c.name == "failure"
+        assert (c.improved_prev, c.improved_new) == (2, 5)
+        assert (c.median_delta_prev, c.median_delta_new) == ("+0.05", "+0.10")
+
+    def test_findings_added_and_removed(self) -> None:
+        prev = _base_report(
+            decision_findings=[{"code": "A", "severity": "warning", "message": "old"}]
+        )
+        new = _base_report(
+            decision_findings=[{"code": "B", "severity": "blocking", "message": "new"}]
+        )
+        report = compute_diff(prev, new)
+        directions = {(f.code, f.direction) for f in report.findings}
+        assert ("A", "removed") in directions
+        assert ("B", "added") in directions
+
+
+# ---------------------------------------------------------------------------
+# render_diff_markdown
+# ---------------------------------------------------------------------------
+
+
+class TestRenderDiffMarkdown:
+    def _empty_report(self, **kw: object) -> DiffReport:
+        defaults: dict[str, object] = {
+            "verdict_state_prev": "ship",
+            "verdict_state_new": "ship",
+            "schema_version_prev": "v0.1",
+            "schema_version_new": "v0.1",
+            "failures_prev": 0,
+            "failures_new": 0,
+            "cohorts": (),
+            "findings": (),
+        }
+        defaults.update(kw)
+        return DiffReport(**defaults)  # type: ignore[arg-type]
+
+    def test_trailing_newline(self) -> None:
+        out = render_diff_markdown(self._empty_report())
+        assert out.endswith("\n")
+        assert not out.endswith("\n\n")
+
+    def test_no_changes_sentinel(self) -> None:
+        out = render_diff_markdown(self._empty_report())
+        assert "(No changes detected.)" in out
+        assert "(unchanged)" in out
+
+    def test_verdict_transition_arrow(self) -> None:
+        report = self._empty_report(verdict_state_prev="dont_ship", verdict_state_new="ship")
+        out = render_diff_markdown(report)
+        assert "Don't Ship" in out
+        assert "→" in out
+
+    def test_cohort_table_renders(self) -> None:
+        report = self._empty_report(
+            cohorts=(
+                CohortDelta(
+                    name="failure",
+                    selected_prev=10,
+                    selected_new=10,
+                    scored_prev=8,
+                    scored_new=9,
+                    improved_prev=2,
+                    improved_new=5,
+                    regressed_prev=1,
+                    regressed_new=0,
+                    unchanged_prev=5,
+                    unchanged_new=4,
+                    median_delta_prev="+0.05",
+                    median_delta_new="+0.10",
+                ),
+            ),
+        )
+        out = render_diff_markdown(report)
+        assert "## Cohorts" in out
+        assert "| failure" in out
+        # Changed cells render as prev→new (delta); unchanged as bare value.
+        assert "8→9" in out
+        assert "+0.05→+0.10" in out
+
+    def test_findings_section(self) -> None:
+        report = self._empty_report(
+            findings=(
+                FindingDelta(code="A", severity="warning", direction="removed", message="old"),
+                FindingDelta(code="B", severity="blocking", direction="added", message="new"),
+            )
+        )
+        out = render_diff_markdown(report)
+        assert "## Findings" in out
+        assert "`A`" in out
+        assert "`B`" in out
+        assert "**+**" in out and "**-**" in out

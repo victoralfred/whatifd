@@ -221,7 +221,18 @@ def verify(cache_root: Path) -> VerifyResult:
 
 def _is_valid_entry(path: Path) -> bool:
     """Return True if `path` parses to a `CacheEntry`-shaped JSON
-    with the expected fields. Used by `verify`."""
+    with the expected fields. Used by `verify`.
+
+    TODO(v0.2): when `CacheEntry` carries a stored content hash,
+    extend this function to (a) reconstruct via Pydantic for full
+    field validation and (b) recompute the content hash and
+    compare against the stored value. The current structural
+    check catches corruption that breaks JSON parse or drops
+    fields; it does NOT catch disk-bit-flip corruption that
+    leaves the file syntactically valid but semantically wrong.
+    The v0.2 schema bump that adds the hash field is the trigger
+    for that extension.
+    """
     try:
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw)

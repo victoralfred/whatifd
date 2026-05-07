@@ -159,14 +159,20 @@ class TestVerify:
         assert result.corrupted == []
 
     def test_corrupted_flagged(self, tmp_path: Path) -> None:
+        # Use `in` membership rather than `==` equality on the
+        # corrupted list — `bucket.iterdir()` has no guaranteed
+        # order, so a future test that adds multiple corrupted
+        # files to the same bucket would flake on a list-order
+        # comparison.
         entries = tmp_path / "entries"
         good = _make_entry(entries, "a")
         bad = _make_entry(entries, "b", valid=False)
         result = verify(tmp_path)
         assert result.total == 2
         assert result.valid == 1
-        assert result.corrupted == [bad]
+        assert bad in result.corrupted
         assert good not in result.corrupted
+        assert len(result.corrupted) == 1
 
     def test_missing_required_field_flagged(self, tmp_path: Path) -> None:
         # Parses as valid JSON but lacks the `value` field — verify
@@ -180,7 +186,8 @@ class TestVerify:
         result = verify(tmp_path)
         assert result.total == 1
         assert result.valid == 0
-        assert result.corrupted == [bad]
+        assert bad in result.corrupted
+        assert len(result.corrupted) == 1
 
 
 # ---------------------------------------------------------------------------

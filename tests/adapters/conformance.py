@@ -101,6 +101,15 @@ class TraceSourceConformance:
     Subclass and override the `trace_source` fixture to point at a
     concrete adapter. `__test__ = False` so pytest does not collect
     the base — only concrete subclasses are run.
+
+    **Real-adapter authors (Phase 4B):** `test_emitted_traces_wrap_user_content`
+    materializes the entire stream via `list()` to assert
+    `Sensitive[str]` wrapping on every emitted trace. The harness
+    deliberately does NOT impose a slice (would weaken cardinal-#5
+    coverage to first-N only). If your adapter's fixture is large
+    enough to risk OOM, slice the source itself before passing it
+    to the harness — see the comment inside the test method for
+    the recommended `itertools.islice` shape and rationale.
     """
 
     __test__ = False

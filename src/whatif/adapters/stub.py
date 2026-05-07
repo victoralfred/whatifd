@@ -103,6 +103,21 @@ class StubTraceSpec:
     cluster_key: str | None = None
     skip_reason: str | None = None
 
+    def to_raw_trace(self) -> RawTrace:
+        """Project this spec into a `RawTrace`. Co-located with
+        `StubTraceSpec` so the wrap discipline (cardinal #5) lives
+        with the data shape; `StubTraceSource.iter_traces` and any
+        future builder reuse this single path. As Phase 9A grows
+        more builders, none re-implement the wrap step."""
+        return RawTrace(
+            trace_id=self.trace_id,
+            cohort=self.cohort,
+            user_message=_wrap(self.user_message, classification="user_content"),
+            original_response=_wrap(self.original_response, classification="user_content"),
+            cluster_key=self.cluster_key,
+            skip_reason=self.skip_reason,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class StubTraceSource:
@@ -130,14 +145,7 @@ class StubTraceSource:
 
     def iter_traces(self) -> Iterator[RawTrace]:
         for spec in self.specs:
-            yield RawTrace(
-                trace_id=spec.trace_id,
-                cohort=spec.cohort,
-                user_message=_wrap(spec.user_message, classification="user_content"),
-                original_response=_wrap(spec.original_response, classification="user_content"),
-                cluster_key=spec.cluster_key,
-                skip_reason=spec.skip_reason,
-            )
+            yield spec.to_raw_trace()
 
     def adapter_metadata(self) -> AdapterMetadata:
         return self._metadata
@@ -220,6 +228,13 @@ def make_default_stub_source(
     triples and build a `StubTraceSource` with the appropriate cohort
     labels. Used by Phase 9A integration tests that don't need the
     full `StubTraceSpec` surface.
+
+    **Iteration order:** all `failures` rows are emitted first, then
+    all `baselines` rows. `iter_traces` does NOT interleave. Phase 9A
+    scenarios that depend on cohort interleaving (e.g., a stratified
+    bootstrap test where the order matters) must construct
+    `StubTraceSpec` rows directly and pass them to
+    `StubTraceSource(specs=...)` in the desired order.
 
     **Limitation:** this builder does NOT accept `cluster_key` or
     `skip_reason`. Tests that need either field must construct

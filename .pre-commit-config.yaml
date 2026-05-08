@@ -33,6 +33,21 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=2048]   # block PNG/etc over 2MB; force LFS or compression
 
+  # ----- Local sentinels (mirror CI) --------------------------------------
+  - repo: local
+    hooks:
+      # Brand-vs-distribution-name sentinel: catches `pip install whatif`
+      # (without the trailing `d` of the PyPI distribution `whatifd`) in
+      # any markdown file. Mirrors the CI step in
+      # `.github/workflows/ci.yml`; running here shortens the feedback
+      # loop so contributors don't push the typo and wait for CI.
+      - id: pip-install-brand-sentinel
+        name: pip-install brand-vs-distribution sentinel
+        entry: bash -c 'set +e; M=$(grep -rEn "pip install whatif([^d]|$)" --include="*.md" -- .); if [ -n "$M" ]; then echo "$M"; exit 1; fi'
+        language: system
+        types: [markdown]
+        pass_filenames: false
+
   # ----- Mypy (strict) ----------------------------------------------------
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.20.0

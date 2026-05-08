@@ -17,6 +17,15 @@ from whatif_langfuse import LangfuseTraceSource
 
 from whatif.adapters import TraceSource
 
+# Test scaffolds below are intentionally NOT `frozen=True` / `slots=True`
+# nor `Protocol`-typed. The project's style for production code
+# (cardinal #6 typed boundaries; frozen + slots dataclasses) doesn't
+# apply to test fakes — these classes exist to be mutated in-fixture
+# (`_FakeTraceClient.requested_pages` is appended to during the
+# protocol-call shape check) and rebound across test methods. If a
+# future contributor mechanically applies the production style to
+# this file, the conformance harness's auditing surface breaks.
+
 
 @dataclass
 class _FakeTrace:

@@ -19,5 +19,17 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _HARNESS_DIR = _REPO_ROOT / "tests" / "adapters"
 
+if not (_HARNESS_DIR / "conformance.py").is_file():
+    raise RuntimeError(
+        "whatif-langfuse conftest cannot locate the conformance harness at "
+        f"{_HARNESS_DIR / 'conformance.py'}. Either the parent whatif repo "
+        "is missing (out-of-tree consumer?) or the path-resolution depth "
+        "(parents[3]) doesn't match this layout. The downstream `from "
+        "conformance import TraceSourceConformance` would otherwise fail "
+        "with a less obvious ModuleNotFoundError. See "
+        "`.claude/skills/whatif-features/references/deferred-refactors.md` "
+        "entry #1 for the public-promotion path that removes this seam."
+    )
+
 if str(_HARNESS_DIR) not in sys.path:
     sys.path.insert(0, str(_HARNESS_DIR))

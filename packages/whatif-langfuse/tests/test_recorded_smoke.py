@@ -77,14 +77,34 @@ def _cassette_for(name: str) -> Path:
 _PUBLIC_KEY_RE = re.compile(r"pk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _SECRET_KEY_RE = re.compile(r"sk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
-# Module-level counter so per-trace placeholder ids are GLOBALLY
-# unique across all responses in a recording session, not per-page.
-# A future bug where the adapter emits duplicate trace_id across
-# pages would otherwise be invisible — the scrubber's enumerate(...)
-# would silently overwrite both pages with the same redacted-trace-000
-# / 001 / 002 sequence. Globally unique ids preserve the duplicate
-# signal even after redaction.
-_TRACE_PLACEHOLDER_COUNTER = [0]
+
+class _ScrubState:
+    """Per-recording-session counter state.
+
+    Globally unique trace placeholder ids across responses (not
+    per-page) — a future bug where the adapter emits duplicate
+    trace_id across pages would otherwise be invisible because the
+    scrubber would overwrite both pages with redacted-trace-000…002.
+
+    Class attribute (instead of a bare `_TRACE_PLACEHOLDER_COUNTER
+    = [0]` module global) so the mutation surface is namespaced and
+    auditable: a contributor running multiple recording sessions in
+    one process can call `_ScrubState.reset()` between sessions to
+    restart numbering, and the docstring documents what state
+    actually persists across hook calls.
+    """
+
+    next_trace_idx: int = 0
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.next_trace_idx = 0
+
+    @classmethod
+    def take_trace_idx(cls) -> int:
+        idx = cls.next_trace_idx
+        cls.next_trace_idx += 1
+        return idx
 
 
 def _scrub_response_body(response: dict[str, object]) -> dict[str, object]:
@@ -151,8 +171,7 @@ def _scrub_response_body(response: dict[str, object]) -> dict[str, object]:
         for trace in parsed["data"]:
             if not isinstance(trace, dict):
                 continue
-            trace["id"] = f"redacted-trace-{_TRACE_PLACEHOLDER_COUNTER[0]:03d}"
-            _TRACE_PLACEHOLDER_COUNTER[0] += 1
+            trace["id"] = f"redacted-trace-{_ScrubState.take_trace_idx():03d}"
             trace["projectId"] = "redacted-project-id"
             trace["name"] = "redacted-trace-name"
             trace["input"] = "[REDACTED USER CONTENT]"

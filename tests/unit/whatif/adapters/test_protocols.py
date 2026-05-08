@@ -335,6 +335,15 @@ class TestLazyLoad:
         # directly. If a workspace install puts both on the same
         # `sys.path`, an accidental `import whatif_langfuse` from
         # core code would silently land here without this test.
+        #
+        # **Coverage-gap note:** as of Phase 4B.1 only `whatif_langfuse`
+        # is installable; `whatif_inspect_ai` ships at Phase 4B.2.
+        # The scan for `whatif_inspect_ai` produces a false-green
+        # (the package isn't on sys.path to be loaded in the first
+        # place). Once 4B.2 lands and the package is workspace-
+        # registered, this test becomes load-bearing for the
+        # second adapter too. Tracked in `whatif-features` and the
+        # cascade-catalog "Monorepo workspace" entry.
         result = subprocess.run(
             [
                 sys.executable,

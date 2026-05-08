@@ -11,8 +11,9 @@ at `tests/adapters/conformance.py` is the gating test.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
 from whatif.adapters.protocols import (
@@ -121,7 +122,14 @@ class LangfuseTraceSource:
     cohort_classifier: Callable[[_TraceLike], str]
     page_limit: int = 50
     max_traces: int | None = None
-    list_kwargs: dict[str, Any] = field(default_factory=dict)
+    # `Mapping[str, Any]` (not `dict[str, Any]`) signals read-only
+    # intent at the constructor boundary — the adapter never mutates
+    # what the caller passed in. Default is a frozen empty mapping
+    # via `MappingProxyType`; constructed-with-dict callers stay
+    # compatible because `dict` IS a `Mapping`. Cardinal #6 spirit:
+    # `dict[str, Any]` crossing a public constructor reads as a
+    # write surface, which this isn't.
+    list_kwargs: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
     sdk_version: str | None = None
 
     def iter_traces(self) -> Iterator[RawTrace]:

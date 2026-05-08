@@ -11,9 +11,11 @@ surface:
     The actual fork execution is gated on Phase 4 adapter
     integration; missing adapter → exit 2 with a clear setup
     message, NOT a silent fallback.
-  - `whatif report-migrate` (Phase 8.5 stub)
-  - `whatif cache rebuild|unlock|verify` (Phase 8.3 stubs)
-  - `whatif diff <prev.json> <new.json>` (Phase 8.4 stub)
+  - `whatif report-migrate <report.json>` — v0.1.x no-op (no
+    schema breaks within v0.1.x); real migration logic when v0.2
+    ships
+  - `whatif cache rebuild|unlock|verify` — full Phase 8.3 implementations
+  - `whatif diff <prev.json> <new.json>` — full Phase 8.4 diff renderer
 
 ## Exit codes
 
@@ -485,7 +487,7 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Subcommand stubs (Phase 8.3 / 8.4 / 8.5)
+# Subcommands (Phase 8.3 / 8.4 / 8.5 — fully implemented)
 # ---------------------------------------------------------------------------
 
 

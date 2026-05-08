@@ -12,6 +12,13 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase 10.5 (release polish)
+
+- **`docs/schema/v0.1.md`** — `ReportV01` consumer compatibility guide. Documents the v0.1.x stability contract, top-level shape, `verdict_state` ↔ exit-code mapping, determinism subset (cardinal #4), methodology disclosure (cardinal #10), failure + finding code registries, and a programmatic-read example.
+- **`README.md` final pass** — reframed lead with the v0.1 doctrine sentence (*"whatif's product is the verdict's defensibility"*). Removed aspirational CLI flags that aren't in scope; replaced with two real Quickstart paths (programmatic + CLI-with-stub-adapters). Linked the new `docs/schema/v0.1.md`. Updated the version-roadmap table to reflect the actual v0.1 release-candidate state.
+- **`phases.md` gap inventory updated** — flipped resolved gaps (`_run_fork_pipeline` body, `delta_fn` shortcut, cardinal-#5 graph walk, examples + getting-started, `config_hash` placeholder) into a "Resolved" section. Remaining-blocker list trimmed to the four truly-external items (README final pass [done], schema docs [done], schema URL hosting [user-driven], PyPI publish [user-driven]).
+- **`src/whatif/cli.py` stale labels stripped** — module header no longer calls `whatif report-migrate` / `cache rebuild|unlock|verify` / `diff` "stubs"; they're full implementations.
+
 ### Added — Phase 10.4 (`whatif fork` CLI dispatcher body wired end-to-end)
 
 - **`src/whatif/cli.py::_run_fork_pipeline`** body filled in. The dispatcher now actually runs: (1) `build_trace_source(cfg.source)` from Phase 10.1, (2) `build_scorer(cfg.scorer)` from Phase 10.1, (3) `load_runner(cfg.target.runner)` from Phase 10.2, (4) `build_delta_fn(...)` from Phase 10.3, (5) construct `RunManifest` + `MethodologyDisclosure` + `CacheSummary`, (6) `run_pipeline(...)` → `ReportV01`, (7) `assert_no_unredacted_sensitive(report)` graph-walk BEFORE serialization (closes the cardinal-#5 graph-walk gap from `phases.md`), (8) `encode_report_v01` → JSON + `render_full_report` → Markdown to `./reports/whatif-fork-<date>.{md,json}`, (9) exit code from `verdict_state` (`ship` → 0, `dont_ship` → 1, `inconclusive` → 2; floor-failure Inconclusive always wins per cardinal #2).

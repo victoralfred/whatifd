@@ -1121,6 +1121,48 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 
 **Trigger for resolution:** the first Langfuse-host misconfiguration bug report, OR v0.2 CLI scope review.
 
+### Phase 11: scorer projection through `run_pipeline` (Phase 10.4 deferred)
+
+**Source decision:** Phase 10.4's `_run_fork_pipeline` constructs `MethodologyDisclosure.judge` with `rendered_prompt_hash` and `rubric_hash` set to the placeholder `"v01-cli-placeholder-no-scorecase"`. These hashes need a representative `ScoreCase` to compute via `scorer.cache_key_components(case)`, but the dispatcher does not have one at fixture-build time — scoring happens downstream inside the `delta_fn` closure.
+
+**Forward consequences:**
+- v0.1 reports carry placeholder strings instead of real prompt/rubric provenance hashes. Cardinal #10 satisfied via the explicit non-hash placeholder (NOT zero-bytes that would look like real hashes), but the rubric/prompt identity isn't actually pinned in the methodology section.
+- Phase 11 widens `run_pipeline` to accept the scorer directly and project the first-trace cache-key components into the methodology disclosure; the placeholder string disappears.
+
+**Status:** open (acceptable for v0.1 — placeholder is human-readable; cardinal #10 truthfulness preserved).
+
+**Resolution:** Phase 11 `run_pipeline(... , scorer)` widening + per-trace cache-key-components projection into methodology.
+
+**Trigger for resolution:** the first user request for prompt/rubric-version invalidation in cached reports, OR Phase 11 release planning.
+
+### Phase 11: shared asyncio loop for async-runner trace stream (Phase 10.3 deferred)
+
+**Source decision:** Phase 10.3's `cli_pipeline.build_delta_fn` wraps each async-runner trace in `asyncio.run(...)` — one event loop created and torn down per trace. Defeats `httpx.AsyncClient` connection reuse for runners that build a client per call (the natural async pattern, since clients are loop-bound).
+
+**Forward consequences:**
+- Async-runner users with connection-reuse needs hit per-trace TCP/TLS handshake overhead.
+- Sync runners get reuse via `httpx.Client` normally — async users can switch to the sync API as a v0.1 workaround.
+
+**Status:** open (acceptable for v0.1 — workload is I/O-bound by judge latency, not connection setup; sync API is the documented escape).
+
+**Resolution:** Phase 11 adds an optional `event_loop` parameter (or context-manager) to `build_delta_fn` so the same loop services every trace in the stream. Existing closure signature stays compatible.
+
+**Trigger for resolution:** the first benchmark showing connection-setup is non-negligible, OR a user report of high handshake overhead, OR Phase 11 release planning.
+
+### Phase 11: `inspect_ai` config-loaded `score_fn` (Phase 10.1 deferred)
+
+**Source decision:** Phase 10.1's `build_scorer(ScorerConfig(adapter="inspect_ai"))` raises `AdapterFactoryError` because v0.1 cannot load a user-supplied `score_fn` from config (it's user code, not config data). Operators wanting Inspect AI judging must use the programmatic `run_pipeline` API documented in `docs/getting-started.md`.
+
+**Forward consequences:**
+- v0.1 CLI fork against real Inspect AI judges is not supported. Stub-stub or programmatic-only paths work.
+- Phase 11 adds a config field like `scorer.score_fn: "python:<module.path>:<attr>"` and routes through the runner-loader pattern from Phase 10.2.
+
+**Status:** open (acceptable for v0.1 — the factory error is actionable, pointing operators at the programmatic path).
+
+**Resolution:** Phase 11 schema extension + factory dispatch; reuses the runner-loader's `python:<module>:<attr>` resolution.
+
+**Trigger for resolution:** the first user request for CLI Inspect AI runs, OR Phase 11 release planning.
+
 ## Resolved cascades
 
 ### Banned-import lint scope: cache keying canonical JSON (resolved 2026-05-05)

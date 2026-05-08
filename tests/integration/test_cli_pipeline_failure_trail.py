@@ -158,22 +158,23 @@ def test_structured_trail_through_run_pipeline() -> None:
 
 
 def test_replay_stage_error_replay_code_reaches_failure_record() -> None:
-    """The closure raises `_ReplayStageError(replay_code=...)`;
-    the pipeline's exception capture currently reads exc_type +
-    str(exc) into details. The kernel's underlying ReplayFailure
-    code is encoded in str(exc) via the message ('replay failed
-    [<code>]: ...'). Pin both surfaces:
+    """The closure raises `_ReplayStageError(replay_code=...)`; the
+    pipeline `isinstance`-narrows against `_ReplayStageError` and
+    reads `exc.replay_code` into `FailureRecord.details["replay_code"]`
+    as a typed projection (cardinal #1: failure classification is
+    type-level, NOT `getattr` duck-typing on attribute names).
 
-    1. exc_type carries the closure's exception class name.
-    2. The reason field (str(exc)) carries the kernel code in
-       brackets so a consumer can string-extract it for v0.1 even
-       before Phase 11+ adds a typed `replay_code` projection
-       into details.
+    Pin both surfaces:
+    1. `details["exc_type"]` carries the closure's exception class
+       name (the v0.1 catch-all distinction across replay vs scorer
+       failure).
+    2. `details["replay_code"]` carries the kernel's
+       `ReplayFailure.code` as a TYPED FIELD via the
+       isinstance-projection — not parsed from the exception
+       message.
 
-    A future widening of the pipeline to read `getattr(exc,
-    'replay_code', None)` into details would make the kernel code
-    a typed field; this test would still pass and could be
-    extended."""
+    A regression that drops the isinstance branch in `pipeline.py`
+    (collapsing back to message-only) fails this test."""
     specs = [
         StubTraceSpec(
             trace_id=f"f-{i:02d}",
@@ -216,10 +217,12 @@ def test_replay_stage_error_replay_code_reaches_failure_record() -> None:
     assert replay_failures, [f.details for f in report.failures]
     # Cardinal #1: the kernel's ReplayFailure.code reaches the
     # report as a STRUCTURED FIELD via details["replay_code"] —
-    # NOT only via string-extraction from the message. The
-    # pipeline's exception capture reads `getattr(exc,
-    # "replay_code", None)` into details. Pin the typed projection
-    # so a future refactor that drops the projection (collapsing
-    # back to message-only) fails first.
+    # NOT via string-extraction from the message. The pipeline's
+    # exception capture isinstance-narrows against
+    # `_ReplayStageError` and reads `exc.replay_code` directly
+    # (failure classification is type-level per cardinal #1).
+    # Pin the typed projection so a future refactor that drops the
+    # isinstance branch (collapsing back to message-only) fails
+    # first.
     replay_codes = [f.details.get("replay_code") for f in replay_failures]
     assert all(rc == "runner_exception" for rc in replay_codes), replay_codes

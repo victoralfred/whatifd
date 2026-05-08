@@ -65,7 +65,10 @@ jobs:
           # also catches `pip install whatif` at end-of-line — the
           # `[^d]` form requires a follow-up char, which a trailing
           # newline doesn't satisfy. End-of-line `$` closes that gap.
-          MATCHES=$(grep -rEn 'pip install whatif([^d]|$)' --include='*.md' .)
+          # `--` after the regex terminates option parsing so a future
+          # path starting with `-` (e.g., a file named `-old.md` at the
+          # root of a checkout) doesn't get misparsed as a flag.
+          MATCHES=$(grep -rEn 'pip install whatif([^d]|$)' --include='*.md' -- .)
           if [ -n "$MATCHES" ]; then
             echo "Found 'pip install whatif' (without trailing 'd') — must be 'pip install whatifd':"
             echo "$MATCHES"

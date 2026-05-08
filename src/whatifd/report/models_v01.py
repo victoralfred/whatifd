@@ -61,7 +61,7 @@ favors flat schema-friendly shapes over algebraic types.
 ## Schema constants
 
 `REPORT_SCHEMA_VERSION = "0.1"` and `REPORT_SCHEMA_URI =
-"https://whatifd.codes/schema/report/v0.1.json"` are stamped into
+"https://whatif.codes/schema/report/v0.1.json"` are stamped into
 every `ReportV01` instance. Bumping these requires:
 
 1. Migrating in-tree consumer code (renderer, projection).
@@ -88,7 +88,7 @@ from whatifd.types.policy import DecisionPolicy, TrustFloor
 from whatifd.types.statistical import MethodologyDisclosure
 
 _SchemaVersion = Literal["0.1"]
-_SchemaUri = Literal["https://whatifd.codes/schema/report/v0.1.json"]
+_SchemaUri = Literal["https://whatif.codes/schema/report/v0.1.json"]
 
 # Type-level pins for schema_version / schema_uri: callers cannot
 # construct a `ReportV01` with a stale or wrong version. mypy strict
@@ -99,7 +99,7 @@ _SchemaUri = Literal["https://whatifd.codes/schema/report/v0.1.json"]
 # wire JSON without instantiating the typed dataclass, so this pin
 # does not block migration paths.
 REPORT_SCHEMA_VERSION: _SchemaVersion = "0.1"
-REPORT_SCHEMA_URI: _SchemaUri = "https://whatifd.codes/schema/report/v0.1.json"
+REPORT_SCHEMA_URI: _SchemaUri = "https://whatif.codes/schema/report/v0.1.json"
 
 VerdictState = Literal["ship", "dont_ship", "inconclusive"]
 """Wire-format verdict literal. The internal `Verdict` sealed union

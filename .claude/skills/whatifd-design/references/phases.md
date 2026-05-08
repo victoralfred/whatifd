@@ -761,7 +761,7 @@ Resolved in `whatif/cli.py`:
 ### 10.3 — Schema publication
 
 - `schemas/report/v0.1.schema.json` published to public URL
-- `https://whatifd.codes/schema/report/v0.1.json` returns the file
+- `https://whatif.codes/schema/report/v0.1.json` returns the file
 
 ### 10.4 — PyPI publication
 
@@ -822,7 +822,7 @@ These are intentional shortcuts taken during phase landings. Each is structurall
 
 - **README final pass.** Current Quickstart shows aspirational flags; rewrite to accurately describe what ships (CLI now works against stub adapters; real adapters wireable via env credentials + programmatic `score_fn`).
 - **`docs/schema/v0.1.md` consumer compatibility guide.** Walk the `ReportV01` JSON schema's stability contract, deterministic-subset, methodology-disclosure surface.
-- **Schema URL hosted at `https://whatifd.codes/schema/report/v0.1.json`.** User-driven (DNS / hosting).
+- **Schema URL hosted at `https://whatif.codes/schema/report/v0.1.json`.** User-driven (DNS / hosting).
 - **PyPI publish.** User-driven (account / credentials). Three packages: `whatif`, `whatifd-langfuse`, `whatifd-inspect-ai`.
 
 ### Disclosed shortcuts (NOT release blockers; truthfully declared in the report)

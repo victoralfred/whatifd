@@ -186,7 +186,7 @@ def test_unknown_key_emits_drift_warning() -> None:
     # otherwise lose the drift signal silently.
     drifted = {
         "schema_version": "0.1",
-        "schema_uri": "https://whatifd.codes/schema/report/v0.1.json",
+        "schema_uri": "https://whatif.codes/schema/report/v0.1.json",
         "verdict_state": "ship",
         "future_field": "produced by a newer schema",
     }

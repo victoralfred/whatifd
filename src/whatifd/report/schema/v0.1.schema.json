@@ -1002,7 +1002,7 @@
       "type": "object"
     }
   },
-  "$id": "https://whatifd.codes/schema/report/v0.1.json",
+  "$id": "https://whatif.codes/schema/report/v0.1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "v0.1 wire-format report emitted by `whatif fork`. Hand-written types in `whatifd/report/models_v01.py`; this schema is generated from them by `scripts/generate_schema.py`.",
@@ -1046,7 +1046,7 @@
     },
     "schema_uri": {
       "enum": [
-        "https://whatifd.codes/schema/report/v0.1.json"
+        "https://whatif.codes/schema/report/v0.1.json"
       ],
       "x-deterministic": true
     },

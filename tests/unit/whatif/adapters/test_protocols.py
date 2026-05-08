@@ -326,3 +326,45 @@ class TestLazyLoad:
         assert result.stdout.strip() == "[]", (
             f"core modules triggered adapter imports: {result.stdout!r}"
         )
+
+    def test_core_modules_do_not_load_real_adapter_packages(self) -> None:
+        # Phase 4B contract: real adapter packages (`whatif_langfuse`,
+        # `whatif_inspect_ai`) ship as separate distributions and MUST
+        # NOT be imported by core. The previous test scans
+        # `whatif.adapters.*`; this one scans the sibling packages
+        # directly. If a workspace install puts both on the same
+        # `sys.path`, an accidental `import whatif_langfuse` from
+        # core code would silently land here without this test.
+        #
+        # **Coverage-gap note:** as of Phase 4B.1 only `whatif_langfuse`
+        # is installable; `whatif_inspect_ai` ships at Phase 4B.2.
+        # The scan for `whatif_inspect_ai` produces a false-green
+        # (the package isn't on sys.path to be loaded in the first
+        # place). Once 4B.2 lands and the package is workspace-
+        # registered, this test becomes load-bearing for the
+        # second adapter too. Tracked in `whatif-features` and the
+        # cascade-catalog "Monorepo workspace" entry.
+        # TODO(4B.2): drop this comment when whatif_inspect_ai is workspace-registered.
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import whatif.cli, whatif.diff, whatif.config, whatif.contract, "
+                "whatif.cache, whatif.render, sys; "
+                "loaded = sorted("
+                "m for m in sys.modules "
+                "if m == 'whatif_langfuse' or m.startswith('whatif_langfuse.') "
+                "or m == 'whatif_inspect_ai' or m.startswith('whatif_inspect_ai.')"
+                "); "
+                "print(loaded)",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, (
+            f"subprocess failed (exit {result.returncode}); stderr:\n{result.stderr}"
+        )
+        assert result.stdout.strip() == "[]", (
+            f"core modules pulled real adapter packages: {result.stdout!r}"
+        )

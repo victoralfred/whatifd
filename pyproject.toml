@@ -45,12 +45,36 @@ dev = [
   "pytest>=9.0.3",
   "pytest-asyncio>=1.3.0",
   "pytest-cov>=7.1.0",
+  # `pytest-recording` (vcrpy-based) drives the recorded-smoke
+  # tests in `packages/whatif-langfuse/tests/test_recorded_smoke.py`.
+  # CI replays from cassette; local recording uses --record-mode=once.
+  "pytest-recording>=0.13",
+  # Direct `vcrpy` pin alongside `pytest-recording`: pytest-recording
+  # depends on vcrpy transitively, but vcrpy controls the cassette
+  # YAML format. Pinning the major directly catches a vcrpy 9.x bump
+  # that would silently break committed cassettes (or require a
+  # cassette migration). Industry practice for downstream consumers
+  # of a serialization-format library: pin the format-defining
+  # dependency directly even when it's pulled transitively.
+  "vcrpy>=8.0,<9.0",
   "ruff>=0.15.12",
   "mypy>=1.20.2",
   "hypothesis>=6.152.4",
   "pre-commit>=4.4.1",
   "types-psutil>=6.0",
   "types-PyYAML>=6.0",
+]
+
+# PEP 735 dependency groups — uv-native; invisible to pip. Used for
+# workspace adapter packages that must be installed editably during
+# development but MUST NOT appear in the published wheel's
+# dependency metadata (pip would try to resolve them on PyPI and
+# fail because they aren't published yet). `uv sync --all-extras
+# --dev` picks this up alongside the optional-dependencies dev
+# extra above; `pip install ".[dev]"` correctly skips it.
+[dependency-groups]
+workspace = [
+  "whatif-langfuse",
 ]
 
 [project.scripts]
@@ -83,6 +107,20 @@ warn_unused_ignores = true
 warn_return_any = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "packages"]
 addopts = "-ra --strict-markers"
 asyncio_mode = "auto"
+
+# Monorepo workspace per industry practice (cf. OpenTelemetry Python,
+# pytest plugins). The sibling adapter packages under `packages/`
+# have their own pyproject.toml and version, but share this venv
+# during development. PyPI publication is per-package.
+[tool.uv.workspace]
+members = ["packages/whatif-langfuse"]
+
+# Resolve the workspace adapter packages from the in-tree path
+# instead of PyPI. With this binding, `uv sync` installs them
+# editably alongside `whatif`; the CI test job picks up
+# `packages/whatif-langfuse/tests/` cleanly.
+[tool.uv.sources]
+whatif-langfuse = { workspace = true }

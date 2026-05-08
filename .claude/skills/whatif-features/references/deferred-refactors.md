@@ -14,6 +14,18 @@ When a trigger fires, move the entry to `whatif-design/references/cascade-catalo
 
 **Trigger to promote:** When writing `packages/whatif-langfuse/tests/test_conformance.py` (Phase 4B.1) OR `packages/whatif-inspect-ai/tests/` (Phase 4B.2), if the harness import demonstrably blocks the work — i.e., conftest tweaks fail under uv workspace install OR the test layout requires an external import path that pytest can't resolve. Then this refactor lands as a small precursor PR with the rationale grounded in real friction. Until that demonstrably appears, don't touch it.
 
+**Status update (Phase 4B.1 — PR #65 landed 2026-05-08):** the conftest `sys.path.insert` workaround in `packages/whatif-langfuse/tests/conftest.py` is in production. It works for an in-repo workspace member but is fragile for **out-of-tree** consumers (a third-party adapter package that lives in its own git repo and depends on `whatif` from PyPI). The conftest tweak relies on `Path(__file__).resolve().parents[3]` resolving to the whatif repo root — that path doesn't exist for an out-of-tree consumer.
+
+**Concrete backlog item — promote at Phase 4B.2 if the seam needs a second consumer:**
+1. Move `tests/adapters/conformance.py` to `src/whatif/testing/adapter_conformance.py`.
+2. Create `src/whatif/testing/__init__.py` re-exporting `TraceSourceConformance`, `ScorerConformance`, `StructuralFailureScorerConformance`, `make_score_case`.
+3. Update `tests/adapters/test_stub_conformance.py`, `tests/adapters/test_conformance_self_test.py`, and `packages/whatif-langfuse/tests/test_conformance.py` to `from whatif.testing import ...`.
+4. Delete `packages/whatif-langfuse/tests/conftest.py` (the `sys.path` tweak becomes unnecessary).
+5. Add `tests/unit/whatif/testing/test_public_surface.py` pinning the public re-exports (catches accidental removal).
+6. Update the cascade-catalog entry "Monorepo workspace + `whatif-langfuse` distribution (Phase 4B.1)" → "Conformance harness reuse" line: replace the conftest description with the public-import description.
+
+**Promotion criterion:** Phase 4B.2 (`packages/whatif-inspect-ai/`) needs the harness too. If we duplicate the conftest pattern there, we have two fragile sites; promoting to public is the right move at that point. If 4B.2 lands cleanly with a copy of the same conftest, the promotion stays deferred for v0.2.
+
 **Risk if done eagerly:** introducing a refactor mid-plan when the cascade-catalog already has 4B-tracking entries; bloating the v0.1 publishable surface (`whatif.testing` becomes a stability commitment) without a concrete user.
 
 ---
@@ -108,6 +120,16 @@ These together cover ~3 of the 9 matrix cells with regression-grade pins. The re
 **Trigger to promote:** When the diff renderer adds verdict-transition-aware messaging (e.g., "DontShip → Inconclusive: a previously-blocked verdict now lacks evidence"). The matrix becomes the regression surface for that text.
 
 ---
+
+## 10. Machine-checkable `whatif-json-dumps` allowlist
+
+**What:** Extend the AST-walking banned-import lint at `tests/unit/whatif/serialization/test_banned_imports.py` to ALSO walk `packages/*/tests/` and `tests/integration/` with an explicit allowlist of call sites carrying the `# whatif-json-dumps: test-scaffold-allowed` marker comment. The lint then enforces the test-scaffold carve-out machine-checkably instead of relying on the comment-as-convention.
+
+**Why deferred:** The current lint targets `src/whatif/` only, which IS the cardinal-#5 enforcement boundary. Test-scaffold `json.dumps` calls (notably `_scrub_response_body` in `packages/whatif-langfuse/tests/test_recorded_smoke.py`) live in `packages/*/tests/` and `tests/`, which are out of scope by design. Building a marker-comment-respecting allowlist now is forward-looking machinery for a lint scope expansion that hasn't happened yet.
+
+**Trigger to promote:** Whenever someone proposes broadening the banned-import lint to cover `packages/`, `tests/`, or both. At that point this entry's marker convention (`# whatif-json-dumps: test-scaffold-allowed`) becomes load-bearing and needs the AST recognition. Land the lint extension and the allowlist parser in the same PR. Until that proposal lands, the marker comment is a search anchor, not enforcement.
+
+**Existing markers to preserve:** at least one `# whatif-json-dumps: test-scaffold-allowed` in `packages/whatif-langfuse/tests/test_recorded_smoke.py::_scrub_response_body`. Future test-scaffold usage of `json.dumps` should add the same marker.
 
 ## How to add a new entry
 

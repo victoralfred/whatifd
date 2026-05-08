@@ -12,6 +12,11 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Documentation
+
+- **`README.md` and `docs/getting-started.md` install snippet** — fixed `pip install whatif <other-pkg>` → `pip install whatifd <other-pkg>`. The PyPI distribution is `whatifd`; only the CLI command and brand-name prose stay as `whatif`. Caught by user review pre-publish; would have shipped a broken install command otherwise.
+- **CI sentinel against this typo class** — `.github/workflows/ci.yml` gains a `pip-install brand-vs-distribution sentinel` step that fails the build on any `.md` file containing `pip install whatif` followed by whitespace or other non-`d` character. Three rename rounds missed this regex shape; the sentinel makes regression structurally impossible.
+
 ## [0.1.0] - 2026-05-09
 
 ### Added — Phase 10.6 (release prep)

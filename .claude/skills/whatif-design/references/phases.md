@@ -806,31 +806,34 @@ These tests run on every PR, not just at phase gates:
 - Cache version-bump check (if cache directories touched)
 - Schema version bump check (if `models_v01.py` touched)
 
-## Implementation gaps still open against v0.1 (as of 2026-05-08)
+## Implementation gaps still open against v0.1 (as of 2026-05-09)
 
-These are intentional shortcuts taken during phase landings — each is structurally documented in the code, each preserves a stable contract surface so the closure work doesn't reshape the architecture, and each has a defined closure path. They are listed separately from the phase plan above so a reader can see at a glance what is **scoped but not yet complete**, distinct from what is **complete and gated**.
+These are intentional shortcuts taken during phase landings. Each is structurally documented in the code, each preserves a stable contract surface so the closure work doesn't reshape the architecture, and each has a defined closure path.
 
-### Blockers for v0.1.0 release
+### Resolved (Phase 10.1 → 10.4 landed)
 
-- **`_run_fork_pipeline` body is a stub** (`src/whatif/cli.py:172-229`). The dispatcher loads config, runs the cardinal-#7 two-affirmation gate, then exits with the setup-failure code and prints *"fork pipeline requires Phase 4 adapter integration, which is not yet wired into the v0.1 CLI."* The signature `_run_fork_pipeline(cfg, proof) -> int` is stable — the witness-token threading is structural and pinned by `test_run_fork_pipeline_signature_requires_proof`. **Closure:** Phase 10 wires the body to load adapters from `cfg.source.adapter` / `cfg.scorer.adapter`, load the runner-target via the `python:module:attr` syntax, drive the replay kernel, and call `whatif.pipeline.run_pipeline`. This is the **single load-bearing gap** between today and an end-to-end `whatif fork` run.
-- **Examples + getting-started docs unwritten.** `examples/minimal-agent/` (work-in-progress on the Phase 9B branch); `docs/getting-started.md`, `docs/runner-contract.md`, `docs/schema/v0.1.md` — none yet created. **Closure:** Phase 10 release packaging.
-- **README final pass not done.** The current Quickstart shows aspirational CLI flags that don't all work yet (the fork dispatcher is stubbed). **Closure:** Phase 10 — rewrite to lead with the v0.1 doctrine sentence and accurately describe what ships.
-- **Schema URL not hosted.** `https://whatif.codes/schema/report/v0.1.json` is referenced as the canonical schema URI but isn't yet published. **Closure:** Phase 10 release.
+- ~~**`_run_fork_pipeline` body**~~ — **resolved** (PR #70). Dispatcher now drives factory → loader → delta_fn → run_pipeline → graph-walk → render → exit code. End-to-end CLI smoke in `tests/integration/test_cli_fork_e2e.py`.
+- ~~**Pipeline `delta_fn` shortcut + `"stub"` provider literal**~~ — **resolved** (PR #70). `whatif.cli_pipeline.build_delta_fn` threads runner + scorer through the replay kernel; the `"stub"` literal is gone, replaced by typed exception classes (`_ReplayStageError(replay_code=...)`, `_ScorerStructuralError`) projected via `isinstance` into `FailureRecord.details`.
+- ~~**Cardinal-#5 graph walk not enforced**~~ — **resolved** (PR #70). `assert_no_unredacted_sensitive(report)` runs in `_run_fork_pipeline` BEFORE `encode_report_v01` per the cascade-catalog "Artifact-write call-site sequencing for graph walk" entry.
+- ~~**Examples + Runner-contract docs**~~ — **resolved** (PR #67). `examples/minimal-agent/`, `docs/getting-started.md`, `docs/runner-contract.md` shipped.
+- ~~**`config_hash = "0" * 64` placeholder**~~ — **resolved** (PR #70 review iteration). Now `sha256(canonical_json_bytes(cfg))` via `_compute_config_hash` helper.
 
-### Disclosed shortcuts (NOT release blockers)
+### Blockers remaining for v0.1.0 release
 
-These are documented at their call sites, declared truthfully in `MethodologyDisclosure`, and carry an upgrade path that doesn't change the contract surface.
+- **README final pass.** Current Quickstart shows aspirational flags; rewrite to accurately describe what ships (CLI now works against stub adapters; real adapters wireable via env credentials + programmatic `score_fn`).
+- **`docs/schema/v0.1.md` consumer compatibility guide.** Walk the `ReportV01` JSON schema's stability contract, deterministic-subset, methodology-disclosure surface.
+- **Schema URL hosted at `https://whatif.codes/schema/report/v0.1.json`.** User-driven (DNS / hosting).
+- **PyPI publish.** User-driven (account / credentials). Three packages: `whatif`, `whatif-langfuse`, `whatif-inspect-ai`.
 
-- **Pipeline `delta_fn` shortcut** (`src/whatif/pipeline.py`, Phase 9A.1 markers). `run_pipeline` takes a caller-supplied `delta_fn(trace) -> float` instead of running a real `Scorer` over (original, replayed) pairs. Real paired scoring needs a `Runner` in scope; that wires up alongside the CLI fork body. The `"stub"` provider literal at `pipeline.py:163` is the same shortcut. **Closure:** completes naturally with the CLI wiring above.
-- **Empirical-percentile CI bounds** (`src/whatif/pipeline.py:207-215`). Uses `statistics.quantiles(..., n=20)` 5th/95th percentiles instead of stratified bootstrap. Adequate for cardinal-#2 floor-passing verdicts. `MethodologyDisclosure.bootstrap.method = "unavailable"` declares this truthfully to consumers. **Closure:** v0.2 stats layer.
-- **Cache content-hash verification deferred** (`src/whatif/cache/recovery.py:345`, `src/whatif/cache/lock.py:70`). `verify` does structural checks (file presence, JSON validity, schema-version match) but no cryptographic content-hash check. NFS-safe locking is also limited. **Closure:** v0.2 — `CacheEntry` gains a stored content hash field.
-- **Cardinal-#5 graph walk not yet a single mandatory call** (`src/whatif/serialization/encoder.py:188`). The encoder rejects unwrapped `Sensitive` at the boundary (the leak point); the full report-tree graph walk (Phase 5.4) is a defense-in-depth pass that's documented but not yet enforced as one mandatory call before serialization. Tracked in `cascade-catalog.md` § *"Artifact-write call-site sequencing for graph walk"* — that entry already names the artifact-write sites that must call `assert_no_unredacted_sensitive(report)` before `encode_report_v01(report)`. **Closure:** Phase 10 (CLI fork wiring branch) wires the call at `whatif/cli.py`'s artifact-write path; the integration test in the same branch injects an unwrapped Sensitive into a stub report graph and asserts the artifact-write fails at the graph walk, NOT the encoder fallback.
-- **`runtime_checkable` Protocol `isinstance` caveat** (`src/whatif/adapters/protocols.py:190, 230`). `isinstance` only checks attribute presence, not signatures. Python language limit; the conformance harness covers signatures empirically. Informational TODO, not deferred work.
+### Disclosed shortcuts (NOT release blockers; truthfully declared in the report)
 
-### Mislabeled — actually complete
-
-- **CLI subcommand "stubs"** (`src/whatif/cli.py:233-446`). The module header comment calls `whatif cache rebuild|unlock|verify`, `whatif diff`, `whatif report-migrate` "Phase 8.3/8.4/8.5 stubs," but those commands all work end-to-end. The label is stale comment from when they were placeholders. **Closure:** strip the stale "stub" labels in the Phase 10 README pass.
-- **`src/whatif/adapters/stub.py`.** Synthetic in-memory `TraceSource`/`Scorer` for the Phase 4A gate. Not deferred work — intentionally synthetic; consumed by Phase 9A integration tests and out-of-tree adapter authors.
+- **Empirical-percentile CI bounds** (`src/whatif/pipeline.py:207-215`). Uses `statistics.quantiles(..., n=20)` 5th/95th percentiles instead of stratified bootstrap. Adequate for cardinal-#2 floor-passing verdicts. `MethodologyDisclosure.bootstrap.method = "unavailable"` + `unavailable_reason` declares this truthfully. **Closure:** v0.2 stats layer.
+- **Cache content-hash verification deferred** (`src/whatif/cache/recovery.py:345`, `src/whatif/cache/lock.py:70`). `verify` does structural checks (file presence, JSON validity, schema-version match) but no cryptographic content-hash check. NFS-safe locking limited. **Closure:** v0.2 — `CacheEntry` gains a stored content hash field.
+- **Methodology placeholders** (`rendered_prompt_hash`/`rubric_hash` = `"v01-cli-placeholder-no-scorecase"`). The dispatcher doesn't have a representative `ScoreCase` at fixture-build time; explicit human-readable placeholder rather than misleading zero-bytes. **Closure:** Phase 11 widens `run_pipeline(... , scorer)` so first-trace cache-key components project into methodology. Cascade entry: *Phase 11: scorer projection through `run_pipeline`*.
+- **`reproducibility_addressed=False`** in JudgeMethodDisclosure. v0.1 dispatcher doesn't yet wire the scorer cache through the pipeline (cache_summary is mode="off" with hits=0/misses=0). Methodology now truthfully reports the cache as unaddressed. **Closure:** Phase 10.5+ wires `cfg.scorer.cache_mode` through to a real `CacheSummary` projection.
+- **`asyncio.run`-per-trace for async runners** (`src/whatif/cli_pipeline.py`). One event loop per async-runner trace defeats `httpx.AsyncClient` connection reuse. Workload is I/O-bound by judge latency, not connection setup; sync runners get reuse normally. **Closure:** Phase 11 — optional shared event loop. Cascade entry: *Phase 11: shared asyncio loop for async-runner trace stream*.
+- **`inspect_ai` config-loaded `score_fn`.** Phase 10.1 factory raises `AdapterFactoryError` for `cfg.scorer.adapter="inspect_ai"` because v0.1 cannot load user code from config. Operators use the programmatic `run_pipeline` API. **Closure:** Phase 11 schema extension. Cascade entry: *Phase 11: `inspect_ai` config-loaded `score_fn`*.
+- **`runtime_checkable` Protocol `isinstance` caveat** (`src/whatif/adapters/protocols.py:190, 230`). `isinstance` only checks attribute presence, not signatures. Python language limit; conformance harness covers signatures empirically + Phase 10.2 runner_loader uses `inspect.iscoroutinefunction` for sync/async classification. Informational, not deferred work.
 
 ## What completion looks like
 

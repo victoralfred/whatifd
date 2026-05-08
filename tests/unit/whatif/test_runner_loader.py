@@ -116,6 +116,37 @@ def test_non_callable_attribute_raises() -> None:
         load_runner(f"python:{_FIXTURE_MODULE_NAME}:NOT_A_CALLABLE")
 
 
+class _AsyncCallableInstance:
+    """Class-instance runner whose `__call__` is `async def`. Covers
+    the `getattr(candidate, '__call__', None)` probe inside the
+    classifier — `inspect.iscoroutinefunction` returns False on the
+    instance itself but True on the bound `__call__` method, so the
+    instance must classify as `async`."""
+
+    async def __call__(
+        self,
+        trace_input: TraceInput,
+        config: ReplayConfig,
+        tool_cache: ToolCache,
+    ) -> ReplayOutput:
+        _ = (trace_input, config, tool_cache)
+        return ReplayOutput(text="async-instance", tool_spans=[], metadata={})
+
+
+def test_class_instance_with_async_call_classified_as_async(
+    _register_fixture_module: types.ModuleType,
+) -> None:
+    """Reviewer-feedback coverage: a callable instance whose
+    `__call__` is `async def` must classify as async via the
+    `getattr(__call__, None)` probe. The instance itself is not a
+    coroutine function; only its bound `__call__` is. Without the
+    probe, this would route to the sync kernel and the returned
+    coroutine would be treated as a `ReplayOutput`."""
+    _register_fixture_module.async_instance = _AsyncCallableInstance()  # type: ignore[attr-defined]
+    loaded = load_runner(f"python:{_FIXTURE_MODULE_NAME}:async_instance")
+    assert loaded.kind == "async"
+
+
 def test_async_classified_before_sync() -> None:
     """An `async def` function returns a coroutine; if the loader
     classified async-def as `sync`, the sync replay kernel would

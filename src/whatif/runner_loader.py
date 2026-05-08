@@ -72,12 +72,16 @@ def load_runner(reference: str) -> LoadedRunner:
     """Resolve `cfg.target.runner` to a Runner / AsyncRunner.
 
     v0.1 accepts only the `python:<module.path>:<attr>` shape.
-    The function classifies sync vs async by `isinstance` against
-    the runtime-checkable Protocols from `whatif.contract`. Sync
-    is checked first because `Runner` is a pure-callable Protocol
-    (no awaitable return type at the structural level), so an
-    async function declared as `async def run(...)` correctly
-    satisfies `AsyncRunner` but NOT `Runner` — order matters.
+    Sync vs async is classified by `inspect.iscoroutinefunction`,
+    NOT by Protocol `isinstance` alone. Both `Runner` and
+    `AsyncRunner` are `runtime_checkable` and only verify
+    attribute presence (`__call__`); a plain `async def` function
+    satisfies both structurally. The async branch is checked first
+    so an `async def` runner doesn't accidentally route to the sync
+    kernel (which would treat the returned coroutine as a
+    `ReplayOutput`). Protocol `isinstance` runs as a
+    belt-and-suspenders check inside each branch so a future
+    Protocol-shape extension catches regressions at load time.
 
     Returns a `LoadedRunner` carrying the callable, the kind,
     and the original reference string.

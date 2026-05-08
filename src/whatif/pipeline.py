@@ -156,24 +156,30 @@ def _bucket_by_cohort(
                 "reason": str(exc),
                 "exc_type": type(exc).__name__,
             }
-            # Phase 10.3 cardinal-#1 widening: the cli_pipeline
-            # closure raises `_ReplayStageError(replay_code=...)` for
-            # kernel ReplayFailure projection and
-            # `_ScorerStructuralError(rationale_classification=...)`
-            # for cardinal-#1 None-score paths. Project both typed
-            # attributes into `details` so consumers walking the
-            # report graph read structured fields, NOT parsed
-            # strings (cardinal #1: every expected failure is
-            # structured data). `getattr(..., None)` skips the
-            # projection cleanly when the exception type doesn't
-            # carry the attribute (e.g., a generic RuntimeError from
-            # a programmatic caller bypassing the closure).
-            replay_code = getattr(exc, "replay_code", None)
-            if isinstance(replay_code, str):
-                details["replay_code"] = replay_code
-            rationale_classification = getattr(exc, "rationale_classification", None)
-            if isinstance(rationale_classification, str):
-                details["rationale_classification"] = rationale_classification
+            # Phase 10.3 cardinal-#1 widening: project the typed
+            # exception attributes from `whatif.cli_pipeline` into
+            # `details` so consumers read structured fields, not
+            # parsed strings.
+            #
+            # `isinstance` narrowing (NOT raw `getattr` duck-typing):
+            # a third-party exception that happens to carry an
+            # attribute named `replay_code` MUST NOT be silently
+            # promoted to a structured replay-failure projection —
+            # the classification is type-level (cardinal #1: failure
+            # taxonomy is the structured signal). Lazy import avoids
+            # an import cycle (cli_pipeline → pipeline via
+            # run_pipeline) and keeps the lazy-load contract: the
+            # cli_pipeline module is only loaded when this branch
+            # actually fires, which is only in CLI-fork code paths.
+            from whatif.cli_pipeline import (
+                _ReplayStageError,
+                _ScorerStructuralError,
+            )
+
+            if isinstance(exc, _ReplayStageError):
+                details["replay_code"] = exc.replay_code
+            elif isinstance(exc, _ScorerStructuralError):
+                details["rationale_classification"] = exc.rationale_classification
             failures.append(
                 make_failure_record(
                     _PIPELINE_SCORER_FAILURE_CODE,

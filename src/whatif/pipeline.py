@@ -46,6 +46,7 @@ from whatif.cache.summary import CacheSummary
 from whatif.decision.failure_codes import make_failure_record
 from whatif.decision.floor import compute_cohort_floor_failures
 from whatif.decision.verdict import compute_verdict
+from whatif.replay.closure_errors import _ReplayStageError, _ScorerStructuralError
 from whatif.report.models_v01 import ReportV01
 from whatif.report.projection import project_to_report_v01
 from whatif.types.cohort import CIUnavailableReason, CohortResult
@@ -139,31 +140,50 @@ def _bucket_by_cohort(
             # validates the code, supplies stage/scope defaults, and
             # enforces the required-details contract. `provider` and
             # `reason` are the registered required keys for
-            # `scorer_unavailable`; `exc_type` is an extension key
-            # (extra keys allowed per cardinal #6 extension point).
+            # `scorer_unavailable`; `exc_type` and the optional
+            # structured projections below are extension keys (extra
+            # keys allowed per cardinal #6 extension point).
+            details: dict[str, str] = {
+                # TODO(Phase 4B): replace the hardcoded "stub" with a
+                # real provider identifier sourced from the scorer
+                # adapter's `adapter_metadata().adapter_id`. Forensic
+                # reports under the real adapter MUST attribute scorer
+                # failures to the actual provider (e.g.,
+                # "inspect_ai", "anthropic") so the audit trail is
+                # accurate. The 9A.1 shortcut hardcodes "stub" because
+                # the pipeline doesn't yet receive the scorer in this
+                # scope; that wires in 9A.2+ / Phase 4B.
+                "provider": "stub",
+                "reason": str(exc),
+                "exc_type": type(exc).__name__,
+            }
+            # Phase 10.3 cardinal-#1 widening: project the typed
+            # exception attributes raised by the cli_pipeline
+            # closure into `details` so consumers read structured
+            # fields, not parsed strings. `isinstance` narrowing
+            # (NOT raw `getattr` duck-typing) so a third-party
+            # exception happening to carry an attribute by the same
+            # name is not silently promoted — failure classification
+            # is type-level per cardinal #1.
+            #
+            # `_ReplayStageError` / `_ScorerStructuralError` live in
+            # `whatif.replay.closure_errors` (a neutral non-CLI
+            # module) so this isinstance branch doesn't import
+            # CLI-layer code from core. Import is at the file's
+            # top level (not inside this handler) so an import
+            # failure surfaces at module load — not silently per
+            # exception.
+            if isinstance(exc, _ReplayStageError):
+                details["replay_code"] = exc.replay_code
+            elif isinstance(exc, _ScorerStructuralError):
+                details["rationale_classification"] = exc.rationale_classification
             failures.append(
                 make_failure_record(
                     _PIPELINE_SCORER_FAILURE_CODE,
                     id=f"delta-fn-{rt.trace_id}",
                     message=f"delta_fn raised: {exc}",
                     trace_id=rt.trace_id,
-                    details={
-                        # TODO(Phase 4B): replace the hardcoded
-                        # "stub" with a real provider identifier
-                        # sourced from the scorer adapter's
-                        # `adapter_metadata().adapter_id`. Forensic
-                        # reports under the real adapter MUST
-                        # attribute scorer failures to the actual
-                        # provider (e.g., "inspect_ai", "anthropic")
-                        # so the audit trail is accurate. The 9A.1
-                        # shortcut hardcodes "stub" because the
-                        # pipeline doesn't yet receive the scorer
-                        # in this scope; that wires in 9A.2+ /
-                        # Phase 4B.
-                        "provider": "stub",
-                        "reason": str(exc),
-                        "exc_type": type(exc).__name__,
-                    },
+                    details=details,
                 )
             )
     buckets = tuple(

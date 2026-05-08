@@ -154,8 +154,8 @@ def _build_langfuse_source() -> TraceSource:
     # function only runs at CLI fork-time, never at module import.
     try:
         from langfuse import Langfuse  # type: ignore[import-not-found,unused-ignore]
-        from whatif_langfuse import (
-            LangfuseTraceSource,  # type: ignore[import-untyped,unused-ignore]
+        from whatif_langfuse import (  # type: ignore[import-untyped,unused-ignore]
+            LangfuseTraceSource,
         )
     except ImportError as exc:
         raise AdapterFactoryError(

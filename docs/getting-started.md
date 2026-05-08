@@ -11,8 +11,8 @@ A worked, end-to-end example that runs the whatif pipeline and produces a `Ship`
 uv pip install whatif whatifd-langfuse whatifd-inspect-ai
 
 # From source (uv workspace):
-git clone https://github.com/victoralfred/whatif
-cd whatif
+git clone https://github.com/victoralfred/whatifd
+cd whatifd
 uv sync --all-extras --dev --group workspace
 ```
 

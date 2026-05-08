@@ -55,10 +55,17 @@ dev = [
   "pre-commit>=4.4.1",
   "types-psutil>=6.0",
   "types-PyYAML>=6.0",
-  # Workspace adapter packages — installed editably so the CI
-  # test job collects `packages/whatif-langfuse/tests/` and the
-  # imports resolve. Sourced via `[tool.uv.sources]` below to
-  # point at the in-tree workspace member instead of PyPI.
+]
+
+# PEP 735 dependency groups — uv-native; invisible to pip. Used for
+# workspace adapter packages that must be installed editably during
+# development but MUST NOT appear in the published wheel's
+# dependency metadata (pip would try to resolve them on PyPI and
+# fail because they aren't published yet). `uv sync --all-extras
+# --dev` picks this up alongside the optional-dependencies dev
+# extra above; `pip install ".[dev]"` correctly skips it.
+[dependency-groups]
+workspace = [
   "whatif-langfuse",
 ]
 

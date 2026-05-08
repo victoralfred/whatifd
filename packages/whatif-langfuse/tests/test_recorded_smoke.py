@@ -205,6 +205,20 @@ def _scrub_response_body(response: dict[str, object]) -> dict[str, object]:
     return response
 
 
+@pytest.fixture(autouse=True)
+def _reset_scrub_state() -> Iterator[None]:
+    """Reset the per-recording-session counter before every test.
+
+    Defends against cross-test ordering surprises: if two recording
+    tests run in one process, the counter would otherwise carry
+    over and the second cassette's trace ids would start at the
+    first cassette's continuation. autouse + reset-before-each-test
+    keeps each cassette numbered from 0 regardless of test order.
+    """
+    _ScrubState.reset()
+    yield
+
+
 @pytest.fixture(scope="module")
 def vcr_config() -> dict[str, object]:
     """pytest-recording filter config. Strips secrets from cassettes
@@ -281,6 +295,16 @@ def langfuse_api() -> Iterator[object]:
     pytest.importorskip("langfuse", reason="langfuse SDK not installed")
     from langfuse.api import LangfuseAPI
 
+    # The `pk-replay` / `sk-replay` placeholders aren't real
+    # credentials — they're the no-op values used in REPLAY mode
+    # (cassette playback) where vcrpy intercepts every HTTP call
+    # before the SDK ever transmits the auth header. The
+    # `_ensure_skip_when_cannot_run` gate above already rejects
+    # the case "no cassette + no creds + record-mode=none", so
+    # this code path is reached only when a cassette exists OR
+    # real credentials are present. Hardcoded placeholders are
+    # deliberately implausible-looking so a contributor reading
+    # them doesn't mistake them for a leaked secret.
     host = _resolve_host() or "https://cloud.langfuse.com"
     public = os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-replay")
     secret = os.environ.get("LANGFUSE_SECRET_KEY", "sk-replay")
@@ -306,9 +330,9 @@ def test_iter_traces_smoke(  # type: ignore[no-untyped-def]
     _ensure_skip_when_cannot_run("test_iter_traces_smoke", _record_mode(request))
 
     pytest.importorskip("langfuse", reason="langfuse SDK not installed")
-    from whatif_langfuse import LangfuseTraceSource
-
     from whatif.types.sensitive import Sensitive
+
+    from whatif_langfuse import LangfuseTraceSource
 
     source = LangfuseTraceSource(
         api=langfuse_api,

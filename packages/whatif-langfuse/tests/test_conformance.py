@@ -13,9 +13,9 @@ from typing import Any
 
 import pytest
 from conformance import TraceSourceConformance  # type: ignore[import-not-found]
-from whatif_langfuse import LangfuseTraceSource
-
 from whatif.adapters import TraceSource
+
+from whatif_langfuse import LangfuseTraceSource
 
 # Test scaffolds below are intentionally NOT `frozen=True` / `slots=True`
 # nor `Protocol`-typed. The project's style for production code
@@ -76,7 +76,18 @@ class _FakeTraceClient:
         # Reject negative/zero pages structurally — the Langfuse
         # API is 1-indexed, and an adapter that emits page=0 is
         # broken. `if/raise` instead of `assert` so the guard
-        # survives `python -O` (asserts strip under optimized builds).
+        # survives `python -O` (asserts strip under optimized
+        # builds).
+        #
+        # The `page is not None` short-circuit looks dead given
+        # `LangfuseTraceSource.iter_traces` ALWAYS passes
+        # `page=<int starting at 1>` — but the `_TraceClientLike`
+        # Protocol declares `page: int | None = None`, so a
+        # future direct caller (test, alternative iterator) is
+        # protocol-allowed to pass None. Without the None
+        # short-circuit, `None < 1` raises TypeError and the
+        # guard's intent (catch the page-0 bug) gets buried under
+        # an unrelated error type. Keep the short-circuit.
         if page is not None and page < 1:
             raise ValueError(f"page must be ≥1; got {page}")
         self.requested_pages.append(page)

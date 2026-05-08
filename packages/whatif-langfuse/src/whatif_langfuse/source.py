@@ -172,6 +172,23 @@ class LangfuseTraceSource:
         return ClusterKeySupport(available_keys=())
 
     def _project(self, trace: _TraceLike) -> RawTrace:
+        # Sensitive-wrap boundary (cardinal #5): `input` and `output`
+        # ARE user content and get wrapped. `metadata` is NOT
+        # wrapped because Langfuse's `metadata` field carries
+        # tooling state (path, latency_ms, status_code, sdk version,
+        # resource attributes) — not user content. The `RawTrace`
+        # protocol matches this contract: `user_message` and
+        # `original_response` are typed `Sensitive[str]`; `metadata`
+        # is `Mapping[str, Any]` precisely because it's tooling
+        # state, not Sensitive payload.
+        #
+        # **If your Langfuse setup puts user content in metadata**
+        # (e.g., embedding `user_id` or partial transcripts there),
+        # subclass `LangfuseTraceSource` and override `_project` to
+        # filter or wrap the relevant keys. Surfacing user content
+        # through unwrapped metadata is a deployment misconfiguration
+        # this adapter does not catch — it follows the documented
+        # Langfuse semantics.
         return RawTrace(
             trace_id=trace.id,
             cohort=self.cohort_classifier(trace),

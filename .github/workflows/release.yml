@@ -22,6 +22,17 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+      # Pre-publish test gate: a tag push that fails tests would
+      # otherwise consume PyPI version slots (republish is rejected
+      # forever) before any failure is visible. Running the suite
+      # here is the cheap insurance — TestPyPI dry-run is
+      # recommended for full path validation, but this catches the
+      # fast-feedback class (tests that pass on main but fail on
+      # the tagged commit due to a bad rebase / amendment).
+      - name: Install dependencies (workspace)
+        run: uv sync --all-extras --dev --group workspace
+      - name: Run tests
+        run: uv run pytest tests/ packages/ -q
       - name: Build root distribution (whatifd)
         run: uv build --out-dir dist-whatifd
       - name: Build whatifd-langfuse distribution
@@ -74,6 +85,10 @@ jobs:
         with:
           name: dist-whatifd
           path: dist/
+      # Supply-chain note: this action consumes the OIDC token
+      # granted by `id-token: write`. For maximum hardening, pin
+      # to a full commit SHA instead of `release/v1` before tagging
+      # — see RELEASING.md "Supply-chain hardening" section.
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   publish-whatifd-langfuse:
@@ -90,6 +105,10 @@ jobs:
         with:
           name: dist-whatifd-langfuse
           path: dist/
+      # Supply-chain note: this action consumes the OIDC token
+      # granted by `id-token: write`. For maximum hardening, pin
+      # to a full commit SHA instead of `release/v1` before tagging
+      # — see RELEASING.md "Supply-chain hardening" section.
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   publish-whatifd-inspect-ai:
@@ -106,6 +125,10 @@ jobs:
         with:
           name: dist-whatifd-inspect-ai
           path: dist/
+      # Supply-chain note: this action consumes the OIDC token
+      # granted by `id-token: write`. For maximum hardening, pin
+      # to a full commit SHA instead of `release/v1` before tagging
+      # — see RELEASING.md "Supply-chain hardening" section.
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   github-release:

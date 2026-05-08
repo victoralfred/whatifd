@@ -21,9 +21,9 @@ The environment name MUST match exactly. PyPI's OIDC verifier checks `repository
 
 If you want manual approval before each PyPI publish, create matching environments under `Repo Settings → Environments` and add required reviewers. Without this, the workflow runs end-to-end on tag push.
 
-### 3. Schema URL hosting
+### 3. Schema URL hosting (load-bearing, NOT optional)
 
-The `ReportV01.schema_uri` field is `https://whatif.codes/schema/report/v0.1.json`. Before announcing the release, deploy `src/whatifd/report/schema/v0.1.schema.json` to that URL. Any static-host works (Cloudflare Pages, GitHub Pages on a `gh-pages` branch, S3, etc.). Until deployed, consumers can validate against the in-repo schema; the URI just won't dereference.
+The `ReportV01.schema_uri` field stamped into every produced report is `https://whatif.codes/schema/report/v0.1.json`. Before announcing the release, deploy `src/whatifd/report/schema/v0.1.schema.json` to that URL. Any static-host works (Cloudflare Pages, GitHub Pages on a `gh-pages` branch, S3, etc.). A 404 here silently breaks any consumer that fetches the schema for validation — the per-release checklist below pins this as a required verification step.
 
 ## Per-release checklist
 
@@ -40,6 +40,7 @@ For the v0.1.0 release (or any subsequent release; substitute the version):
 - [ ] mypy + ruff clean: `uv run mypy src && uv run ruff check . && uv run ruff format --check .`
 - [ ] Schema is up-to-date: `uv run python scripts/generate_schema.py` produces no diff
 - [ ] PR landed on `main`
+- [ ] **TestPyPI dry-run completed against a `vX.Y.Zrc1` pre-release tag** (see "Failure modes → Cleanest prevention" below). Skipping this is permitted only for hot-fix patches where the workflow itself hasn't changed since the last successful release; a release that touches `release.yml`, action versions, or environment names MUST dry-run first.
 
 ### 2. Tag and push
 
@@ -99,6 +100,16 @@ Steps:
 5. If everything resolves and `whatif --help` works, revert the workflow back to PyPI proper, push the real `v0.1.0` tag.
 
 The pre-release tag remains on TestPyPI and on a GitHub Release; you can delete the GitHub Release if you want to keep the public release notes focused on the real tag.
+
+## Supply-chain hardening
+
+The release workflow grants `id-token: write` to three publish jobs so PyPI can verify the OIDC claim. The action that *consumes* that token, `pypa/gh-action-pypi-publish`, is currently pinned to `release/v1` (PyPA's recommended floating ref). For maximum hardening on a sensitive release, pin to a full commit SHA before tagging:
+
+1. Find the latest commit SHA for the release on https://github.com/pypa/gh-action-pypi-publish/releases.
+2. Replace each `pypa/gh-action-pypi-publish@release/v1` line in `.github/workflows/release.yml` with `pypa/gh-action-pypi-publish@<full-40-char-sha> # v1.X.Y`.
+3. Land the SHA-pin as part of the release-prep PR (or a hot-fix PR immediately before tagging).
+
+The github-published `actions/checkout`, `actions/upload-artifact`, `actions/download-artifact`, and `astral-sh/setup-uv` are pinned to major-version tags. SHA-pinning these too is defensible but lower-priority — they don't handle the OIDC token. If a future release wants belt-and-suspenders, the same pattern applies to all four.
 
 ## Hot-fix releases
 

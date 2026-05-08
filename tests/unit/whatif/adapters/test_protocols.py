@@ -344,6 +344,7 @@ class TestLazyLoad:
         # registered, this test becomes load-bearing for the
         # second adapter too. Tracked in `whatif-features` and the
         # cascade-catalog "Monorepo workspace" entry.
+        # TODO(4B.2): drop this comment when whatif_inspect_ai is workspace-registered.
         result = subprocess.run(
             [
                 sys.executable,

@@ -59,6 +59,18 @@ uv run pytest packages/whatif-langfuse/tests/test_recorded_smoke.py --record-mod
 
 The cassette is committed under `tests/cassettes/`. Sensitive headers (`Authorization`, `x-langfuse-public-key`) are filtered out by the `vcr_config` fixture.
 
+## Contributor setup
+
+This package lives in the parent whatif monorepo as a uv workspace member. From the repo root:
+
+```bash
+uv sync --all-extras --dev --group workspace
+```
+
+The `--group workspace` flag pulls the in-tree `whatif-langfuse` editable install via PEP 735 dependency groups (uv-native). Without it, `uv sync --all-extras --dev` installs the rest of the dev environment but leaves this package out, and `pytest packages/whatif-langfuse/tests/` fails with `ModuleNotFoundError: whatif_langfuse`.
+
+**Plain `pip install ".[dev]"` will NOT work** for the workspace package — pip ignores PEP 735 groups (that's deliberate; the workspace dep can't be resolved from PyPI because it isn't published yet). Use `uv` for development setup; pip-only consumers install the published `whatif-langfuse` from PyPI once it lands.
+
 ## Stability
 
 Pre-1.0; the adapter follows whatif's v0.1 stability contract. The Langfuse SDK upper-cap (`<5.0`) reserves the next major for a coordinated migration if Langfuse changes the `LangfuseAPI.trace.list(...)` shape.

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -78,32 +79,44 @@ _PUBLIC_KEY_RE = re.compile(r"pk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 _SECRET_KEY_RE = re.compile(r"sk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
-class _ScrubState:
-    """Per-recording-session counter state.
+_scrub_state_local = threading.local()
+
+
+def _scrub_local() -> threading.local:
+    """Per-thread scrub state carrier.
 
     Globally unique trace placeholder ids across responses (not
     per-page) — a future bug where the adapter emits duplicate
     trace_id across pages would otherwise be invisible because the
     scrubber would overwrite both pages with redacted-trace-000…002.
 
-    Class attribute (instead of a bare `_TRACE_PLACEHOLDER_COUNTER
-    = [0]` module global) so the mutation surface is namespaced and
-    auditable: a contributor running multiple recording sessions in
-    one process can call `_ScrubState.reset()` between sessions to
-    restart numbering, and the docstring documents what state
-    actually persists across hook calls.
+    `threading.local` (instead of a class attribute or module-level
+    list) so pytest-xdist or any other parallel test runner that
+    spawns recording threads doesn't race the counter. Single-
+    threaded test runs see identical behavior; concurrent recording
+    workers each get their own counter rooted at 0.
     """
+    if not hasattr(_scrub_state_local, "next_trace_idx"):
+        _scrub_state_local.next_trace_idx = 0
+    return _scrub_state_local
 
-    next_trace_idx: int = 0
+
+class _ScrubState:
+    """Public-facing API over `_scrub_state_local`. Methods delegate
+    to the thread-local carrier; the surface stays the same so the
+    autouse reset fixture and the scrubber both call
+    `_ScrubState.reset()` / `_ScrubState.take_trace_idx()` without
+    caring about the thread-local plumbing."""
 
     @classmethod
     def reset(cls) -> None:
-        cls.next_trace_idx = 0
+        _scrub_local().next_trace_idx = 0
 
     @classmethod
     def take_trace_idx(cls) -> int:
-        idx = cls.next_trace_idx
-        cls.next_trace_idx += 1
+        local = _scrub_local()
+        idx: int = local.next_trace_idx
+        local.next_trace_idx = idx + 1
         return idx
 
 
@@ -341,8 +354,13 @@ def test_iter_traces_smoke(  # type: ignore[no-untyped-def]
         max_traces=5,
     )
     emitted = list(source.iter_traces())
-    # The fixture project may have zero traces; the smoke gate only
-    # requires that whatever IS returned satisfies the protocol.
+    # Load-bearing lower bound: the committed cassette covers a
+    # project with at least 5 traces; `max_traces=5` caps emission
+    # at exactly 5. A regression that returns zero traces (e.g., the
+    # adapter accidentally swallows the response.data list) would
+    # otherwise pass the per-trace shape loop vacuously. Pin the
+    # count so the smoke gate actually exercises the projection.
+    assert len(emitted) == 5, f"smoke expected 5 traces; got {len(emitted)}"
     for raw in emitted:
         assert isinstance(raw.trace_id, str) and raw.trace_id
         assert isinstance(raw.cohort, str) and raw.cohort

@@ -169,6 +169,28 @@ def fork(
     raise typer.Exit(code=exit_code)
 
 
+def _compute_config_hash(cfg: WhatifConfig) -> str:
+    """Compute a deterministic sha256 over the validated config.
+
+    The `RunManifest.config_hash` field is `x-deterministic: true`
+    in the schema. Returning a real hash here means determinism
+    tests (Phase 9A.3) can pin reproducibility across runs that
+    share a config — and consumers reading the report can
+    distinguish "same config" from "different config" without
+    being misled by a placeholder zero.
+
+    Uses the project's canonical JSON encoder so the hash matches
+    `whatif.cache.keying`'s discipline: sorted keys, no
+    whitespace, deterministic float formatting.
+    """
+    import hashlib
+
+    from whatif.serialization import canonical_json_bytes
+
+    payload = cfg.model_dump(mode="json")
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
 def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
     """Execute the fork pipeline (replay → score → decision →
     render) and return the appropriate exit code.
@@ -336,9 +358,19 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
             rubric_hash="v01-cli-placeholder-no-scorecase",
             scorer_cache_enabled=cfg.scorer.cache_mode != "off",
             scorer_cache_mode=cfg.scorer.cache_mode if cfg.scorer.cache_mode != "auto" else "off",
+            # v0.1 dispatcher does NOT yet wire the scorer cache
+            # subsystem into the pipeline (cache_summary above is
+            # mode="off" with hits=0/misses=0; documented Phase 10.5
+            # work). Hits/misses are 0 by reality, not by
+            # placeholder. `reproducibility_addressed` follows the
+            # actual cache state — claiming True when the cache is
+            # off would be cardinal-#10 untruthful methodology
+            # disclosure (the doctrine bot caught this on PR #70).
+            # When the cache wires in, the dispatcher will set this
+            # to `cfg.scorer.cache_mode != "off"` truthfully.
             scorer_cache_hits=0,
             scorer_cache_misses=0,
-            reproducibility_addressed=True,
+            reproducibility_addressed=False,
             reliability_measured=False,
             validity_measured=False,
             calibration_measured=False,
@@ -385,7 +417,15 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
         finished_at=datetime.datetime.now(datetime.UTC).isoformat(),
         duration_ms=int((datetime.datetime.now(datetime.UTC) - started_at).total_seconds() * 1000),
         whatif_version=_whatif_version,
-        config_hash="0" * 64,  # v0.1 placeholder; v0.2 hashes the loaded cfg
+        # config_hash is `x-deterministic: true` in the schema —
+        # consumers expect a real hex sha256. Emitting "0"*64 (a
+        # legal hex string) would silently look like a real hash.
+        # Cardinal #4 (determinism opt-in) + cardinal #10
+        # (truthful methodology): hash the loaded config at
+        # dispatch time so the field actually means what consumers
+        # expect. Lazy import of canonical_json_bytes from the
+        # serialization layer keeps the import surface clean.
+        config_hash=_compute_config_hash(cfg),
         selection_seed=42,
         source=cfg.source.adapter,
         target=loaded_runner.reference,

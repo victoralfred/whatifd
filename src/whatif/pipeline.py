@@ -46,6 +46,7 @@ from whatif.cache.summary import CacheSummary
 from whatif.decision.failure_codes import make_failure_record
 from whatif.decision.floor import compute_cohort_floor_failures
 from whatif.decision.verdict import compute_verdict
+from whatif.replay.closure_errors import _ReplayStageError, _ScorerStructuralError
 from whatif.report.models_v01 import ReportV01
 from whatif.report.projection import project_to_report_v01
 from whatif.types.cohort import CIUnavailableReason, CohortResult
@@ -165,18 +166,13 @@ def _bucket_by_cohort(
             # name is not silently promoted — failure classification
             # is type-level per cardinal #1.
             #
-            # Imported from `whatif.replay.closure_errors` (NOT from
-            # `whatif.cli_pipeline`) to avoid a core → CLI layer
-            # inversion: every non-CLI caller of `run_pipeline`
-            # would otherwise transitively load the CLI pipeline
-            # module on first trace failure. The shared module
-            # lives at the replay-result layer and is safe for
-            # core to import.
-            from whatif.replay.closure_errors import (
-                _ReplayStageError,
-                _ScorerStructuralError,
-            )
-
+            # `_ReplayStageError` / `_ScorerStructuralError` live in
+            # `whatif.replay.closure_errors` (a neutral non-CLI
+            # module) so this isinstance branch doesn't import
+            # CLI-layer code from core. Import is at the file's
+            # top level (not inside this handler) so an import
+            # failure surfaces at module load — not silently per
+            # exception.
             if isinstance(exc, _ReplayStageError):
                 details["replay_code"] = exc.replay_code
             elif isinstance(exc, _ScorerStructuralError):

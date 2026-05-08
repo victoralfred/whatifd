@@ -246,6 +246,15 @@ The five-section structure (header → cohort table → findings → cache + met
 - **[Walkthroughs](./walkthroughs/)** — six rendered examples (Ship, Don't Ship, Inconclusive)
 - **[`examples/minimal-agent/`](../examples/minimal-agent/)** — copy-paste reference Runner
 
+## Stub adapters: what they do (and don't)
+
+Two CLI-friendly placeholders ship with whatif core for credentialless smokes:
+
+- **`source.adapter: "stub"`** — `whatif.adapters.factory.build_trace_source` returns `StubTraceSource(specs=[])`. **Empty by design** — the factory's job is dispatch, not fixture provisioning. Tests/users that need traces construct `StubTraceSource(specs=[...])` directly. A `whatif fork` smoke run with the empty stub source produces a Floor-failure Inconclusive verdict (cardinal #2: no data → not Ship), not a crash.
+- **`scorer.adapter: "stub"`** — `StubScorer()` with the default `score_fn` that returns **`0.0` for every case**, not "no judgment." Each trace gets a deterministic zero delta. This is intentional: the stub is for wiring-validation, not behavioral evaluation. **A real run that accidentally uses `scorer.adapter: "stub"` will report "no improvement, no regression" across every cohort** — a Don't-Ship verdict on the failure-improvement guard, NOT an Inconclusive. If you see uniform-zero deltas, check your scorer config.
+
+The stub is the right default for an end-to-end CLI smoke that proves the wiring works. It is the wrong default for an experiment whose verdict you want to act on.
+
 ## Known limitations (v0.1.0)
 
 - The `whatif fork` CLI dispatcher is stubbed; use the programmatic API above. End-to-end CLI wiring is the next branch.

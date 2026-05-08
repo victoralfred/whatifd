@@ -71,33 +71,16 @@ if TYPE_CHECKING:
     from whatif.runner_loader import LoadedRunner
 
 
-class _ReplayStageError(Exception):
-    """Internal: replay-stage failure raised inside the `delta_fn`
-    closure to signal the pipeline's exception capture.
-
-    Carries the kernel's `ReplayFailure.code` as a structured
-    attribute (not only baked into the message). Cardinal #1: a
-    consumer walking the exception sees a typed code, not a
-    parsed string. The pipeline converts this to a
-    `scorer_unavailable` `FailureRecord` at the top-level `code`
-    field (v0.1 scope); Phase 11+ may widen to per-stage codes.
-    """
-
-    def __init__(self, *, replay_code: str, message: str) -> None:
-        super().__init__(message)
-        self.replay_code = replay_code
-
-
-class _ScorerStructuralError(Exception):
-    """Internal: `JudgeResult.score is None` (cardinal-#1) raised
-    so the pipeline's exception path captures it as a structured
-    `FailureRecord`. Carries the rationale's `classification` as
-    a typed attribute so downstream consumers attribute the
-    failure without parsing the message string."""
-
-    def __init__(self, *, rationale_classification: str, message: str) -> None:
-        super().__init__(message)
-        self.rationale_classification = rationale_classification
+# Typed-error classes moved to `whatif.replay.closure_errors` so
+# `whatif.pipeline` (core layer) can isinstance-narrow against them
+# WITHOUT importing CLI-layer code (which would invert module
+# hierarchy). Re-exported here for backward-compat with anything
+# that imported them from this module historically; the canonical
+# home is now `whatif.replay.closure_errors`.
+from whatif.replay.closure_errors import (
+    _ReplayStageError,
+    _ScorerStructuralError,
+)
 
 
 def build_delta_fn(
@@ -192,9 +175,22 @@ def build_delta_fn(
                 replay_code=replay_result.code,
                 message=f"replay failed [{replay_result.code}]: {replay_result.message}",
             )
-        # The kernel's contract is `ReplaySuccess | ReplayFailure`;
-        # mypy doesn't narrow without an explicit type assertion.
-        assert isinstance(replay_result, ReplaySuccess)
+        # The kernel's contract is `ReplaySuccess | ReplayFailure`.
+        # `if not isinstance(...): raise` rather than `assert` because
+        # `python -O` strips asserts; cardinal #1 mandates structured
+        # failure under all run modes including optimized production
+        # deployments. A future kernel widening (e.g., a third
+        # variant) would land here as a typed `_ReplayStageError`,
+        # not an AttributeError on `.output`.
+        if not isinstance(replay_result, ReplaySuccess):
+            raise _ReplayStageError(
+                replay_code="runner_exception",
+                message=(
+                    f"replay kernel returned unexpected type "
+                    f"{type(replay_result).__name__!r}; sealed-union "
+                    "violation."
+                ),
+            )
         replayed_output: ReplayOutput = replay_result.output
 
         case = ScoreCase(

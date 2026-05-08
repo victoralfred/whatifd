@@ -157,21 +157,22 @@ def _bucket_by_cohort(
                 "exc_type": type(exc).__name__,
             }
             # Phase 10.3 cardinal-#1 widening: project the typed
-            # exception attributes from `whatif.cli_pipeline` into
-            # `details` so consumers read structured fields, not
-            # parsed strings.
+            # exception attributes raised by the cli_pipeline
+            # closure into `details` so consumers read structured
+            # fields, not parsed strings. `isinstance` narrowing
+            # (NOT raw `getattr` duck-typing) so a third-party
+            # exception happening to carry an attribute by the same
+            # name is not silently promoted — failure classification
+            # is type-level per cardinal #1.
             #
-            # `isinstance` narrowing (NOT raw `getattr` duck-typing):
-            # a third-party exception that happens to carry an
-            # attribute named `replay_code` MUST NOT be silently
-            # promoted to a structured replay-failure projection —
-            # the classification is type-level (cardinal #1: failure
-            # taxonomy is the structured signal). Lazy import avoids
-            # an import cycle (cli_pipeline → pipeline via
-            # run_pipeline) and keeps the lazy-load contract: the
-            # cli_pipeline module is only loaded when this branch
-            # actually fires, which is only in CLI-fork code paths.
-            from whatif.cli_pipeline import (
+            # Imported from `whatif.replay.closure_errors` (NOT from
+            # `whatif.cli_pipeline`) to avoid a core → CLI layer
+            # inversion: every non-CLI caller of `run_pipeline`
+            # would otherwise transitively load the CLI pipeline
+            # module on first trace failure. The shared module
+            # lives at the replay-result layer and is safe for
+            # core to import.
+            from whatif.replay.closure_errors import (
                 _ReplayStageError,
                 _ScorerStructuralError,
             )

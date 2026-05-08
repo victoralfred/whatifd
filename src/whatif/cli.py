@@ -216,11 +216,16 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
             "from assert_two_affirmation; bypassing the witness "
             "violates cardinal #7."
         )
-    # `proof.forensic_active` gates downstream redaction-profile
-    # decisions; v0.1 emits the same report shape regardless and
-    # leaves redaction to the encoder + graph walk. v0.2 may add a
-    # forensic-bundle path that consults the witness explicitly.
-    _ = proof
+    # v0.1 redaction discipline: ALL reports go through the same
+    # `Sensitive[T]` + graph-walk + encoder-reject path regardless
+    # of `proof.forensic_active`, so the witness is consumed as
+    # presence-evidence (the isinstance guard above) rather than as
+    # a redaction-profile selector. The forensic-bundle dispatch
+    # that WOULD read `proof.forensic_active` is v0.2 work — see
+    # cascade-catalog "Forensic profile bundle emission". Marking
+    # the unused-binding here so a future contributor doesn't
+    # mistake the silent discard for a missed wiring.
+    _ = proof.forensic_active  # consumed as presence-evidence; bundle path is v0.2
 
     # Lazy imports keep the module-load cost of `import whatif.cli`
     # bounded (typer / cli surface). Adapter factory + run_pipeline +

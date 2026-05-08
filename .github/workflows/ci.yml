@@ -55,10 +55,19 @@ jobs:
       # Python code uses imports, not pip-install shell snippets.
       - name: pip-install brand-vs-distribution sentinel
         run: |
+          # `set +e` because `grep` exits 1 on no-match and the
+          # default workflow shell is `bash -e`, which would abort
+          # the step on a clean repo. We want grep's no-match to be
+          # the SUCCESS path, so we capture stdout and check the
+          # variable manually.
           set +e
-          MATCHES=$(grep -rEn 'pip install whatif[^d]' --include='*.md' .)
+          # `whatif([^d]|$)` instead of `whatif[^d]` so the regex
+          # also catches `pip install whatif` at end-of-line — the
+          # `[^d]` form requires a follow-up char, which a trailing
+          # newline doesn't satisfy. End-of-line `$` closes that gap.
+          MATCHES=$(grep -rEn 'pip install whatif([^d]|$)' --include='*.md' .)
           if [ -n "$MATCHES" ]; then
-            echo "Found 'pip install whatif <space|other>' — must be 'pip install whatifd':"
+            echo "Found 'pip install whatif' (without trailing 'd') — must be 'pip install whatifd':"
             echo "$MATCHES"
             exit 1
           fi

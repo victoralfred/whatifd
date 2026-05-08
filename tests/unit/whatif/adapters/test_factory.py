@@ -154,6 +154,45 @@ def test_build_trace_source_langfuse_import_failure_wraps_to_factory_error(
     assert "pip install whatif-langfuse" in msg
 
 
+def test_build_trace_source_langfuse_sdk_construction_failure_wraps_to_factory_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cardinal #1: a `Langfuse(host=..., ...)` constructor exception
+    (malformed URL, auth handshake error, etc.) MUST surface as
+    `AdapterFactoryError` — NOT a leaked SDK exception.
+
+    Without the boundary catch around the constructor call, a typo
+    in `LANGFUSE_HOST` would propagate as a raw `ValueError` past
+    the CLI's `AdapterFactoryError` handler and surface as a stack
+    trace instead of an actionable setup-failure exit.
+    """
+    monkeypatch.setenv("LANGFUSE_HOST", "https://example")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+
+    # Inject a fake `langfuse.Langfuse` whose constructor raises.
+    # Stable across SDK versions (no real Langfuse import).
+    import sys
+    import types
+
+    fake_langfuse = types.ModuleType("langfuse")
+
+    class _Boom:
+        def __init__(self, **_kwargs: object) -> None:
+            raise ValueError("simulated SDK-side host validation failure")
+
+    fake_langfuse.Langfuse = _Boom  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse)
+
+    with pytest.raises(AdapterFactoryError) as excinfo:
+        build_trace_source(SourceConfig(adapter="langfuse"))
+    msg = str(excinfo.value)
+    assert "langfuse adapter construction failed" in msg
+    assert "ValueError" in msg
+    # Actionable: the message points at the likely culprits.
+    assert "LANGFUSE_HOST" in msg
+
+
 def test_build_trace_source_langfuse_empty_string_host_treated_as_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -187,6 +226,31 @@ def test_factory_re_exports_from_adapters_package() -> None:
 def test_build_scorer_stub_returns_stub_scorer() -> None:
     scorer = build_scorer(ScorerConfig(adapter="stub"))
     assert isinstance(scorer, StubScorer)
+
+
+def test_build_scorer_stub_default_score_fn_returns_constant_0_5() -> None:
+    """The stub scorer's default `score_fn` returns the constant
+    `0.5` (not 0.0, not None). Pin this so:
+
+    1. The CHANGELOG / docs / factory comment claim of "constant
+       0.5" stays empirically truthful.
+    2. A future change to `_default_score_fn` that flips the
+       constant to e.g. 0.0 (which would silently re-shape the
+       'real run accidentally uses stub' failure mode from
+       'misleading Ship' to 'misleading Don't-Ship') fails first.
+    """
+    from whatif.contract import ReplayOutput, ScoreCase, TraceInput, TraceOutput
+
+    scorer = build_scorer(ScorerConfig(adapter="stub"))
+    case = ScoreCase(
+        trace_id="t-1",
+        cohort="failure",
+        input=TraceInput(user_message="x"),
+        original_output=TraceOutput(text="orig"),
+        replayed_output=ReplayOutput(text="replay"),
+    )
+    result = scorer.score(case)
+    assert result.score == 0.5
 
 
 def test_build_scorer_satisfies_protocol() -> None:

@@ -110,12 +110,18 @@ def build_scorer(cfg: ScorerConfig) -> Scorer:
     """
     name = cfg.adapter
     if name == "stub":
-        # `StubScorer.score_fn` defaults to a no-op that returns
-        # 0.0 for every case (see `whatif.adapters.stub
-        # ._default_score_fn`). That's the right CLI default — a
-        # smoke run with no judge configured produces deterministic
-        # zero-delta scoring, which the pipeline interprets as
-        # "no improvement, no regression."
+        # `StubScorer.score_fn` defaults to `_default_score_fn`,
+        # which returns the constant `0.5` for every case (see
+        # `whatif.adapters.stub`). That's the right CLI smoke
+        # default — non-None (so cardinal #1 None-failure paths
+        # don't fire) and constant (so deltas are deterministic).
+        # The pipeline interprets a constant 0.5 as "above
+        # epsilon improvement on every trace," producing a Ship
+        # verdict against an empty stub source's degenerate
+        # zero-cohort case after floor-failure intercepts. **Do
+        # NOT use `scorer.adapter='stub'` for a real run** — every
+        # trace will appear to improve identically and the
+        # verdict will be misleading.
         return StubScorer()
     if name == "inspect_ai":
         raise AdapterFactoryError(
@@ -163,16 +169,34 @@ def _build_langfuse_source() -> TraceSource:
             "with `pip install whatif-langfuse`."
         ) from exc
 
-    client = Langfuse(host=host, public_key=public_key, secret_key=secret_key)
-    source: TraceSource = LangfuseTraceSource(
-        api=client.api,
-        # Default cohort classifier: tags-based, mirroring the
-        # whatif-langfuse README. v0.2 adds config-driven
-        # classifier selection.
-        cohort_classifier=lambda t: (
-            "failure" if "failure" in (getattr(t, "tags", None) or []) else "baseline"
-        ),
-    )
+    # Wrap the Langfuse client construction in the same boundary
+    # catch as the import: a malformed host, an auth handshake
+    # failure, or any other constructor-time exception from the
+    # SDK MUST surface as `AdapterFactoryError` for the CLI to
+    # convert to setup-failure exit code (cardinal #1: every
+    # expected failure is structured data, not a leaked stack
+    # trace). Without this catch, a typo in `LANGFUSE_HOST` could
+    # propagate as a raw `ValueError` past the CLI's
+    # `AdapterFactoryError` handler.
+    try:
+        client = Langfuse(host=host, public_key=public_key, secret_key=secret_key)
+        source: TraceSource = LangfuseTraceSource(
+            api=client.api,
+            # Default cohort classifier: tags-based, mirroring
+            # the whatif-langfuse README. v0.2 adds config-driven
+            # classifier selection (see cascade-catalog).
+            cohort_classifier=lambda t: (
+                "failure" if "failure" in (getattr(t, "tags", None) or []) else "baseline"
+            ),
+        )
+    except AdapterFactoryError:
+        # Already typed; let it propagate without re-wrapping.
+        raise
+    except Exception as exc:
+        raise AdapterFactoryError(
+            f"langfuse adapter construction failed: {type(exc).__name__}: {exc}. "
+            "Check LANGFUSE_HOST format and credential validity."
+        ) from exc
     return source
 
 

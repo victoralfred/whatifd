@@ -109,6 +109,14 @@ def test_module_not_importable_raises() -> None:
     msg = str(excinfo.value)
     assert "could not be imported" in msg
     assert "nonexistent.module.path" in msg
+    # Cardinal #1 / diagnostic-tooling contract: the original
+    # ImportError MUST be preserved as `__cause__` so downstream
+    # tools that walk exception chains (sentry, structured loggers)
+    # can attribute the failure correctly. The `raise ... from exc`
+    # idiom in runner_loader.py:117 is what sets this; pin the
+    # contract so a future refactor that drops `from exc` (e.g.,
+    # converts to a plain `raise RunnerLoadError(...)`) fails first.
+    assert isinstance(excinfo.value.__cause__, ImportError)
 
 
 def test_attribute_missing_raises() -> None:

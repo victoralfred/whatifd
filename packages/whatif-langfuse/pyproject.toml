@@ -37,6 +37,14 @@ dev = [
   # cassette playback (CI default) and recording
   # (`--record-mode=once` locally).
   "pytest-recording>=0.13",
+  # Direct `vcrpy` pin alongside `pytest-recording` — mirrors the
+  # root pyproject's pin. vcrpy controls the cassette YAML format;
+  # pinning the major directly catches a vcrpy 9.x bump that
+  # would silently break committed cassettes. An out-of-tree
+  # install of `whatif-langfuse[dev]` (without the parent's pin)
+  # MUST get the same cap; that's why the constraint is repeated
+  # here, not just in the root.
+  "vcrpy>=8.0,<9.0",
   # `pytest-asyncio` is intentionally NOT listed here. v0.1.0 of
   # this adapter is purely synchronous. The Langfuse SDK exposes
   # async client surfaces (`AsyncLangfuseAPI`) that v0.2+ may add

@@ -174,7 +174,24 @@ def _scrub_response_body(response: dict[str, object]) -> dict[str, object]:
     try:
         parsed = _json.loads(text)
     except _json.JSONDecodeError:
-        # Non-JSON response — fall back to regex-only credential scrub.
+        # Non-JSON response — fall back to regex-only credential
+        # scrub. Surface a warning during recording so a future
+        # Langfuse endpoint that switches off JSON (HTML error page,
+        # protobuf, gRPC response) is visible: regex-only scrubbing
+        # only catches credential PATTERNS, not structural fields.
+        # If this warning fires during a recording session, the
+        # cassette MUST be hand-reviewed before commit.
+        import warnings
+
+        warnings.warn(
+            "Non-JSON response in cassette recording; falling back to "
+            "regex-only credential scrub. The structural-field scrubber "
+            "(input/output/metadata/projectId redaction) does NOT run on "
+            "this response. Hand-review the cassette for user content "
+            "before commit.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         cleaned = _PUBLIC_KEY_RE.sub("pk-lf-FILTERED", text)
         cleaned = _SECRET_KEY_RE.sub("sk-lf-FILTERED", cleaned)
         body["string"] = cleaned.encode("utf-8") if isinstance(raw, bytes) else cleaned

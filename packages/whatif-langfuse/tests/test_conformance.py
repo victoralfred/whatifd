@@ -220,6 +220,22 @@ class TestLangfuseSpecificBehaviors:
         )
         assert len(list(src.iter_traces())) == 5
 
+    def test_fake_trace_client_rejects_page_zero_and_negative(self) -> None:
+        # Pin the page-validation branch on the test scaffold itself.
+        # The fake mirrors the Langfuse 1-indexed contract; without
+        # this test, a future refactor of `_FakeTraceClient.list`
+        # could silently drop the guard and the harness would still
+        # pass on the dominant page=1 path. Make the contract load-
+        # bearing with explicit page=0 and page=-1 cases.
+        client = _FakeTraceClient([])
+        with pytest.raises(ValueError, match=r"page must be ≥1; got 0"):
+            client.list(page=0)
+        with pytest.raises(ValueError, match=r"page must be ≥1; got -1"):
+            client.list(page=-1)
+        # `page=None` and `page=1` are valid — no raise.
+        client.list(page=None)
+        client.list(page=1)
+
     def test_adapter_metadata_sourced(self) -> None:
         api = _FakeAPI([])
         src = LangfuseTraceSource(

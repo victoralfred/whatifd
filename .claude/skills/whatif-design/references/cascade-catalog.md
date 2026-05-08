@@ -58,6 +58,14 @@ Format per entry:
 - **Cassette discipline** — recorded-smoke tests under `pytest-recording` MUST scrub user content from response bodies AND credentials from request headers AND echoed identifiers from response bodies. Header filtering alone is insufficient (Langfuse echoes `public_key` inside trace metadata). The pattern: a `before_record_response` hook that walks the JSON shape and replaces `input` / `output` / `metadata` / `name` / `projectId` / per-trace `id` with deterministic placeholders. Phase 4B.2 (`whatif-inspect-ai`) inherits this discipline; any new adapter cassette is reviewed for content leakage before commit.
 - **`packages/` test collection** — root `[tool.pytest.ini_options] testpaths = ["tests", "packages"]`. Adding a third package extends the glob; adding a non-package directory requires a more selective testpaths value.
 
+**Phase 4B.2 reviewer checklist** (must be satisfied before 4B.2 PR merges):
+
+- [ ] `packages/whatif-inspect-ai/` exists with its own `pyproject.toml`, `src/whatif_inspect_ai/`, and tests.
+- [ ] Workspace registration: `[tool.uv.workspace] members` extended; `[tool.uv.sources]` adds `whatif-inspect-ai = { workspace = true }`; `[dependency-groups] workspace` includes the new package.
+- [ ] `tests/unit/whatif/adapters/test_protocols.py::test_core_modules_do_not_load_real_adapter_packages`: the `# TODO(4B.2): drop this comment when whatif_inspect_ai is workspace-registered.` line is removed AND the surrounding "false-green note" prose is removed. Failing to remove the marker is a code-review gate; grep `TODO(4B.2)` across the repo at PR review time.
+- [ ] Conformance harness reuse seam: `packages/whatif-inspect-ai/tests/conftest.py` either copies the `sys.path` workaround from `whatif-langfuse` OR (if friction surfaces) the harness gets promoted to `whatif.testing.adapter_conformance` per `whatif-features` entry #1 in the same PR.
+- [ ] Recorded smoke (if Inspect AI has a hosted scoring API surface): same `pytest-recording` discipline + cassette scrub patterns; cassette reviewed for user-content leakage before commit.
+
 **Status:** open (4B.1 landed; 4B.2 + 9B remaining).
 
 **Resolution:** closes when Phase 4B.2 ships the second sibling AND Phase 9B's real-adapter smoke covers both.

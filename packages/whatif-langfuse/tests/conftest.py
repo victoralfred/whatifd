@@ -43,4 +43,10 @@ else:
     import warnings
 
     warnings.warn(_HARNESS_MISSING_MESSAGE, RuntimeWarning, stacklevel=2)
+    # Belt-and-suspenders: print to stderr too. CI logs swallow
+    # PytestUnraisableExceptionWarning by default, but stderr is
+    # always visible in the job output. An out-of-tree CI that
+    # silently skips this package's tests would otherwise need a
+    # contributor to grep `pytest -W error` output to see the gap.
+    print(f"[whatif-langfuse conftest] WARNING: {_HARNESS_MISSING_MESSAGE}", file=sys.stderr)
     collect_ignore = ["test_conformance.py"]

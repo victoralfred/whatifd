@@ -58,6 +58,60 @@ def test_build_trace_source_langfuse_without_credentials_raises(
     assert "stub" in msg.lower()
 
 
+@pytest.mark.parametrize(
+    ("present", "missing_label"),
+    [
+        # `host` present, both keys missing → message names both keys.
+        ({"LANGFUSE_HOST": "https://example"}, ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY")),
+        # `host` + public_key present, secret_key missing.
+        (
+            {"LANGFUSE_HOST": "https://example", "LANGFUSE_PUBLIC_KEY": "pk"},
+            ("LANGFUSE_SECRET_KEY",),
+        ),
+        # `host` + secret_key present, public_key missing.
+        (
+            {"LANGFUSE_HOST": "https://example", "LANGFUSE_SECRET_KEY": "sk"},
+            ("LANGFUSE_PUBLIC_KEY",),
+        ),
+        # Both keys present, host missing — message names host
+        # AND its `LANGFUSE_BASE_URL` alias so an operator who set
+        # the wrong env name sees both options.
+        (
+            {"LANGFUSE_PUBLIC_KEY": "pk", "LANGFUSE_SECRET_KEY": "sk"},
+            ("LANGFUSE_HOST", "LANGFUSE_BASE_URL"),
+        ),
+    ],
+)
+def test_build_trace_source_langfuse_partial_credentials_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    present: dict[str, str],
+    missing_label: tuple[str, ...],
+) -> None:
+    """Partial-missing credential combinations each produce a
+    distinct, actionable error message segment.
+
+    A future refactor that collapses the credential-check branches
+    into a single generic `"missing credentials"` string would lose
+    the per-var attribution an operator needs to fix the issue
+    quickly. Pin each case so the message stays specific.
+    """
+    for key in (
+        "LANGFUSE_HOST",
+        "LANGFUSE_BASE_URL",
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    for k, v in present.items():
+        monkeypatch.setenv(k, v)
+
+    with pytest.raises(AdapterFactoryError) as excinfo:
+        build_trace_source(SourceConfig(adapter="langfuse"))
+    msg = str(excinfo.value)
+    for label in missing_label:
+        assert label in msg, f"expected {label!r} in error message; got: {msg}"
+
+
 def test_build_scorer_stub_returns_stub_scorer() -> None:
     scorer = build_scorer(ScorerConfig(adapter="stub"))
     assert isinstance(scorer, StubScorer)

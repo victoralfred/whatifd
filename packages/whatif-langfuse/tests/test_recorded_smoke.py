@@ -146,8 +146,14 @@ def _scrub_response_body(response: dict[str, object]) -> dict[str, object]:
             trace["externalId"] = None
 
     # Test scaffold: this `json.dumps` lives in test code, not a
-    # runtime path. The project's banned-import lint targets src/;
-    # the scrubber needs to round-trip parsed JSON back to a string.
+    # runtime path. The project's banned-import lint targets `src/`
+    # files (`whatif/serialization/` is the only src-tree module
+    # allowed to call `json.dumps`), and `tests/` is explicitly
+    # outside that scope. The scrubber needs to round-trip parsed
+    # JSON back to a string for the cassette body; routing through
+    # `whatif.serialization.canonical_json_bytes` would work but
+    # adds a runtime dep on the canonical module just for a test
+    # helper. Keeping `_json.dumps` here is the right call.
     cleaned_text = _json.dumps(parsed, sort_keys=True)
     # Belt-and-suspenders: regex-scrub credential patterns from the
     # serialized JSON in case a future Langfuse field grows a new

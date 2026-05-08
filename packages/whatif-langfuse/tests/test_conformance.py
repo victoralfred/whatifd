@@ -46,8 +46,18 @@ class _FakeTraceClient:
         **kwargs: Any,
     ) -> _FakeTracesResponse:
         # Single-page mock: return everything on page 1, empty on 2+.
-        # Sufficient for the conformance harness; the streaming-
-        # pagination contract is exercised by a dedicated test below.
+        # The harness's `test_iter_traces_is_generator_or_iterator`
+        # only consumes the iterator's first batch and asserts
+        # iterator-ness; the harness's emit-content tests collect
+        # the full stream but with a small fixture (3 traces in a
+        # page-limit-10 source), the page-1 return is also the
+        # exhaust signal. This is intentional but minimal — the
+        # multi-page → short-page termination contract is exercised
+        # explicitly in `TestLangfuseSpecificBehaviors::
+        # test_pagination_streams_across_pages` below using a
+        # dedicated `_PaginatingClient`. If this fixture grows new
+        # multi-page assertions, replace `_FakeTraceClient` with the
+        # paginating variant rather than expanding this one.
         if page is None or page == 1:
             return _FakeTracesResponse(data=list(self._traces))
         return _FakeTracesResponse(data=[])

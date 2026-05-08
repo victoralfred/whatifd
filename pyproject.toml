@@ -49,6 +49,14 @@ dev = [
   # tests in `packages/whatif-langfuse/tests/test_recorded_smoke.py`.
   # CI replays from cassette; local recording uses --record-mode=once.
   "pytest-recording>=0.13",
+  # Direct `vcrpy` pin alongside `pytest-recording`: pytest-recording
+  # depends on vcrpy transitively, but vcrpy controls the cassette
+  # YAML format. Pinning the major directly catches a vcrpy 9.x bump
+  # that would silently break committed cassettes (or require a
+  # cassette migration). Industry practice for downstream consumers
+  # of a serialization-format library: pin the format-defining
+  # dependency directly even when it's pulled transitively.
+  "vcrpy>=8.0,<9.0",
   "ruff>=0.15.12",
   "mypy>=1.20.2",
   "hypothesis>=6.152.4",

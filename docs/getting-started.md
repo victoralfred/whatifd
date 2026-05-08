@@ -12,7 +12,7 @@ uv pip install whatif whatifd-langfuse whatifd-inspect-ai
 
 # From source (uv workspace):
 git clone https://github.com/victoralfred/whatifd
-cd whatif
+cd whatifd
 uv sync --all-extras --dev --group workspace
 ```
 

@@ -89,6 +89,8 @@ If `whatifd` publishes but one of the adapters fails, the resulting state is inc
 
 **Cleanest prevention: TestPyPI dry-run on a pre-release tag.** Before pushing the real `v0.1.0` tag, push `v0.1.0rc1` (or any PEP 440 pre-release suffix — `a1`, `b1`, `rc1` all work) against TestPyPI first. This proves the entire publish path end-to-end without committing to a permanent PyPI version.
 
+> **Note on workflow shape.** The TestPyPI route is intentionally **manual and ephemeral** — there's no committed `release-rc.yml` or auto-detected pre-release branch in `.github/workflows/`. Each dry-run is a temporary local edit on a throwaway branch (`release-testpypi-rc`-style), not a permanent surface that future maintainers need to keep in sync. This keeps the canonical release path single-source (`release.yml` → PyPI) while preserving the option for ad-hoc dry-runs.
+
 Steps:
 1. Configure a parallel set of TestPyPI Trusted Publishers at https://test.pypi.org/manage/account/publishing/ — same owner / repo / workflow / environment-name claims; `test.pypi.org` is a separate registry from `pypi.org` so the publishers don't collide.
 2. In a temporary workflow branch, point each `pypa/gh-action-pypi-publish` step at TestPyPI by adding `repository-url: https://test.pypi.org/legacy/`.

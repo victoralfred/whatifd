@@ -12,7 +12,7 @@ By participating in this project-opening issues, pull requests, discussions, or 
 
 Concerns about behavior in any project space should be reported to the project maintainers at:
 
-> **admin@whatif.codes**
+> **admin@whatifd.codes**
 
 All reports will be reviewed and investigated promptly and fairly. All maintainers are obligated to respect the privacy and security of the reporter of any incident.
 

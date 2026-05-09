@@ -97,7 +97,7 @@ def test_deterministic_subset_byte_equal_across_runs(scenario_factory) -> None:
     # SAME process. Process-local caches (the `lru_cache` on the
     # schema loader, any future `lru_cache` on a pipeline helper,
     # Python's interned strings) survive between calls. Real
-    # cross-process determinism (two separate `whatif fork`
+    # cross-process determinism (two separate `whatifd fork`
     # invocations on different machines producing byte-equal
     # subsets) is the Phase 9B / Phase 10 CI-gate concern — that
     # workflow runs in a fresh subprocess and exercises the
@@ -186,7 +186,7 @@ def test_unknown_key_emits_drift_warning() -> None:
     # otherwise lose the drift signal silently.
     drifted = {
         "schema_version": "0.1",
-        "schema_uri": "https://whatif.codes/schema/report/v0.1.json",
+        "schema_uri": "https://whatifd.codes/schema/report/v0.1.json",
         "verdict_state": "ship",
         "future_field": "produced by a newer schema",
     }

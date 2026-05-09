@@ -38,7 +38,7 @@ Structural. Non-overridable. Versioned for CI stability.
 @dataclass(frozen=True, slots=True)
 class TrustFloor:
     version: str  # "v1", sticky in manifest
-    source: str   # e.g., "whatif-0.1.0"
+    source: str   # e.g., "whatifd-0.1.0"
     min_selected_per_required_cohort: int = 5
     min_replayed_per_required_cohort: int = 5
     min_scored_per_required_cohort: int = 5
@@ -268,7 +268,7 @@ The public report shape. Hand-written. Internal types project into this via expl
 @dataclass(frozen=True, slots=True)
 class ReportV01:
     schema_version: str = "0.1"
-    schema_uri: str = "https://whatif.codes/schema/report/v0.1.json"
+    schema_uri: str = "https://whatifd.codes/schema/report/v0.1.json"
 
     # Deterministic fields
     verdict_state: Literal["ship", "dont_ship", "inconclusive"]
@@ -382,7 +382,7 @@ The discipline inversion: instead of "audit every serialization path," audit bec
 
 ### Banned-import lint rule
 
-`json.dumps` is banned outside `whatif/serialization/`. CI lint check enforces. Adapters that need JSON output must go through the whatif serializer.
+`json.dumps` is banned outside `whatifd/serialization/`. CI lint check enforces. Adapters that need JSON output must go through the whatifd serializer.
 
 ## What lives where (boundary summary)
 
@@ -407,7 +407,7 @@ These types implement the statistical methodology described in `references/pract
 
 ### TraceDelta (internal, float)
 
-Atomic unit of analysis. Pairing is structural — whatif compares original and replayed behavior for the same trace input. Statistical analysis operates on `delta`, not on unpaired score arrays.
+Atomic unit of analysis. Pairing is structural — whatifd compares original and replayed behavior for the same trace input. Statistical analysis operates on `delta`, not on unpaired score arrays.
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -425,7 +425,7 @@ class TraceDelta:
     strata: Mapping[str, str] = field(default_factory=dict)
 ```
 
-The internal type stores both scores and the delta. This preserves auditability — you can inspect what produced any delta — but the analysis API consumes deltas, not separate score arrays. The discipline is "store both, expose the delta." Functions in `whatif/internal/stats.py` accept `Sequence[TraceDelta]` and never accept `Sequence[float]` original + `Sequence[float]` replayed as a pair, which would invite accidental unpaired analysis.
+The internal type stores both scores and the delta. This preserves auditability — you can inspect what produced any delta — but the analysis API consumes deltas, not separate score arrays. The discipline is "store both, expose the delta." Functions in `whatifd/internal/stats.py` accept `Sequence[TraceDelta]` and never accept `Sequence[float]` original + `Sequence[float]` replayed as a pair, which would invite accidental unpaired analysis.
 
 ### TraceDeltaReportV01 (public, DecimalString)
 
@@ -540,7 +540,7 @@ The cluster bootstrap eligibility chain: tracer adapter declares what cluster ke
 @dataclass(frozen=True, slots=True)
 class ClusterKeySupport:
     """Declared by TraceSource.cluster_key_support(). Describes which real
-    clustering keys this tracer adapter can supply. whatif must not fabricate
+    clustering keys this tracer adapter can supply. whatifd must not fabricate
     cluster keys for confirmatory verdicts in v0.1."""
     available_keys: tuple[str, ...]
     preferred_order: tuple[str, ...] = (
@@ -576,7 +576,7 @@ class ClusteringPolicy:
 
 ### Resolution function
 
-The resolver lives in `whatif/decision/clustering.py`:
+The resolver lives in `whatifd/decision/clustering.py`:
 
 ```python
 def resolve_cluster_key(

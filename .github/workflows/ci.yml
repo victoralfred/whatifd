@@ -76,6 +76,32 @@ jobs:
           fi
           echo "No pip-install brand typos found."
 
+      # Workspace version-parity gate: the three packages
+      # (whatifd, whatifd-langfuse, whatifd-inspect-ai) release
+      # together on a single `v*.*.*` tag push (see release.yml). A
+      # bump that touches one pyproject.toml but forgets the others
+      # would ship three distributions that disagree about which
+      # release they belong to — and PyPI version slots can't be
+      # republished, so the wrong-version distribution would be
+      # wrong forever. This step is structural (greps the three
+      # pyproject.toml files directly) so the gate runs even before
+      # `uv sync` would let the pytest-level parity test execute.
+      - name: Workspace version-parity sentinel
+        run: |
+          set -e
+          ROOT_VERSION=$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/version = "(.*)"/\1/')
+          LF_VERSION=$(grep -E '^version = ' packages/whatifd-langfuse/pyproject.toml | head -1 | sed -E 's/version = "(.*)"/\1/')
+          IA_VERSION=$(grep -E '^version = ' packages/whatifd-inspect-ai/pyproject.toml | head -1 | sed -E 's/version = "(.*)"/\1/')
+          echo "whatifd:            $ROOT_VERSION"
+          echo "whatifd-langfuse:   $LF_VERSION"
+          echo "whatifd-inspect-ai: $IA_VERSION"
+          if [ "$ROOT_VERSION" != "$LF_VERSION" ] || [ "$ROOT_VERSION" != "$IA_VERSION" ]; then
+            echo "ERROR: workspace packages disagree on version."
+            echo "All three pyproject.toml \`version\` fields must be bumped in lockstep — see RELEASING.md."
+            exit 1
+          fi
+          echo "Workspace version parity: OK ($ROOT_VERSION)."
+
       - name: Phase-marker sentinel (TODO(4B.2))
         run: |
           set +e

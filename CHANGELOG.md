@@ -318,7 +318,7 @@ change is called out under `### Changed (BREAKING)`.
 ### Added — Phase 5.1 (ReportV01 wire-format types)
 
 - `src/whatifd/report/__init__.py` + `src/whatifd/report/models_v01.py` — hand-written `ReportV01` dataclass per cardinal #6 (public schema is hand-written; internal types refactor freely). Sub-shapes reuse internal types directly: `CohortResult`, `FailureRecord`, `DecisionFinding`, `CacheSummary`, `TrustFloor`, `DecisionPolicy`, `MethodologyDisclosure`, `RunManifest`. The cardinal #6 boundary governs the WHATIF-emitted schema, not the universe of types it composes.
-- `REPORT_SCHEMA_VERSION = "0.1"` and `REPORT_SCHEMA_URI = "https://whatifd.codes/schema/report/v0.1.json"` constants — stamped into every report instance.
+- `REPORT_SCHEMA_VERSION = "0.1"` and `REPORT_SCHEMA_URI = "https://whatif.codes/schema/report/v0.1.json"` constants — stamped into every report instance.
 - `VerdictState = Literal["ship", "dont_ship", "inconclusive"]` — wire-format flattening of the internal `Verdict` sealed union. JSON schema can express literal strings but not Python sealed unions; projection (later sub-phase) does the flattening.
 - All 11 fields required (`schema_version`, `schema_uri`, `verdict_state`, `cohort_results`, `failures`, `decision_findings`, `cache_summary`, `trust_floor`, `decision_policy`, `methodology`, `runtime`); no `Optional[...]` hiding unset state behind `None`. `failures=[]`/`decision_findings=[]` is valid (clean run).
 - `runtime` is the only non-deterministic field per `references/type-model.md`. Schema generation (later sub-phase) annotates it `x-deterministic: false`; everything else defaults to true.

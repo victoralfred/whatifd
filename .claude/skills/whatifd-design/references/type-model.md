@@ -268,7 +268,7 @@ The public report shape. Hand-written. Internal types project into this via expl
 @dataclass(frozen=True, slots=True)
 class ReportV01:
     schema_version: str = "0.1"
-    schema_uri: str = "https://whatifd.codes/schema/report/v0.1.json"
+    schema_uri: str = "https://whatif.codes/schema/report/v0.1.json"
 
     # Deterministic fields
     verdict_state: Literal["ship", "dont_ship", "inconclusive"]

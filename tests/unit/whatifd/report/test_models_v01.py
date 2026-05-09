@@ -219,7 +219,7 @@ class TestSchemaConstants:
         assert REPORT_SCHEMA_VERSION == "0.1"
 
     def test_uri_is_canonical(self) -> None:
-        assert REPORT_SCHEMA_URI == "https://whatifd.codes/schema/report/v0.1.json"
+        assert REPORT_SCHEMA_URI == "https://whatif.codes/schema/report/v0.1.json"
 
     def test_uri_contains_version(self) -> None:
         # Defends against the URI and version drifting apart.

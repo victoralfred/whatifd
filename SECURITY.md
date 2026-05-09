@@ -17,7 +17,7 @@ Use [GitHub's private vulnerability reporting](https://github.com/victoralfred/w
 
 If GitHub Advisories is not an option for you, email:
 
-> **security@whatifd.codes**
+> **security@whatif.codes**
 
 When reporting, please include:
 

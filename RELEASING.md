@@ -23,7 +23,7 @@ If you want manual approval before each PyPI publish, create matching environmen
 
 ### 3. Schema URL hosting (load-bearing, NOT optional)
 
-The `ReportV01.schema_uri` field stamped into every produced report is `https://whatifd.codes/schema/report/v0.1.json`. Before announcing the release, deploy `src/whatifd/report/schema/v0.1.schema.json` to that URL. Any static-host works (Cloudflare Pages, GitHub Pages on a `gh-pages` branch, S3, etc.). A 404 here silently breaks any consumer that fetches the schema for validation — the per-release checklist below pins this as a required verification step.
+The `ReportV01.schema_uri` field stamped into every produced report is `https://whatif.codes/schema/report/v0.1.json`. Before announcing the release, deploy `src/whatifd/report/schema/v0.1.schema.json` to that URL. Any static-host works (Cloudflare Pages, GitHub Pages on a `gh-pages` branch, S3, etc.). A 404 here silently breaks any consumer that fetches the schema for validation — the per-release checklist below pins this as a required verification step.
 
 ## Per-release checklist
 
@@ -61,7 +61,7 @@ After the workflow completes:
 - [ ] GitHub Release created at `https://github.com/victoralfred/whatifd/releases/tag/v0.1.0` with auto-generated notes
 - [ ] `pip install whatifd whatifd-langfuse whatifd-inspect-ai` in a clean venv resolves cleanly
 - [ ] `whatifd --help` works after install
-- [ ] **Schema URL `https://whatifd.codes/schema/report/v0.1.json` resolves with HTTP 200** (every report's `schema_uri` field points here; a 404 silently breaks any consumer that fetches the schema for validation). If the URL still 404s post-tag-push, deploy `src/whatifd/report/schema/v0.1.schema.json` to the static host backing `whatifd.codes` BEFORE announcing the release. This is a load-bearing post-release step, not optional.
+- [ ] **Schema URL `https://whatif.codes/schema/report/v0.1.json` resolves with HTTP 200** (every report's `schema_uri` field points here; a 404 silently breaks any consumer that fetches the schema for validation). If the URL still 404s post-tag-push, deploy `src/whatifd/report/schema/v0.1.schema.json` to the static host backing `whatif.codes` BEFORE announcing the release. This is a load-bearing post-release step, not optional.
 
 ### 4. Announce
 
@@ -129,5 +129,5 @@ When the wire format changes (`schema_version: "v0.2"`), additional steps:
 
 1. New schema file at `src/whatifd/report/schema/v0.2.schema.json`; old `v0.1.schema.json` kept (consumers still validate older reports against the v0.1 schema)
 2. `whatifd report-migrate` body wired to project v0.1 reports forward
-3. Schema URL deployed at `https://whatifd.codes/schema/report/v0.2.json` BEFORE the tag push (otherwise `schema_uri` resolves to a 404 in the immediate post-release window)
+3. Schema URL deployed at `https://whatif.codes/schema/report/v0.2.json` BEFORE the tag push (otherwise `schema_uri` resolves to a 404 in the immediate post-release window)
 4. CHANGELOG `[0.2.0]` block calls out every breaking change explicitly under `### Changed (BREAKING)`

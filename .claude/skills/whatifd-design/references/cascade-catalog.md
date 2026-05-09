@@ -232,7 +232,7 @@ Initial registry (catalog from doctrine):
 - Phase 6 replay pipeline — produces `ReplaySuccess`/`ReplayFailure` that flow into `cohort_results` / `failures`; any new field surfaces here as a schema bump.
 - Phase 8 CLI — `whatifd report-migrate` stub references the committed schema as the v0.1 baseline; v0.2 migration logic reads the file at the published URI.
 - Phase 9 integration — full `jsonschema`-library validation of golden reports (the unit-level smoke test only checks required-key coverage).
-- Phase 10 release — schema published at `https://whatifd.codes/schema/report/v0.1.json`; `$id` in the file already points at this URI.
+- Phase 10 release — schema published at `https://whatif.codes/schema/report/v0.1.json`; `$id` in the file already points at this URI.
 
 **Status:** open
 

@@ -76,6 +76,56 @@ jobs:
           fi
           echo "No pip-install brand typos found."
 
+      # Workspace version-parity gate: the three packages
+      # (whatifd, whatifd-langfuse, whatifd-inspect-ai) release
+      # together on a single `v*.*.*` tag push (see release.yml). A
+      # bump that touches one pyproject.toml but forgets the others
+      # would ship three distributions that disagree about which
+      # release they belong to — and PyPI version slots can't be
+      # republished, so the wrong-version distribution would be
+      # wrong forever. This step is structural (greps the three
+      # pyproject.toml files directly) so the gate runs even before
+      # `uv sync` would let the pytest-level parity test execute.
+      # Parse [project].version with tomllib (Python 3.11+ stdlib)
+      # rather than grep+sed: a future pyproject.toml that gains a
+      # second `version = ` line under a different table (e.g.,
+      # a tool config or a dependency pin) would silently confuse
+      # a regex-based extractor. The TOML parser is unambiguous.
+      # `uv run python` (not bare `python`) so the interpreter is the
+      # uv-managed one set up by `astral-sh/setup-uv@v7` above —
+      # consistent with every other Python invocation in this workflow
+      # and immune to any future change in the runner's default Python.
+      - name: Workspace version-parity sentinel
+        run: |
+          uv run python - <<'EOF'
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          paths = {
+              "whatifd": Path("pyproject.toml"),
+              "whatifd-langfuse": Path("packages/whatifd-langfuse/pyproject.toml"),
+              "whatifd-inspect-ai": Path("packages/whatifd-inspect-ai/pyproject.toml"),
+          }
+          versions = {}
+          for name, path in paths.items():
+              with path.open("rb") as fh:
+                  data = tomllib.load(fh)
+              versions[name] = data["project"]["version"]
+              print(f"{name:20s} {versions[name]}")
+
+          distinct = set(versions.values())
+          if len(distinct) != 1:
+              print(
+                  "ERROR: workspace packages disagree on version. "
+                  "All three pyproject.toml [project].version fields must "
+                  "be bumped in lockstep — see RELEASING.md.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          print(f"Workspace version parity: OK ({distinct.pop()}).")
+          EOF
+
       - name: Phase-marker sentinel (TODO(4B.2))
         run: |
           set +e

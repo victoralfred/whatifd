@@ -47,9 +47,17 @@ for raw in source.iter_traces():
   as cluster keys.
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from whatifd_langfuse.source import LangfuseTraceSource
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("whatifd-langfuse")
+except PackageNotFoundError:
+    # Editable / source-only install pre-`pip install`; sentinel
+    # mirrors the root whatifd pattern so consumers reading the
+    # version know they're in a non-installed context.
+    __version__ = "0.0.0+unknown"
 
 __all__ = [
     "LangfuseTraceSource",

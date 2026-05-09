@@ -1214,7 +1214,7 @@ The v1 digest is preserved across the refactor: the canonical encoding contract 
 
 **Recovery path:** if a future contributor re-introduces a hardcoded literal, the parity test fails at CI on the PR, before the drift can ship.
 
-**Resolved by:** PR #76, commit `6cfe099` + the parity test added in the same branch.
+**Resolved by:** PR #76 (the source-of-truth switch and the parity test landed on the same branch).
 
 ## Audit checklist for schema freeze
 

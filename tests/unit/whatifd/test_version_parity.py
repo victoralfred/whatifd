@@ -20,6 +20,7 @@ is a release-correctness bug that this gate catches at PR time.
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from importlib.metadata import PackageNotFoundError, version
 
 import pytest
@@ -32,7 +33,7 @@ _DISTRIBUTIONS = ("whatifd", "whatifd-langfuse", "whatifd-inspect-ai")
 
 
 @pytest.fixture(autouse=True, scope="module")
-def _require_distributions_installed() -> None:
+def _require_distributions_installed() -> Generator[None, None, None]:
     """Precondition gate: the parity tests are only meaningful when the
     three distributions are actually installed. A misconfigured CI that
     runs the suite via raw PYTHONPATH (no install) would otherwise show
@@ -59,6 +60,7 @@ def _require_distributions_installed() -> None:
             f"`uv sync --all-extras --dev --group workspace`.",
             pytrace=False,
         )
+    yield
 
 
 def test_whatifd_version_matches_distribution_metadata() -> None:

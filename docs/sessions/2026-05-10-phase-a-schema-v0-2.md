@@ -41,7 +41,7 @@ started_at: 2026-05-10T00:00:00Z
 - `docs/sessions/2026-05-10-phase-a-schema-v0-2.md`: this file.
 
 **Cascade catalog items:**
-- (To be added in next commit pass — Phase A.1 entry resolved.)
+- Resolved: "Phase A v0.2 schema groundwork — experiment_shape + frozen v0.1 + real report-migrate" — added 2026-05-10 in `references/cascade-catalog.md` under "Resolved cascades", documenting the rippled invariants (v0.1 schema sha256 freeze, schema-gen filename derivation, `_MIGRATIONS` dispatcher with chain-integrity guard, dict-vs-typed boundary placement, `experiment_shape` deterministic-subset placement, `load_report_json` mirroring `canonical_json_bytes`).
 
 **Gaps surfaced:**
 - The `whatifd report-migrate` CLI uses `canonical_json_bytes` which is compact (no indentation). For human consumers, an indented variant would be friendlier — file as a follow-up cascade if any operator complains.

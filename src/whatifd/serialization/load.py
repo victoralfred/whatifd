@@ -15,14 +15,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
+
+RawReport: TypeAlias = dict[str, Any]
+"""Wire-shape report dict — named alias for the cardinal #6 boundary.
+Mirrors `whatifd.report.migrate.RawReport`."""
 
 
 class ReportLoadError(Exception):
     """Structured I/O or parse error reading a report file (cardinal #1)."""
 
 
-def load_report_json(path: Path) -> dict[str, Any]:
+def load_report_json(path: Path) -> RawReport:
     """Read and JSON-decode a report file.
 
     Returns the raw wire shape; callers (migrator, validator) are

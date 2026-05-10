@@ -28,9 +28,16 @@ The dispatcher walks the chain: v0.1 → v0.2 → v0.3 → ... → current.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, TypeAlias
 
 from whatifd.report.models_v01 import REPORT_SCHEMA_URI, REPORT_SCHEMA_VERSION
+
+RawReport: TypeAlias = dict[str, Any]
+"""Wire-shape report dict pre-typed-instantiation. Named alias (vs bare
+`dict[str, Any]`) signals the cardinal #6 boundary: the migrator
+operates here precisely because v0.X dicts may legitimately lack v0.Y-
+required fields, and typed `ReportV01` instantiation would fail before
+the migration could inject them."""
 
 
 class MigrationError(Exception):
@@ -41,7 +48,7 @@ class MigrationError(Exception):
     """
 
 
-def _migrate_v0_1_to_v0_2(report: dict[str, Any]) -> dict[str, Any]:
+def _migrate_v0_1_to_v0_2(report: RawReport) -> RawReport:
     """Inject `experiment_shape` (the only v0.2 schema addition) and
     bump schema_version / schema_uri. v0.1 was failure-rescue only,
     so the inject value is structurally determined."""
@@ -52,12 +59,12 @@ def _migrate_v0_1_to_v0_2(report: dict[str, Any]) -> dict[str, Any]:
     return upgraded
 
 
-_MIGRATIONS: Mapping[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+_MIGRATIONS: Mapping[str, Callable[[RawReport], RawReport]] = {
     "0.1": _migrate_v0_1_to_v0_2,
 }
 
 
-def migrate_report(report: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+def migrate_report(report: RawReport) -> tuple[RawReport, bool]:
     """Walk a report from its declared schema version to the current one.
 
     Returns `(migrated_report, changed)`. `changed=False` means the input

@@ -137,8 +137,12 @@ two-comment outcome as the cost of changing comment authorship.
 | Surface | v0.2 |
 |---|---|
 | Composite action wrapping `whatifd fork` | ✅ |
-| PR comment with rendered verdict | ✅ |
-| Status annotation (notice / warning / error) | ✅ |
+| PR comment with rendered verdict (with `--edit-last` rolling-update) | ✅ |
+| Status annotation (notice / error) | ✅ |
 | Exit-code mapping → `verdict` output | ✅ |
+| Linux runners (`ubuntu-latest`) | ✅ |
+| macOS runners (`macos-latest`) | ✅ — path discovery is portable Python |
+| Windows runners (`windows-latest`) | ⚠️ — works because every step declares `shell: bash` (Git Bash is preinstalled). PowerShell-only runners are unsupported. |
 | Marketplace publication (separate repo) | ❌ — v0.3+ |
 | `whatifd diff` regression workflow | ❌ — v0.3+ |
+| Marker-based PR-comment dedup (locale-independent) | ❌ — issue #94 (current `--edit-last` + grep heuristic works on English-locale runners) |

@@ -193,6 +193,18 @@ runs:
         # ...` would silently create a duplicate on a 403, which
         # is exactly the failure-masking class cardinal #1
         # prohibits.
+        #
+        # KNOWN LIMITATION: the "no prior comment" detection greps
+        # `gh`'s stderr for known phrases. Locale changes
+        # (non-English LANG) or future gh CLI version changes that
+        # rephrase the error message can break the discrimination —
+        # falling through the `elif` to the else-branch surfaces
+        # the failure as a real error (correctly), but treats a
+        # legitimate first-run as a real error too. Issue #94 (TODO:
+        # file) tracks the marker-based replacement: post our
+        # comments with an HTML marker (`<!-- whatifd-fork -->`),
+        # find them via `gh api` instead of relying on `--edit-last`.
+        # Tracked as issue #94.
         edit_stderr=$(gh pr comment "$PR_NUMBER" --body-file "$comment_file" --edit-last 2>&1 1>/dev/null) \
           && edit_status=0 \
           || edit_status=$?

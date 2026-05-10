@@ -1174,11 +1174,19 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 - Inputs: `config`, `profile`, `comment-on-pr`, `github-token`, `fail-on-dont-ship`. Outputs: `verdict` / `exit-code` / `report-json` / `report-md`.
 - Exit-code → verdict mapping: `0 → "ship"`, `1 → "dont_ship"`, `* → "inconclusive"` (the `*` arm covers exit 2 + any future exit codes; cardinal #1 — never crash on an unrecognized signal).
 - PR-comment step guards on `github.event_name == 'pull_request'` AND `comment-on-pr: true` AND `report_md != ''`. The third guard prevents commenting on setup-failure paths where the CLI exits before writing artifacts.
+- PR-comment step uses `gh pr comment --edit-last` for rolling-update behavior. Failure-class discrimination: capture stderr; grep-match "no comment / not found" patterns to identify legitimate first-run; on any other non-zero exit, surface `::error` annotation + exit non-zero. Locale-fragile (issue #94 tracks the marker-based replacement).
+- Path discovery uses a Python one-liner (`glob` + `os.path.getmtime`) for cross-platform portability — GNU `find -printf` and BSD `stat` diverge; Python is on every GitHub runner. Issue #93 tracks the cleaner CLI-emits-paths follow-up.
+- Cross-runner: Linux + macOS supported via the Python discovery; Windows works via Git Bash because every step declares `shell: bash`. PowerShell-only runners are unsupported.
 - `fail-on-dont-ship: true` is the default — the workflow fails on Don't Ship and Inconclusive. `fail-on-dont-ship: false` exposes the verdict as an output for downstream steps to inspect (e.g., a "warn but don't block" mode).
 - Cardinal #7 (two-affirmation) preserved: when the action is invoked with `profile: forensic`, the underlying CLI still requires the config's `forensic_acknowledgment` block. The action does NOT bypass cardinal #7.
-- 21 structural tests in `tests/integration/test_phase_i_github_action.py` parse `action.yml` and pin: top-level shape, every input default the README documents, every output, the load-bearing `if:` guards on the PR-comment and fail steps, the exit-code mapping branches.
+- 28 structural tests in `tests/integration/test_phase_i_github_action.py` parse `action.yml` and pin: top-level shape, YAML schema (lists vs maps, mapping-of-mapping for inputs/outputs), every input default the README documents, every output, the load-bearing `if:` guards on the PR-comment and fail steps, the exit-code mapping branches, the `--edit-last` failure-class discrimination, the `$RUNNER_TEMP` matrix-safety pattern, the no-duplicate-`::error` discipline, and the cross-platform path discovery.
 - Example workflow at `.github/workflows/example-whatifd-fork.yml.example`. The `.example` suffix prevents the whatifd repo's own Actions runner from collecting it (the example references adapter credentials this repo doesn't have).
+- Tag-pin convention documented in `CONTRIBUTING.md` (`### Third-party action pinning convention`); the README's `## Security: pinning third-party actions` section tells operators to SHA-pin in security-hardened production forks.
 - Marketplace publication (separate repo) deferred to v0.3+; the action is currently consumable via `uses: ./.github/actions/whatifd-fork` (in-repo) or by vendoring into the consumer's repo.
+
+**Known limitations (filed as follow-ups, do not block v0.2.0):**
+- #93: CLI should emit chosen report paths via `GITHUB_OUTPUT` directly so the action's path-discovery shell scaffolding becomes unnecessary.
+- #94: Replace `--edit-last` + grep with marker-based dedup (`<!-- whatifd-fork:run-id=... -->` HTML comment, `gh api` to find/update). Locale-independent.
 
 **Resolved by:** Phase I PR on branch `phase-i-github-action`.
 

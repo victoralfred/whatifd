@@ -207,11 +207,16 @@ class TestExitCodeMapping:
 
 
 class TestCrossPlatformPathDiscovery:
-    """The action runs on Linux / macOS / Windows runners; the
-    path-discovery shell fragment must work on all three. GNU
-    `find -printf` is not available on macOS (BSD find); `stat`'s
-    format spec diverges between GNU and BSD. Python is on every
-    GitHub runner.
+    """Path discovery must work on Linux and macOS runners. Windows
+    support is conditional: the action declares `shell: bash`
+    everywhere, which works on `windows-latest` because Git Bash
+    is preinstalled and the runner respects the explicit shell
+    override. PowerShell-only runners would not work; documented
+    in the README's status table.
+
+    GNU `find -printf` is not available on macOS (BSD find);
+    `stat`'s format spec diverges between GNU and BSD. Python is
+    on every GitHub runner.
     """
 
     def test_path_discovery_does_not_use_gnu_find_printf(self, action: dict[str, Any]) -> None:
@@ -269,7 +274,10 @@ class TestPRCommentDeduplication:
                     "into `edit_status` so the fallback path can distinguish "
                     "first-run from real failure."
                 )
-                assert 'exit "$edit_status"' in run or 'exit "$edit_status"' in run, (
+                # Tautological-or-fix: the prior version had two
+                # branches both checking the same string. Pin the
+                # single shape that's actually used.
+                assert 'exit "$edit_status"' in run, (
                     "PR-comment step must surface non-first-run failures by "
                     "exiting with the captured edit_status. Cardinal #1: "
                     "structured failure-as-data, not silent retry."

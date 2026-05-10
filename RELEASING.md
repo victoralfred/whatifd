@@ -32,7 +32,7 @@ For the v0.1.0 release (or any subsequent release; substitute the version):
 ### 1. Pre-flight (on a release-prep branch)
 
 - [ ] All four `pyproject.toml` versions match the target tag (root + three adapter packages); `tests/unit/whatifd/test_version_parity.py` pins this
-- [ ] `Development Status` classifier is appropriate (`3 - Alpha` for v0.1.x; bump to `4 - Beta` at v0.5+)
+- [ ] `Development Status` classifier is appropriate (`3 - Alpha` through v0.4.x; bump to `4 - Beta` at v0.5+)
 - [ ] `CHANGELOG.md` `[Unreleased]` block promoted to `[0.1.0] - YYYY-MM-DD`; a fresh `[Unreleased]` header added
 - [ ] CHANGELOG link footer updated (`[Unreleased]` → `[0.1.0]` plus a fresh `[Unreleased]` line)
 - [ ] `uv lock` is up-to-date (`uv lock` with no diff)

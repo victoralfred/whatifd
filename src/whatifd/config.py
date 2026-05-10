@@ -233,6 +233,9 @@ class ScorerConfig(BaseModel):
     # v0.2 inspect_ai fields. All optional at the schema level so
     # `adapter: stub` configs don't require them; the inspect_ai-specific
     # cross-field validator enforces presence below.
+    # NOTE(docs-followup #81): the v0.2 caveat admonitions in
+    # whatifd-docs/ are obsolete now that this field exists. Tracked
+    # at https://github.com/victoralfred/whatifd/issues/81.
     score_fn: str | None = Field(
         default=None,
         description=(

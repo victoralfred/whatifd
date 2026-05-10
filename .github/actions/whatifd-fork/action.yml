@@ -99,6 +99,23 @@ runs:
         # is the cross-platform way to get an mtime-sorted newest
         # match. Issue #93 tracks the cleaner CLI-emits-its-own-
         # paths follow-up; this discovery is the v0.2 fallback.
+        # Error swallowing here is INTENTIONAL: a missing reports/
+        # directory or empty glob is a legitimate "no artifact"
+        # outcome (the CLI exited before writing — typical of
+        # setup-failure paths). The downstream PR-comment guard
+        # checks `report_md != ''` and skips the comment if so;
+        # the fail-on-dont-ship step still fires off the
+        # exit_code so the operator sees the actual CLI failure
+        # via the workflow's annotation.
+        #
+        # The narrow case this masks: a permission error on
+        # ./reports/ that's distinct from "doesn't exist." On a
+        # GitHub-hosted runner that's effectively unreachable
+        # (the runner owns its workspace); on self-hosted runners
+        # with constrained file ACLs it's a real but rare scenario.
+        # If a consumer reports it, the right fix is to migrate to
+        # the CLI-emits-paths pattern (issue #93) rather than
+        # plumbing a third error class through this discovery.
         report_json=""
         report_md=""
         if [[ -d reports ]]; then
@@ -166,11 +183,32 @@ runs:
         # `--edit-last` updates the PR's most recent comment authored
         # by this token instead of appending a new one. Repeated
         # pushes to the same PR end up with one rolling whatifd
-        # comment, not a stack. If no prior comment exists,
-        # `--edit-last` falls back to creating a new comment
-        # (gh CLI documented behavior).
-        gh pr comment "$PR_NUMBER" --body-file "$comment_file" --edit-last \
-          || gh pr comment "$PR_NUMBER" --body-file "$comment_file"
+        # comment, not a stack.
+        #
+        # Failure handling: capture stderr to distinguish "no prior
+        # comment to edit" (the legitimate first-run case → fall
+        # back to a fresh create) from any other failure (403 on
+        # the edit, network, malformed body — surface non-zero so
+        # the workflow fails loudly). A blanket `|| gh pr comment
+        # ...` would silently create a duplicate on a 403, which
+        # is exactly the failure-masking class cardinal #1
+        # prohibits.
+        edit_stderr=$(gh pr comment "$PR_NUMBER" --body-file "$comment_file" --edit-last 2>&1 1>/dev/null) \
+          && edit_status=0 \
+          || edit_status=$?
+
+        if [[ $edit_status -eq 0 ]]; then
+          : # success
+        elif echo "$edit_stderr" | grep -qiE "no.*comment|not found|no comments"; then
+          # First run on this PR — no prior whatifd comment to edit.
+          # Create a fresh one.
+          gh pr comment "$PR_NUMBER" --body-file "$comment_file"
+        else
+          # Real failure (auth, network, validation). Surface
+          # everything we know and exit non-zero.
+          echo "::error title=whatifd PR comment::edit-last failed (exit $edit_status): $edit_stderr"
+          exit "$edit_status"
+        fi
 
     - name: Fail on Don't Ship / Inconclusive
       if: |

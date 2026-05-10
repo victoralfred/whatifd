@@ -252,6 +252,31 @@ class TestPRCommentDeduplication:
                 return
         raise AssertionError("Post PR comment step not found")
 
+    def test_pr_comment_step_distinguishes_edit_failure_classes(
+        self, action: dict[str, Any]
+    ) -> None:
+        # Cardinal #1: the fallback path must distinguish "no prior
+        # comment" (legitimate first-run case → fall through and
+        # create) from real failures (403, network, validation →
+        # surface non-zero). A blanket `|| gh pr comment ...` would
+        # silently create a duplicate on a 403, masking the real
+        # failure.
+        for step in action["runs"]["steps"]:
+            if step.get("name", "").startswith("Post PR comment"):
+                run = step["run"]
+                assert "edit_status" in run, (
+                    "PR-comment step must capture --edit-last's exit status "
+                    "into `edit_status` so the fallback path can distinguish "
+                    "first-run from real failure."
+                )
+                assert 'exit "$edit_status"' in run or 'exit "$edit_status"' in run, (
+                    "PR-comment step must surface non-first-run failures by "
+                    "exiting with the captured edit_status. Cardinal #1: "
+                    "structured failure-as-data, not silent retry."
+                )
+                return
+        raise AssertionError("Post PR comment step not found")
+
 
 class TestNoHardcodedTmpPath:
     """The PR-comment step uses a per-job temp directory rather

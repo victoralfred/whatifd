@@ -194,6 +194,28 @@ These have to be set in GitHub's UI; they aren't part of the repo files.
 - ☑ Always suggest updating pull request branches
 - ☑ Automatically delete head branches
 
+### Third-party action pinning convention
+
+The whatifd repo's CI workflows (`.github/workflows/*.yml`) and the
+`whatifd-fork` composite action's example workflow
+(`.github/workflows/example-whatifd-fork.yml.example`) currently pin
+third-party actions by **version tag** (e.g., `astral-sh/setup-uv@v7`)
+rather than by commit SHA. This is a deliberate trade-off: tag pinning
+gets transparent upgrades when the action publishes a fix; SHA pinning
+prevents a compromised tag from silently swapping the action's source
+([GitHub's recommendation for security-hardened workflows](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions)).
+
+**For this repo**: tag pinning is the convention. PRs that introduce
+SHA pins for one workflow without migrating the rest create
+inconsistency and are not accepted; if you want to adopt SHA pinning
+project-wide, open an issue first to coordinate the migration.
+
+**For operators using the `whatifd-fork` action in their own
+production workflows**: the README in `.github/actions/whatifd-fork/`
+explicitly recommends SHA pinning before checking the example into
+a security-sensitive fork. Do not copy the tag-pin pattern into
+production without reading the security note.
+
 ### Code security
 
 `Settings → Code security and analysis`:

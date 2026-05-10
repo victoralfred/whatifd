@@ -51,6 +51,34 @@ class TestActionStructure:
             "PR comment / fail-handler)."
         )
 
+    def test_runs_steps_is_list_not_map(self, action: dict[str, Any]) -> None:
+        # YAML structural pin: `runs.steps` must be a sequence (list),
+        # not a mapping (dict). A typo that drops the `- ` prefix
+        # silently parses as a key-value pair under `steps:` and
+        # GitHub Actions rejects the action at workflow-runtime.
+        # Catch that here at test-time instead.
+        assert isinstance(action["runs"]["steps"], list), (
+            "runs.steps must be a YAML sequence (list of step mappings). "
+            "Got a dict — likely a missing `- ` prefix on a step key."
+        )
+
+    def test_inputs_and_outputs_are_maps_of_maps(self, action: dict[str, Any]) -> None:
+        # YAML structural pin: each input / output is a mapping with
+        # `description`, optional `default`, etc. A typo that turns
+        # one into a plain string would silently break the workflow
+        # caller's input-passing.
+        for section in ("inputs", "outputs"):
+            value = action[section]
+            assert isinstance(value, dict), f"{section} must be a YAML mapping"
+            for name, spec in value.items():
+                assert isinstance(spec, dict), (
+                    f"{section}.{name} must be a mapping (spec with "
+                    f"description / default), got {type(spec).__name__}"
+                )
+                assert "description" in spec, (
+                    f"{section}.{name} missing required `description` field"
+                )
+
 
 class TestInputs:
     """Every input the README documents must exist in action.yml,
@@ -176,6 +204,26 @@ class TestExitCodeMapping:
         # Exit 2 (and any future non-0/1) → inconclusive. Pinned
         # via the `*)` catch-all branch.
         assert '*) verdict="inconclusive"' in run
+
+
+class TestPRCommentDeduplication:
+    """Repeated pushes to the same PR must produce one rolling
+    whatifd comment, not a stack. `gh pr comment --edit-last`
+    updates the most recent comment authored by the token; if no
+    prior comment exists, it falls back to creating a new one.
+    """
+
+    def test_pr_comment_step_uses_edit_last(self, action: dict[str, Any]) -> None:
+        for step in action["runs"]["steps"]:
+            if step.get("name", "").startswith("Post PR comment"):
+                run = step["run"]
+                assert "--edit-last" in run, (
+                    "PR-comment step must use `gh pr comment --edit-last` so "
+                    "repeated pushes update the existing whatifd comment instead "
+                    "of accumulating a stack."
+                )
+                return
+        raise AssertionError("Post PR comment step not found")
 
 
 class TestNoHardcodedTmpPath:

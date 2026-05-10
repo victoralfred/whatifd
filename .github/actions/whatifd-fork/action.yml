@@ -90,16 +90,25 @@ runs:
         esac
 
         # Locate the latest report files. The CLI writes to ./reports/
-        # by convention (see whatifd.cli._run_fork_pipeline); the
-        # most-recently-modified .json + .md pair is the run we just
-        # did. `find -printf` keeps this portable across non-GNU find
-        # only when GNU find is present; the `ls -t | head -n1` form
-        # works on both BSD and GNU userlands.
+        # by convention (see whatifd.cli._run_fork_pipeline). Using
+        # `find ... -newer` against a marker file the action created
+        # before invoking the CLI would be ideal, but the CLI's own
+        # filenames already encode a UTC timestamp
+        # (`whatifd-fork-<YYYY-MM-DD-HHMMSS>.{json,md}`) so a
+        # stat-based mtime sort is sufficient. `printf '%T@ %p\n'`
+        # produces space-separated `epoch path` records that handle
+        # spaces in paths (the path is the LAST field, not the
+        # first); `sort -k1,1nr | head -n1 | cut -d' ' -f2-` picks
+        # the newest. Filed cli.py follow-up to emit chosen paths
+        # directly via GITHUB_OUTPUT so this discovery becomes
+        # unnecessary.
         report_json=""
         report_md=""
         if [[ -d reports ]]; then
-          report_json=$(ls -t reports/*.json 2>/dev/null | head -n1 || true)
-          report_md=$(ls -t reports/*.md 2>/dev/null | head -n1 || true)
+          report_json=$(find reports -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\n' 2>/dev/null \
+            | sort -k1,1nr | head -n1 | cut -d' ' -f2- || true)
+          report_md=$(find reports -maxdepth 1 -type f -name '*.md' -printf '%T@ %p\n' 2>/dev/null \
+            | sort -k1,1nr | head -n1 | cut -d' ' -f2- || true)
         fi
 
         echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
@@ -159,7 +168,14 @@ runs:
           cat "$REPORT_MD"
         } > "$comment_file"
 
-        gh pr comment "$PR_NUMBER" --body-file "$comment_file"
+        # `--edit-last` updates the PR's most recent comment authored
+        # by this token instead of appending a new one. Repeated
+        # pushes to the same PR end up with one rolling whatifd
+        # comment, not a stack. If no prior comment exists,
+        # `--edit-last` falls back to creating a new comment
+        # (gh CLI documented behavior).
+        gh pr comment "$PR_NUMBER" --body-file "$comment_file" --edit-last \
+          || gh pr comment "$PR_NUMBER" --body-file "$comment_file"
 
     - name: Fail on Don't Ship / Inconclusive
       if: |

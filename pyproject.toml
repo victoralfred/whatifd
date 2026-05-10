@@ -76,6 +76,7 @@ dev = [
 workspace = [
   "whatifd-langfuse",
   "whatifd-inspect-ai",
+  "whatifd-phoenix",
 ]
 
 [project.scripts]
@@ -115,7 +116,14 @@ warn_return_any = true
 # are available — the per-module override is the correct shape for
 # "import is fine, just don't try to type-check the foreign code."
 [[tool.mypy.overrides]]
-module = ["whatifd_inspect_ai", "whatifd_inspect_ai.*", "whatifd_langfuse", "whatifd_langfuse.*"]
+module = [
+    "whatifd_inspect_ai",
+    "whatifd_inspect_ai.*",
+    "whatifd_langfuse",
+    "whatifd_langfuse.*",
+    "whatifd_phoenix",
+    "whatifd_phoenix.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

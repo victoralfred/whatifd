@@ -363,4 +363,25 @@ class TestSubcommands:
         report = tmp_path / "report.json"
         report.write_text("{}", encoding="utf-8")  # missing schema_version
         result = runner.invoke(app, ["report-migrate", str(report)])
-        assert result.exit_code != EXIT_SUCCESS
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+
+    def test_report_migrate_in_place_overwrites_input(self, runner: CliRunner, tmp_path) -> None:
+        import json
+
+        report = tmp_path / "report.json"
+        report.write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1",
+                    "schema_uri": "https://whatif.codes/schema/report/v0.1.json",
+                    "verdict_state": "ship",
+                }
+            ),
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["report-migrate", str(report), "--in-place"])
+        assert result.exit_code == EXIT_SUCCESS, _all_output(result)
+        assert not (tmp_path / "report.v0.2.json").exists()
+        upgraded = json.loads(report.read_text(encoding="utf-8"))
+        assert upgraded["schema_version"] == "0.2"
+        assert upgraded["experiment_shape"] == "failure_rescue"

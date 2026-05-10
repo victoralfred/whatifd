@@ -1165,6 +1165,22 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 
 ## Resolved cascades
 
+### Phase A v0.2 schema groundwork — experiment_shape + frozen v0.1 + real report-migrate (resolved 2026-05-10)
+
+**Source decision:** v0.2 roadmap Phase A introduces `ExperimentShape = Literal["failure_rescue","regression_check"]` to ReportV01 + RunManifest. The verdict-policy branch on shape lands in Phase C; Phase A is structural-only. Three downstream concerns rippled together: (a) v0.1.schema.json must become immutable now that v0.1.0 has shipped to PyPI consumers, (b) v0.2.schema.json must be generated alongside, (c) the report-migrate CLI's v0.1 no-op stub becomes real v0.1→v0.2 logic.
+
+**Rippled to / refactor protection:**
+- `src/whatifd/report/schema/v0.1.schema.json` is byte-frozen — `tests/unit/whatifd/report/test_schema_v0_1_frozen.py` pins its sha256. Any structural edit to v0.1 is now CI-blocking; corrections must land in a new `v0.X.schema.json`.
+- `scripts/generate_schema.py` derives the output filename from `REPORT_SCHEMA_VERSION` so future bumps don't overwrite frozen versions.
+- `whatifd.report.migrate` carries the `_MIGRATIONS` chain dispatcher: future `v0.X → v0.Y` migrations register here. Each step has a chain-integrity guard (must advance the version) so a buggy migrator surfaces as `MigrationError("chain corruption")` rather than a misleading "no migration path."
+- The migrator operates on `dict[str, Any]` (not typed `ReportV01`) because v0.1 dicts lack v0.2-required fields; typed instantiation would fail before injection. This boundary placement preserves cardinal #6 (public schema hand-written; the migrator works at the wire shape, not the typed shape).
+- `whatifd.serialization.load_report_json` was added as the read-side counterpart to `canonical_json_bytes` so the migrator's I/O path stays inside the cardinal #5 module-discipline boundary (json activity in `whatifd/serialization/*` only).
+- `experiment_shape` lives at top-level on `ReportV01` (deterministic subset per cardinal #4); `RunManifest` carries the same value for audit but `runtime` is non-deterministic, so the wire-canonical view is the top-level field.
+
+**Resolved by:** PR #78 (Phase A), commit on branch `phase-a-schema-v0.2`.
+
+
+
 ### Banned-import lint scope: cache keying canonical JSON (resolved 2026-05-05)
 
 **Source decision:** Phase 3.1 (PR #31) lands `whatifd/cache/keying/v1.py` which needs to canonicalize `CacheKeyComponents` for SHA-256 hashing. `references/enforcement.md` row 2 documents that the banned-import lint will block `json.dumps` outside `whatifd/serialization/` to enforce cardinal #5 (no accidental `Sensitive[T]` serialization on artifact paths). Two reconciliations were possible: helper centralized in `whatifd/serialization/` (Option A) or per-file lint allowlist (Option B).

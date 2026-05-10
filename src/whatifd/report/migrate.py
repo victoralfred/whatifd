@@ -89,7 +89,20 @@ def migrate_report(report: dict[str, Any]) -> tuple[dict[str, Any], bool]:
                 f"v{REPORT_SCHEMA_VERSION}. Known sources: "
                 f"{sorted(_MIGRATIONS.keys())}"
             )
+        before = v
         current = _MIGRATIONS[v](current)
+        after = current.get("schema_version")
+        # Step-level integrity: a migration step MUST advance the
+        # version. Same-version or non-string output indicates a buggy
+        # migrator; fail with a chain-corruption message rather than
+        # letting the loop terminate with a misleading "no migration
+        # path" pointing at the corrupted output.
+        if not isinstance(after, str) or after == before:
+            raise MigrationError(
+                f"migration chain corruption: step from {before!r} "
+                f"produced schema_version={after!r}. The migration "
+                f"function must advance the version."
+            )
         walked = True
 
     if current.get("schema_uri") != REPORT_SCHEMA_URI:

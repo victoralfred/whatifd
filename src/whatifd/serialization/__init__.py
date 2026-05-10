@@ -20,14 +20,17 @@ from whatifd.serialization.canonical import canonical_json_bytes
 from whatifd.serialization.decimal import FieldLabel, parse_decimal_string
 from whatifd.serialization.encoder import WhatifJSONEncoder, encode_report_v01
 from whatifd.serialization.graph_walk import assert_no_unredacted_sensitive
+from whatifd.serialization.load import ReportLoadError, load_report_json
 from whatifd.serialization.lock_io import parse_lock_file_content
 
 __all__ = [
     "FieldLabel",
+    "ReportLoadError",
     "WhatifJSONEncoder",
     "assert_no_unredacted_sensitive",
     "canonical_json_bytes",
     "encode_report_v01",
+    "load_report_json",
     "parse_decimal_string",
     "parse_lock_file_content",
 ]

@@ -51,7 +51,6 @@ NOT as a runtime crash that bypasses cardinal #1.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Annotated
 
@@ -728,11 +727,12 @@ def report_migrate(
         migrate_report,
     )
     from whatifd.report.models_v01 import REPORT_SCHEMA_VERSION
+    from whatifd.serialization import ReportLoadError, load_report_json
 
     try:
-        raw = json.loads(report.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        typer.echo(f"whatifd report-migrate: cannot read {report}: {exc}", err=True)
+        raw = load_report_json(report)
+    except ReportLoadError as exc:
+        typer.echo(f"whatifd report-migrate: {exc}", err=True)
         raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE) from exc
 
     try:

@@ -48,6 +48,43 @@ class TestIdempotence:
         assert migrated is v0_2  # input returned unchanged
 
 
+class TestChainIntegrity:
+    """Step-level integrity guard: a buggy migrator that returns the
+    same version (or corrupts it) must be caught immediately rather
+    than triggering a misleading 'no migration path' error.
+    """
+
+    def test_migrator_returning_same_version_is_caught(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from whatifd.report import migrate as migrate_mod
+
+        def buggy(report: dict) -> dict:
+            # Doesn't advance schema_version — chain corruption.
+            return dict(report)
+
+        monkeypatch.setitem(migrate_mod._MIGRATIONS, "0.1", buggy)
+        with pytest.raises(MigrationError, match="chain corruption"):
+            migrate_report(
+                {
+                    "schema_version": "0.1",
+                    "schema_uri": "https://whatif.codes/schema/report/v0.1.json",
+                }
+            )
+
+    def test_migrator_corrupting_version_is_caught(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from whatifd.report import migrate as migrate_mod
+
+        def corrupt(report: dict) -> dict:
+            out = dict(report)
+            out["schema_version"] = 42  # non-string
+            return out
+
+        monkeypatch.setitem(migrate_mod._MIGRATIONS, "0.1", corrupt)
+        with pytest.raises(MigrationError, match="chain corruption"):
+            migrate_report({"schema_version": "0.1"})
+
+
 class TestStructuralErrors:
     def test_non_dict_input(self) -> None:
         with pytest.raises(MigrationError, match="must be a JSON object"):

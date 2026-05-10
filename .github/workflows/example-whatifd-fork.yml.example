@@ -5,6 +5,12 @@
 # by GitHub Actions on the whatifd repo itself — it would otherwise try
 # to run against PRs that touch this file and require credentials the
 # whatifd repo doesn't have.
+#
+# Action pinning: the whatifd repo pins third-party actions by tag
+# (e.g., `@v7`). Operators copying this example into a security-
+# hardened production fork should switch to commit-SHA pins. The
+# canonical rationale lives in:
+#   https://github.com/victoralfred/whatifd/blob/main/CONTRIBUTING.md#third-party-action-pinning-convention
 
 name: whatifd PR verdict
 

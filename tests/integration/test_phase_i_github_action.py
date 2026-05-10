@@ -43,6 +43,44 @@ def action() -> ActionYmlData:
     return yaml.safe_load(_ACTION_YML.read_text(encoding="utf-8"))
 
 
+class TestMarketplaceReadiness:
+    """v0.3 will publish this Action to the GitHub Marketplace as
+    its own repo. Marketplace listings require a `branding:` block
+    with `icon` and `color`. Verifying it now prevents a last-
+    minute schema surprise during the v0.3 publication PR.
+    """
+
+    def test_branding_block_present(self, action: ActionYmlData) -> None:
+        assert "branding" in action, (
+            "action.yml must declare a `branding:` block for v0.3 Marketplace "
+            "publication. Two required fields: `icon` (Feather icon name) and "
+            "`color` (one of GitHub's accepted colors)."
+        )
+        branding = action["branding"]
+        assert isinstance(branding, dict), "branding must be a YAML mapping"
+
+    def test_branding_has_icon_and_color(self, action: ActionYmlData) -> None:
+        branding = action["branding"]
+        assert "icon" in branding, "branding.icon is required for Marketplace listings"
+        assert "color" in branding, "branding.color is required for Marketplace listings"
+        # GitHub's accepted colors: white, yellow, blue, green,
+        # orange, red, purple, gray-dark.
+        accepted_colors = {
+            "white",
+            "yellow",
+            "blue",
+            "green",
+            "orange",
+            "red",
+            "purple",
+            "gray-dark",
+        }
+        assert branding["color"] in accepted_colors, (
+            f"branding.color={branding['color']!r} not in GitHub's accepted set: "
+            f"{sorted(accepted_colors)}"
+        )
+
+
 class TestActionStructure:
     def test_action_yml_exists(self) -> None:
         assert _ACTION_YML.is_file(), f"action.yml missing at {_ACTION_YML}"

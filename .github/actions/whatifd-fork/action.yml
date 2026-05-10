@@ -111,10 +111,17 @@ runs:
         # Actions UI as a notice/warning/error depending on the
         # verdict. Cardinal #1: structured signal, not a stack
         # trace.
+        # Annotation level mirrors the fail-step's blocking behavior:
+        # Ship => notice (informational), Don't Ship + Inconclusive
+        # both block the workflow under fail-on-dont-ship=true, so
+        # both surface as ::error for visual consistency. A floor-
+        # failure Inconclusive blocks Ship just as firmly as a
+        # Don't-Ship verdict; softening one of them to ::warning
+        # would mislead a reviewer scanning the Actions UI.
         case "$verdict" in
           ship) echo "::notice title=whatifd verdict::Ship" ;;
-          dont_ship) echo "::warning title=whatifd verdict::Don't Ship" ;;
-          inconclusive) echo "::warning title=whatifd verdict::Inconclusive" ;;
+          dont_ship) echo "::error title=whatifd verdict::Don't Ship" ;;
+          inconclusive) echo "::error title=whatifd verdict::Inconclusive" ;;
         esac
 
     # Post the rendered Markdown verdict as a PR comment when running on a
@@ -133,6 +140,13 @@ runs:
         VERDICT: ${{ steps.fork.outputs.verdict }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
+        # Use $RUNNER_TEMP (per-job temp dir) instead of a hardcoded
+        # /tmp path — concurrent matrix jobs on the same runner
+        # share /tmp and would collide on a fixed filename. Fall
+        # back to `mktemp` if RUNNER_TEMP is unset (e.g., a self-
+        # hosted runner that doesn't export it).
+        comment_file="${RUNNER_TEMP:-$(mktemp -d)}/whatifd-pr-comment-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}.md"
+
         # Prepend a verdict header so PR-list scanners see the
         # outcome without expanding the comment.
         {
@@ -143,9 +157,9 @@ runs:
           esac
           echo ""
           cat "$REPORT_MD"
-        } > /tmp/whatifd-pr-comment.md
+        } > "$comment_file"
 
-        gh pr comment "$PR_NUMBER" --body-file /tmp/whatifd-pr-comment.md
+        gh pr comment "$PR_NUMBER" --body-file "$comment_file"
 
     - name: Fail on Don't Ship / Inconclusive
       if: |

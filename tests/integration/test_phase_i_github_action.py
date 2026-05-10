@@ -73,12 +73,19 @@ class TestInputs:
             f"README documents {default!r}"
         )
 
-    def test_github_token_input_present(self, action: dict[str, Any]) -> None:
-        # `github-token` doesn't have a static default we can pin
-        # (it's a `${{ github.token }}` expression). Just assert it
-        # exists and is documented as defaulting to the workflow
-        # token.
+    def test_github_token_input_default_pinned(self, action: dict[str, Any]) -> None:
+        # The default IS a YAML expression string `${{ github.token }}`
+        # — yaml.safe_load preserves it verbatim because GitHub
+        # expressions aren't standard YAML constructs. Pin the
+        # literal so a future drift (e.g., default accidentally
+        # blanked, or changed to a hardcoded PAT) surfaces here.
         assert "github-token" in action["inputs"]
+        assert action["inputs"]["github-token"].get("default") == "${{ github.token }}", (
+            "github-token default drifted away from `${{ github.token }}`. "
+            "Callers expect the workflow's automatic token; a blank or "
+            "hardcoded default would silently change comment-author identity "
+            "or break the comment step entirely."
+        )
 
 
 class TestOutputs:

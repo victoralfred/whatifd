@@ -27,14 +27,14 @@ The `ReportV01.schema_uri` field stamped into every produced report points to `h
 
 ## Per-release checklist
 
-For the v0.1.0 release (or any subsequent release; substitute the version):
+For any release (substitute the target version `vX.Y.Z` throughout):
 
 ### 1. Pre-flight (on a release-prep branch)
 
 - [ ] All four `pyproject.toml` versions match the target tag (root + three adapter packages); `tests/unit/whatifd/test_version_parity.py` pins this
 - [ ] `Development Status` classifier is appropriate (`3 - Alpha` through v0.4.x; bump to `4 - Beta` at v0.5+)
-- [ ] `CHANGELOG.md` `[Unreleased]` block promoted to `[0.1.0] - YYYY-MM-DD`; a fresh `[Unreleased]` header added
-- [ ] CHANGELOG link footer updated (`[Unreleased]` → `[0.1.0]` plus a fresh `[Unreleased]` line)
+- [ ] `CHANGELOG.md` `[Unreleased]` block promoted to `[X.Y.Z] - YYYY-MM-DD`; a fresh `[Unreleased]` header added
+- [ ] CHANGELOG link footer updated (`[Unreleased]` → `[X.Y.Z]` plus a fresh `[Unreleased]` line)
 - [ ] `uv lock` is up-to-date (`uv lock` with no diff)
 - [ ] Full test suite passes: `uv run pytest tests/ packages/ -q`
 - [ ] mypy + ruff clean: `uv run mypy src && uv run ruff check . && uv run ruff format --check .`
@@ -47,8 +47,8 @@ For the v0.1.0 release (or any subsequent release; substitute the version):
 ```bash
 git checkout main
 git pull
-git tag v0.1.0
-git push origin v0.1.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 The push triggers `.github/workflows/release.yml`. Monitor at `https://github.com/victoralfred/whatifd/actions`.
@@ -88,7 +88,7 @@ If `whatifd` publishes but one of the adapters fails, the resulting state is inc
 2. Update the adapters' `dependencies` to require `whatifd==<new-version>` (or `>=` if you don't need strict parity).
 3. Tag `vX.Y.Z` and re-run the workflow. PyPI rejects republishing a version, so the bump is necessary even if no source changed. Adapters publish after the root succeeds.
 
-**Cleanest prevention: TestPyPI dry-run on a pre-release tag.** Before pushing the real `v0.1.0` tag, push `v0.1.0rc1` (or any PEP 440 pre-release suffix — `a1`, `b1`, `rc1` all work) against TestPyPI first. This proves the entire publish path end-to-end without committing to a permanent PyPI version.
+**Cleanest prevention: TestPyPI dry-run on a pre-release tag.** Before pushing the real `vX.Y.Z` tag, push `vX.Y.ZrcN` (or any PEP 440 pre-release suffix — `a1`, `b1`, `rc1` all work) against TestPyPI first. This proves the entire publish path end-to-end without committing to a permanent PyPI version.
 
 > **Note on workflow shape.** The TestPyPI route is intentionally **manual and ephemeral** — there's no committed `release-rc.yml` or auto-detected pre-release branch in `.github/workflows/`. Each dry-run is a temporary local edit on a throwaway branch (`release-testpypi-rc`-style), not a permanent surface that future maintainers need to keep in sync. This keeps the canonical release path single-source (`release.yml` → PyPI) while preserving the option for ad-hoc dry-runs.
 

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 from importlib.resources import files
+from unittest import mock
 
 import pytest
 
@@ -137,26 +138,138 @@ def test_extract_from_report_matches_round_trip() -> None:
     assert via_helper == via_round_trip
 
 
-def test_runtime_field_excluded_from_subset() -> None:
-    # The `runtime` field is tagged x-deterministic: false because
-    # it carries timestamps, environment fingerprint, and the
-    # sensitive-unwrap audit log — all non-deterministic. Pin the
-    # exclusion so a future "everything is deterministic" refactor
-    # doesn't silently sweep `runtime` into the byte-equality check.
+def test_runtime_deterministic_subfields_warns_on_missing_annotations() -> None:
+    """Phase J: the schema-walking helper that backs the extractor's
+    runtime descent emits `DeterministicSubsetWarning` when the
+    schema lacks per-field annotations (e.g., consumer running an
+    older bundled schema). Cardinal #1: the silent-degrade path is
+    observable via warning, not invisible.
+    """
+    from whatifd.serialization.determinism import (
+        DeterministicSubsetWarning,
+        _runtime_deterministic_subfields,
+    )
+
+    # Patch the schema-properties cache to return a runtime entry
+    # without a `$ref`, simulating a pre-Phase-J or hand-rolled
+    # schema.
+    with (
+        mock.patch(
+            "whatifd.serialization.determinism._schema_properties",
+            return_value={"runtime": {"x-deterministic": False}},  # no $ref
+        ),
+        pytest.warns(DeterministicSubsetWarning, match="no \\$ref"),
+    ):
+        result = _runtime_deterministic_subfields()
+    assert result == frozenset()
+
+
+def test_runtime_deterministic_subfields_warns_on_empty_annotations() -> None:
+    """Companion to the above: the `$def` exists but has no fields
+    tagged `x-deterministic: true`. Same warning class, different
+    message; same fallback (empty frozenset).
+    """
+    from whatifd.serialization.determinism import (
+        DeterministicSubsetWarning,
+        _runtime_deterministic_subfields,
+    )
+
+    # _schema_properties returns the runtime $ref pointer; the
+    # subsequent json.load of the schema file picks up an empty
+    # $def (none of its properties tagged true). Patch the file
+    # read to control what comes back.
+    fake_doc = {
+        "properties": {"runtime": {"$ref": "#/$defs/RunManifest"}},
+        "$defs": {"RunManifest": {"properties": {"x": {"x-deterministic": False}}}},
+    }
+    with (
+        mock.patch(
+            "whatifd.serialization.determinism._schema_document",
+            return_value=fake_doc,
+        ),
+        mock.patch(
+            "whatifd.serialization.determinism._schema_properties",
+            return_value=fake_doc["properties"],
+        ),
+        pytest.warns(DeterministicSubsetWarning, match="no properties tagged"),
+    ):
+        result = _runtime_deterministic_subfields()
+    assert result == frozenset()
+
+
+def test_runtime_subfield_annotations_match_dataclass_optin() -> None:
+    """Phase J — Determinism widening: the schema's per-field
+    annotations on `RunManifest`'s `$def` MUST match the dataclass's
+    `_DETERMINISTIC_FIELDS` opt-in. Catches a future refactor that
+    moves the dataclass attribute without regenerating the schema
+    (or vice versa) before the cross-platform CI job notices.
+    """
+    from whatifd.types.manifest import RunManifest
+
+    schema_resource = files("whatifd.report.schema").joinpath("v0.2.schema.json")
+    schema = json.loads(schema_resource.read_text(encoding="utf-8"))
+    runtime_def = schema["$defs"]["RunManifest"]
+
+    schema_deterministic = frozenset(
+        name
+        for name, prop in runtime_def["properties"].items()
+        if prop.get("x-deterministic") is True
+    )
+    dataclass_deterministic = RunManifest._DETERMINISTIC_FIELDS
+
+    assert schema_deterministic == dataclass_deterministic, (
+        "Schema-vs-dataclass drift on RunManifest determinism opt-in. "
+        f"Schema: {sorted(schema_deterministic)}. "
+        f"Dataclass: {sorted(dataclass_deterministic)}. "
+        "Run `uv run python scripts/generate_schema.py` to regenerate."
+    )
+
+
+def test_runtime_field_partial_subset_per_field_determinism() -> None:
+    # Phase J — Determinism widening: `runtime` is no longer
+    # excluded as a whole. The schema's `$def` for RunManifest
+    # carries per-field `x-deterministic` annotations (Phase J
+    # extension to the schema generator); the extractor descends
+    # into runtime and keeps only the sub-fields tagged true.
     #
-    # Note: this test does NOT separately assert that two runs'
-    # `runtime` fields actually DIFFER. The fixtures here construct
-    # `RunManifest` from a fixed dict (`_default_runtime` in
-    # `_fixtures.py`), so the same fixture call produces the same
-    # runtime — they happen to be equal at the test level. The pin
-    # we care about is the EXCLUSION: regardless of whether two
-    # runs' runtime fields agree or not, the deterministic subset
-    # MUST NOT contain runtime. Real runs (CLI, integration smoke)
-    # populate runtime with wall-clock timestamps that differ; the
-    # byte-equality assertion above succeeds because runtime is
-    # excluded, not because runtime happens to match.
+    # The non-deterministic sub-fields (timestamps, environment
+    # fingerprint, sensitive-unwrap audit log) MUST stay excluded;
+    # the documented-deterministic ones (config_hash, selection_seed,
+    # source, target, trust_floor, decision_policy, experiment_id,
+    # whatif_version, experiment_shape) MUST be present.
     subset = _run_and_extract_subset(scenario_clean_ship())
-    assert "runtime" not in subset
+    assert "runtime" in subset, "Phase J: runtime is now partial-subset, not excluded"
+    runtime = subset["runtime"]
+
+    # Deterministic sub-fields present.
+    deterministic_subfields = {
+        "experiment_id",
+        "whatif_version",
+        "config_hash",
+        "selection_seed",
+        "source",
+        "target",
+        "trust_floor",
+        "decision_policy",
+        "experiment_shape",
+    }
+    for name in deterministic_subfields:
+        assert name in runtime, f"deterministic runtime sub-field {name!r} missing from subset"
+
+    # Non-deterministic sub-fields excluded.
+    non_deterministic_subfields = {
+        "started_at",
+        "finished_at",
+        "duration_ms",
+        "environment",
+        "agent_identity",
+        "redaction",
+        "sensitive_unwraps",
+    }
+    for name in non_deterministic_subfields:
+        assert name not in runtime, (
+            f"non-deterministic runtime sub-field {name!r} leaked into deterministic subset"
+        )
 
 
 def test_runtime_explicitly_tagged_false_in_schema() -> None:

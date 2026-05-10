@@ -11,7 +11,15 @@ permissions:
 jobs:
   build:
     name: build distributions
-    runs-on: ubuntu-latest
+    # Pinned (not `ubuntu-latest`) because the tag↔version guard step
+    # below uses stdlib `tomllib`, which requires Python 3.11+. The
+    # runner's system python3 needs to be 3.11+ at the moment that
+    # step runs (before setup-uv installs anything). `ubuntu-24.04`
+    # ships python3.12; a future drift back to an older default would
+    # silently fail the guard with an ImportError. Pinning is the
+    # cheapest structural fix. Update this pin (and the comment)
+    # together when migrating runner images.
+    runs-on: ubuntu-24.04
     outputs:
       ref-name: ${{ github.ref_name }}
     steps:
@@ -29,9 +37,10 @@ jobs:
       # is produced if the tag (minus leading `v`) doesn't match the
       # declared version in every workspace pyproject.
       - name: Verify tag matches package versions
-        # Uses stdlib `tomllib` (Python 3.11+, present on `ubuntu-latest`)
-        # rather than `grep ^version =` so a future pyproject layout
-        # (a `[tool.X] version = ...` subsection, a multi-line array
+        # Uses stdlib `tomllib` (Python 3.11+, present on the pinned
+        # `ubuntu-24.04` runner — see `runs-on` comment above) rather
+        # than `grep ^version =` so a future pyproject layout (a
+        # `[tool.X] version = ...` subsection, a multi-line array
         # whose first line happens to begin with `version =`, etc.)
         # can't false-positive. Runs before setup-uv so we depend on
         # the runner's system python3 here, not on uv being installed.

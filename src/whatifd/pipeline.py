@@ -100,7 +100,17 @@ def run_pipeline(
     cohort_results = tuple(
         _cohort_result_from_bucket(b, policy=policy, floor=floor) for b in buckets
     )
-    verdict = compute_verdict(cohort_results, floor, policy)
+    # Phase C: experiment_shape comes from the manifest (Phase A added
+    # it to RunManifest). compute_verdict branches its guard sequence
+    # and required-cohorts list on the shape — failure_rescue uses the
+    # full v0.1 guard chain; regression_check skips the failure-cohort
+    # guards and requires only the baseline cohort at the floor.
+    verdict = compute_verdict(
+        cohort_results,
+        floor,
+        policy,
+        experiment_shape=runtime.experiment_shape,
+    )
     return project_to_report_v01(
         verdict,
         failures=delta_failures,

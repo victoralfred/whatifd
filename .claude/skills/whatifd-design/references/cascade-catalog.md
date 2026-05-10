@@ -1165,6 +1165,22 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 
 ## Resolved cascades
 
+### Phase C — regression_check experiment shape: shape-aware guard chain + required_cohorts (resolved 2026-05-10)
+
+**Source decision:** v0.1 supported only the `failure_rescue` experiment shape — a known-bad failure cohort + a representative baseline cohort, with the verdict policy checking both "did the change rescue failures" and "did it preserve baseline." Phase A introduced `experiment_shape: Literal["failure_rescue", "regression_check"]` structurally; Phase C makes the verdict layer actually branch on it. Regression-check has no failure cohort — only baseline-vs-baseline-with-change — so the failure-cohort guards (`practical_delta`, `improvement_observation`) and the failure-required `required_cohorts` floor input must be conditional.
+
+**Rippled to / refactor protection:**
+- `compute_verdict` gains an `experiment_shape: ExperimentShape = "failure_rescue"` keyword parameter. Default preserves v0.1 back-compat; explicit non-default callers get the new branch.
+- `_guards_for_shape(shape)` resolves to `_DEFAULT_GUARDS` (failure-rescue) or `_REGRESSION_CHECK_GUARDS` (the lean pair: `primary_endpoint_guard` + `ci_availability_guard`). The `primary_endpoint_guard` is configurable via `policy.primary_endpoints` and naturally handles the regression-check policy when only the baseline non-regression endpoint is declared.
+- `_required_cohorts_for_shape(shape, policy)` overrides `policy.required_cohorts` to `("baseline",)` for regression-check. Operators don't need to also flip the policy's `required_cohorts` field — the shape implies it.
+- `run_pipeline` reads `runtime.experiment_shape` (Phase A's manifest field) and passes it through. The wire-canonical view at `ReportV01.experiment_shape` (also Phase A) is unaffected.
+- Tests pin the shape-conditional behavior on both sides: failure_rescue baseline-only → Inconclusive (floor missing failure cohort); regression_check baseline-only → Ship. Default-no-shape callers still get failure_rescue (back-compat).
+- A new walkthrough fixture (#7) documenting the regression-check shape end-to-end is intentionally deferred to a follow-up; this PR ships only the policy/guard branch.
+
+**Resolved by:** Phase C PR on branch `phase-c-regression-check`.
+
+
+
 ### Phase B — Scorer score_fn config-loadable; inspect_ai reachable from YAML (resolved 2026-05-10)
 
 **Source decision:** v0.1 shipped with `scorer.adapter: inspect_ai` reachable only via the programmatic `run_pipeline` API; the CLI surfaced an actionable setup-failure error pointing at the gap. v0.2 closes the cliff by adding `scorer.score_fn: "python:<module>:<attr>"` plus the judge-config fields (`judge_provider`, `judge_model_id`, `rubric_id`, `rubric_text`, optional `judge_model_snapshot` / `scoring_parameters`) to `ScorerConfig`. A new `whatifd.scorer_loader.load_score_fn` mirrors `runner_loader.load_runner` for the `python:` reference resolution.

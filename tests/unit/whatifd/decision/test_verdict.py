@@ -373,3 +373,97 @@ class TestComputeVerdictCustomGuards:
 # isinstance check — per the enforcement-strength hierarchy in
 # `references/enforcement.md`, type-level prevention is stronger than
 # runtime defense. There is intentionally no `test_non_trust_floor_input_raises`.
+
+
+# ---------------------------------------------------------------------------
+# Phase C — regression_check experiment shape
+# ---------------------------------------------------------------------------
+
+
+class TestRegressionCheckShape:
+    """Phase C: regression_check shape has only a `baseline` cohort
+    (no failure cohort). The verdict layer must:
+    1. Skip the failure-cohort guards (practical_delta, improvement_observation).
+    2. Override required_cohorts to ('baseline',) — failure cohort
+       absent must not trigger a floor-failure for missing cohort.
+    3. Still run primary_endpoint + ci_availability guards on the
+       baseline.
+    """
+
+    def test_clean_baseline_only_run_produces_ship(self) -> None:
+        # Pins the GUARD-side: _REGRESSION_CHECK_GUARDS does not emit
+        # any blocks_ship finding against a passing baseline. Companion
+        # test `test_failure_cohort_not_required_under_regression_check`
+        # pins the FLOOR-side override; both halves together confirm
+        # "regression_check + clean baseline = Ship."
+        verdict = compute_verdict(
+            cohort_results=[_passing_baseline_cohort()],
+            floor=TrustFloor(),
+            policy=DecisionPolicy(),
+            experiment_shape="regression_check",
+        )
+        assert isinstance(verdict, Ship)
+        # Findings list is empty: improvement_observation_guard is
+        # excluded from _REGRESSION_CHECK_GUARDS so no info-finding
+        # appears here either.
+        assert verdict.findings == []
+
+    def test_baseline_regression_produces_dont_ship(self) -> None:
+        # 30% baseline regression > policy.max_baseline_regression_ratio
+        # (default 0.10) → primary_endpoint guard emits blocks_ship.
+        regressing_baseline = _passing_baseline_cohort(improved=2, unchanged=5, regressed=3)
+        verdict = compute_verdict(
+            cohort_results=[regressing_baseline],
+            floor=TrustFloor(),
+            policy=DecisionPolicy(),
+            experiment_shape="regression_check",
+        )
+        assert isinstance(verdict, DontShip)
+
+    def test_missing_baseline_produces_inconclusive(self) -> None:
+        # No baseline cohort → floor failure, regardless of shape.
+        verdict = compute_verdict(
+            cohort_results=[],
+            floor=TrustFloor(),
+            policy=DecisionPolicy(),
+            experiment_shape="regression_check",
+        )
+        assert isinstance(verdict, Inconclusive)
+
+    def test_failure_cohort_not_required_under_regression_check(self) -> None:
+        # Pins the FLOOR-side override: policy.required_cohorts
+        # defaults to ("failure", "baseline"), but
+        # _required_cohorts_for_shape("regression_check", policy)
+        # returns ("baseline",). Without that override, this run
+        # would be Inconclusive(floor_failures=[required_cohort_missing
+        # for "failure"]). Companion test
+        # `test_clean_baseline_only_run_produces_ship` pins the
+        # GUARD-side (no spurious findings).
+        verdict = compute_verdict(
+            cohort_results=[_passing_baseline_cohort()],
+            floor=TrustFloor(),
+            policy=DecisionPolicy(),  # .required_cohorts == ("failure", "baseline")
+            experiment_shape="regression_check",
+        )
+        assert isinstance(verdict, Ship)
+
+    def test_failure_rescue_still_requires_failure_cohort(self) -> None:
+        # Sanity: the v0.1 default shape is unchanged. Baseline-only
+        # under failure_rescue is still a floor failure.
+        verdict = compute_verdict(
+            cohort_results=[_passing_baseline_cohort()],
+            floor=TrustFloor(),
+            policy=DecisionPolicy(),
+            experiment_shape="failure_rescue",
+        )
+        assert isinstance(verdict, Inconclusive)
+
+    def test_default_shape_is_failure_rescue(self) -> None:
+        # Back-compat: callers that don't pass experiment_shape get
+        # the v0.1 default behavior.
+        verdict = compute_verdict(
+            cohort_results=[_passing_baseline_cohort()],
+            floor=TrustFloor(),
+            policy=DecisionPolicy(),
+        )
+        assert isinstance(verdict, Inconclusive)

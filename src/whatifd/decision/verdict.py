@@ -71,6 +71,7 @@ from whatifd.decision.guards import (
     run_guards,
 )
 from whatifd.types.cohort import CohortResult
+from whatifd.types.manifest import ExperimentShape
 from whatifd.types.policy import DecisionPolicy, TrustFloor
 from whatifd.types.verdict import DontShip, Inconclusive, Ship, Verdict
 
@@ -94,6 +95,40 @@ _DEFAULT_GUARDS: tuple[Guard, ...] = (
     ci_availability_guard,
 )
 
+# Phase C (v0.2): regression_check experiment shape has no `failure`
+# cohort — only baseline-vs-baseline-with-change. The failure-cohort
+# guards (practical_delta, improvement_observation) read the failure
+# cohort directly and would emit spurious findings. primary_endpoint
+# is configurable via policy.primary_endpoints and naturally handles
+# the regression-check policy when the policy declares only the
+# baseline non-regression endpoint.
+_REGRESSION_CHECK_GUARDS: tuple[Guard, ...] = (
+    primary_endpoint_guard,
+    ci_availability_guard,
+)
+
+
+def _guards_for_shape(shape: ExperimentShape) -> tuple[Guard, ...]:
+    """Map experiment_shape → default guard sequence."""
+    if shape == "regression_check":
+        return _REGRESSION_CHECK_GUARDS
+    # failure_rescue (the v0.1 default)
+    return _DEFAULT_GUARDS
+
+
+def _required_cohorts_for_shape(shape: ExperimentShape, policy: DecisionPolicy) -> tuple[str, ...]:
+    """Derive the floor's required-cohorts list from the experiment shape.
+
+    Failure-rescue requires both `failure` and `baseline` cohorts (the
+    v0.1 default). Regression-check requires only `baseline`. The
+    `policy.required_cohorts` field is left as the v0.1 default;
+    shape-derived overrides take precedence so a user who hand-set a
+    policy doesn't need to also remember to flip required_cohorts.
+    """
+    if shape == "regression_check":
+        return ("baseline",)
+    return policy.required_cohorts
+
 
 def compute_verdict(
     cohort_results: Sequence[CohortResult],
@@ -101,6 +136,7 @@ def compute_verdict(
     policy: DecisionPolicy,
     *,
     guards: Sequence[Guard] | None = None,
+    experiment_shape: ExperimentShape = "failure_rescue",
 ) -> Verdict:
     """Compute the verdict for a run.
 
@@ -119,12 +155,12 @@ def compute_verdict(
     project's enforcement-strength hierarchy, type-level prevention
     is stronger than runtime defense-in-depth.
     """
-    resolved_guards = guards if guards is not None else _DEFAULT_GUARDS
+    resolved_guards = guards if guards is not None else _guards_for_shape(experiment_shape)
 
     floor_outcome = evaluate_floor(
         cohort_results,
         floor,
-        policy.required_cohorts,
+        _required_cohorts_for_shape(experiment_shape, policy),
     )
 
     # Run guards regardless of floor outcome so observational findings

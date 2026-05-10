@@ -12,6 +12,12 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase C (regression_check experiment shape)
+
+- **Shape-aware verdict computation.** `compute_verdict` gains `experiment_shape: ExperimentShape = "failure_rescue"`. Default is the v0.1 behavior; `experiment_shape="regression_check"` switches to the lean guard chain (`primary_endpoint` + `ci_availability` only) and overrides `required_cohorts` to `("baseline",)` so a baseline-only run doesn't produce a spurious "missing failure cohort" floor failure.
+- **Pipeline wiring.** `run_pipeline` reads `runtime.experiment_shape` (Phase A's manifest field) and passes it to `compute_verdict`. Operators select the shape via the manifest they construct; YAML callers will inherit this via the config layer when the regression-check config shape lands.
+- **Shape→guard registry** (`_REGRESSION_CHECK_GUARDS`) skips the failure-cohort guards (`practical_delta`, `improvement_observation`). The `primary_endpoint_guard` is configurable via `policy.primary_endpoints` and naturally handles the regression-check policy when only the baseline endpoint is declared.
+
 ### Added — Phase B (config-loaded score_fn; inspect_ai reachable from YAML)
 
 - **`scorer.score_fn` config field** — `python:<module.path>:<attr>` reference to an Inspect AI score function. Closes the v0.1 setup-failure cliff where `scorer.adapter: inspect_ai` was reachable only via the programmatic `run_pipeline` API.

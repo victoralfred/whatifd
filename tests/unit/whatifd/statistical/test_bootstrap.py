@@ -59,11 +59,19 @@ class TestDeterminism:
 
     def test_different_seeds_different_ci(self) -> None:
         # Sanity: the seed actually controls the resampler.
-        # Different seeds on the same data produce different CIs.
-        # Need a larger input than the obvious-toy [0.1..0.5] — at
-        # n=5 the bootstrap distribution has so few unique median
-        # values that different seeds collide on identical CI bounds.
-        # n=20 gives enough resample diversity to distinguish seeds.
+        # Different seeds on the same data should produce different
+        # CIs. Strictly speaking this is probabilistic — two seeds
+        # COULD coincidentally produce resample sequences whose 50th
+        # and 1949th sorted-median values agree, but at n=20 + 2000
+        # resamples + a non-degenerate input, the probability is
+        # vanishingly small (the joint probability of two specific
+        # bootstrap-distribution percentiles colliding under
+        # different seeds is empirically <1e-6 for inputs with
+        # spread). If this test ever flakes, the right fix is
+        # probably to investigate the seed pair (it's likely
+        # signaling a real determinism regression), not to soften
+        # the assertion to skip-on-collision — that would mask the
+        # very property we're testing.
         deltas = [i / 100.0 for i in range(20)]  # 0.00..0.19
         a = paired_percentile_bootstrap(deltas, seed=1)
         b = paired_percentile_bootstrap(deltas, seed=2)

@@ -100,6 +100,26 @@ def paired_percentile_bootstrap(
     not silent zeros. The pipeline layer catches and surfaces these
     as structured `ReplayFailure` if they originate from per-trace
     data; for direct callers, the exception is the right shape.
+
+    ## Why `seed` is required but `resamples` defaults
+
+    `seed` carries reproducibility — without it, the same input
+    produces a different CI each call, which silently breaks
+    cardinal #4 (determinism opt-in per field). Forcing the caller
+    to pass it makes the choice explicit; `seed=0` is a legitimate
+    "I don't care" answer, but it's an answer, not an omission.
+
+    `resamples` carries statistical power, not correctness. 2000 is
+    the convergent default in the bootstrap literature for 95%
+    percentile CIs at sample sizes in the cardinal-#2 floor range
+    (n in [10, 200]); a caller who passes a different value usually
+    has a calibration reason, and the default is safe when they
+    don't. Forcing the caller to pass `resamples` would be ceremony
+    without doctrinal payoff.
+
+    `ci_level` follows the same logic — 0.95 is the convergent
+    confidence level for the report's primary CI surface; opting
+    out is a legitimate calibration choice but the default is safe.
     """
     if not deltas:
         raise ValueError("paired_percentile_bootstrap: deltas must be non-empty")

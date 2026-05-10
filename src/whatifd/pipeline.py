@@ -37,7 +37,6 @@ signature is the stable contract.
 
 from __future__ import annotations
 
-import statistics
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
@@ -49,12 +48,21 @@ from whatifd.decision.verdict import compute_verdict
 from whatifd.replay.closure_errors import _ReplayStageError, _ScorerStructuralError
 from whatifd.report.models_v01 import ReportV01
 from whatifd.report.projection import project_to_report_v01
+from whatifd.statistical import paired_percentile_bootstrap, to_decimal_string
 from whatifd.types.cohort import CIUnavailableReason, CohortResult
 from whatifd.types.failure import FailureRecord
 from whatifd.types.manifest import RunManifest
 from whatifd.types.policy import DecisionPolicy, TrustFloor
 from whatifd.types.primitives import DecimalString
 from whatifd.types.statistical import MethodologyDisclosure
+
+# Phase E.2: deterministic seed for the paired-percentile bootstrap.
+# Constant so the bootstrap CIs are reproducible across re-runs of
+# the same fixture (cardinal #4 determinism: per-cohort CI bounds
+# are part of the deterministic subset). A future surface may
+# parameterize this through `RunManifest.selection_seed` or a
+# dedicated stats-layer seed; v0.2 ships the constant.
+_BOOTSTRAP_SEED = 4_872_109
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,16 +241,18 @@ def _cohort_result_from_bucket(
     ci_computable = False
     ci_unavailable_reason: CIUnavailableReason | None = "sample_too_small"
     if scored >= floor.min_scored_per_required_cohort:
-        median = DecimalString(f"{statistics.median(bucket.deltas):.3f}")
-        # Empirical percentile CI — Phase 9A.1 shortcut. Real
-        # stratified bootstrap lands later in the stats layer.
-        # `statistics.quantiles(..., n=20)` produces 19 cut points;
-        # index 0 is the 5th percentile, index 18 is the 95th.
-        # `method="exclusive"` (the default) is appropriate for
-        # sample-based CI bounds.
-        quantiles = statistics.quantiles(bucket.deltas, n=20)
-        ci_lower = DecimalString(f"{quantiles[0]:.3f}")
-        ci_upper = DecimalString(f"{quantiles[-1]:.3f}")
+        # Phase E.2: paired-percentile bootstrap (Phase E.1's algorithm
+        # in `whatifd.statistical`) replaces the v0.1 empirical-quantile
+        # shortcut. The bootstrap respects the per-trace delta as the
+        # paired unit of analysis (cardinal #10) and produces a real
+        # CI rather than a degenerate single-point empirical estimate.
+        bootstrap_result = paired_percentile_bootstrap(
+            bucket.deltas,
+            seed=_BOOTSTRAP_SEED,
+        )
+        median = to_decimal_string(bootstrap_result.median)
+        ci_lower = to_decimal_string(bootstrap_result.ci_lower)
+        ci_upper = to_decimal_string(bootstrap_result.ci_upper)
         ci_computable = True
         ci_unavailable_reason = None
 

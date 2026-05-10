@@ -109,14 +109,16 @@ methodology = MethodologyDisclosure(
     primary_endpoints=("failure.faithfulness", "baseline.faithfulness"),
     cohorts=("failure", "baseline"),
     bootstrap=BootstrapMethodDisclosure(
-        method="unavailable",
-        resamples=None,
-        seed=None,
+        method="paired_percentile_bootstrap",
+        resamples=2000,
+        seed=4_872_109,
         sample_unit="paired_trace_delta",
         ci_level="0.950",
         cluster_key=None,
-        assumptions=(),
-        unavailable_reason="empirical-percentile shortcut; v0.2 stats layer",
+        assumptions=(
+            "i.i.d. resampling across paired traces (no cluster boundaries respected)",
+        ),
+        unavailable_reason=None,
     ),
     multiplicity=MultiplicityDisclosure(
         primary_endpoint_count=2,
@@ -258,7 +260,7 @@ The stub is the right default for an end-to-end CLI smoke that proves the wiring
 ## Known limitations (v0.1.0)
 
 - The `whatifd fork` CLI dispatcher is stubbed; use the programmatic API above. End-to-end CLI wiring is the next branch.
-- CI bounds are empirical 5th/95th percentiles, not stratified bootstrap. The methodology disclosure declares this with `bootstrap.method="unavailable"` so consumers see the truth.
+- ~~CI bounds are empirical 5th/95th percentiles, not stratified bootstrap.~~ **Resolved in v0.2 (Phase E.2):** CI bounds use real paired-percentile bootstrap (`bootstrap.method = "paired_percentile_bootstrap"`, `resamples = 2000`). Cluster-paired bootstrap is the v0.3 surface.
 - Cache `verify` does structural checks but not cryptographic content-hash. Deferred to v0.2.
 
 See [`phases.md` § "Implementation gaps"](../.claude/skills/whatifd-design/references/phases.md) for the full list and closure paths.

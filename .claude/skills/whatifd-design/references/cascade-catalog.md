@@ -1165,6 +1165,26 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 
 ## Resolved cascades
 
+### Phase E.2 — pipeline switch + MethodologyDisclosure flip (resolved 2026-05-10)
+
+**Source decision:** Phase E.1 (PR #89) shipped the `paired_percentile_bootstrap` algorithm in `whatifd.statistical`. The pipeline still called `statistics.quantiles` and the methodology disclosure still emitted `bootstrap.method = "unavailable"`. Phase E.2 closes that loop: the pipeline now calls the real bootstrap, and the disclosure declares `paired_percentile_bootstrap` truthfully. The doctrine bot raised this as a cardinal-#10 concern across PRs #82, #86, #88, and #89; the disclosure flip is what earns v0.2 the right to claim non-`unavailable` methodology.
+
+**Rippled to / refactor protection:**
+- `whatifd.pipeline._cohort_result_from_bucket` now calls `paired_percentile_bootstrap(bucket.deltas, seed=_BOOTSTRAP_SEED)` instead of `statistics.quantiles`. Wire-boundary crossing uses `to_decimal_string` (Phase E.1's helper).
+- `_BOOTSTRAP_SEED = 4_872_109` is a module-level constant. Mirrored in `cli.py`'s `MethodologyDisclosure.bootstrap.seed` so the disclosure echoes the real seed the pipeline used. Future work may parameterize this through `RunManifest.selection_seed` or a dedicated stats-layer seed; v0.2 ships the constant for reproducibility.
+- `BootstrapMethodDisclosure` in `cli.py`: `method="paired_percentile_bootstrap"`, `resamples=2000`, `seed=4_872_109`, `unavailable_reason=None`, `assumptions=("i.i.d. resampling across paired traces (no cluster boundaries respected)",)`. The "unavailable" enum value remains legal for genuinely-unavailable cases (sample too small, scoring stage didn't run); cf. walkthrough fixtures #4 and #5 which still use it correctly.
+- `import statistics` removed from `pipeline.py` — no other call site needs it after the bootstrap switch.
+- `docs/getting-started.md` programmatic example flipped to declare the real method; the v0.1 "Known limitations" entry about empirical CI bounds is marked resolved.
+
+**What this PR explicitly did NOT touch:**
+- Walkthrough fixtures #4 (insufficient sample) and #5 (cache corruption) still emit `method="unavailable"` — that's the correct disclosure for those genuine-unavailability scenarios. The bot's earlier "~125 references touched" estimate over-counted: most "unavailable" mentions in the test surface are testing the type's literal-value support, not asserting that the production happy path emits it.
+- Cluster-paired bootstrap (`cluster_paired_percentile_bootstrap` enum value) — v0.3 surface; the schema enum already distinguishes.
+- Holm correction, observed-MDE warnings, pairwise judging — v0.3 / Phase E.3+.
+
+**Resolved by:** Phase E.2 PR on branch `phase-e2-disclosure-flip`. Closes issue #90.
+
+
+
 ### Phase E.1 — paired-percentile bootstrap algorithm + property tests (resolved 2026-05-10)
 
 **Source decision:** v0.1 / v0.2 ships an empirical-percentile shortcut in `whatifd.pipeline._cohort_result_from_bucket` (`statistics.quantiles(..., n=20)` 5th/95th percentile of the raw deltas). The methodology disclosure declares this honestly via `bootstrap.method = "unavailable"` + `unavailable_reason`. Phase E.1 implements the doctrinally-correct paired-percentile bootstrap algorithm in a new `whatifd.statistical` module so it can land as an algorithm-only change, reviewable independently of the disclosure flip + walkthrough regeneration churn (Phase E.2).

@@ -306,28 +306,29 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
         practical_delta_epsilon=cfg.decision.practical_delta_epsilon,
     )
 
-    # MethodologyDisclosure: v0.1 ships an empirical-percentile CI
-    # shortcut (per pipeline.py docstring + phases.md gap inventory).
-    # The methodology truthfully declares this via
-    # bootstrap.method="unavailable"; v0.2 stats layer flips the
-    # disclosure to "paired_percentile_bootstrap".
+    # MethodologyDisclosure: Phase E.2 flipped this to declare the
+    # real `paired_percentile_bootstrap` method. The pipeline-side
+    # bootstrap (whatifd.statistical) runs at the same fixed seed
+    # the disclosure echoes here. Cluster-paired bootstrap (where
+    # resamples respect cluster boundaries like session_id) is the
+    # v0.3 surface and uses the schema's
+    # `cluster_paired_percentile_bootstrap` enum value.
     methodology = MethodologyDisclosure(
         unit_of_analysis="paired_trace_delta",
         primary_metric="faithfulness",
         primary_endpoints=("failure.faithfulness", "baseline.faithfulness"),
         cohorts=("failure", "baseline"),
         bootstrap=BootstrapMethodDisclosure(
-            method="unavailable",
-            resamples=None,
-            seed=None,
+            method="paired_percentile_bootstrap",
+            resamples=2000,
+            seed=4_872_109,  # mirrors whatifd.pipeline._BOOTSTRAP_SEED
             sample_unit="paired_trace_delta",
             ci_level=DecimalString("0.950"),
             cluster_key=None,
-            assumptions=(),
-            unavailable_reason=(
-                "v0.1 empirical-percentile shortcut; stratified bootstrap "
-                "is the v0.2 stats-layer surface."
+            assumptions=(
+                "i.i.d. resampling across paired traces (no cluster boundaries respected)",
             ),
+            unavailable_reason=None,
         ),
         multiplicity=MultiplicityDisclosure(
             primary_endpoint_count=2,

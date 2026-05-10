@@ -12,6 +12,13 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Changed — Phase E.2 (pipeline switch + MethodologyDisclosure flip)
+
+- **`whatifd.pipeline._cohort_result_from_bucket` now calls `paired_percentile_bootstrap`** (Phase E.1's algorithm in `whatifd.statistical`) instead of the v0.1 `statistics.quantiles` empirical-percentile shortcut. Per-cohort CI bounds are now real bootstrap percentiles, not raw-data quantiles.
+- **`MethodologyDisclosure.bootstrap.method` flipped** from `"unavailable"` to `"paired_percentile_bootstrap"`. The disclosure now echoes `resamples=2000`, `seed=4_872_109` (matches the pipeline's `_BOOTSTRAP_SEED`), and the i.i.d.-across-paired-traces assumption. `unavailable_reason` is now `None` on the happy path.
+- The `"unavailable"` enum value remains legal for genuinely-unavailable cases (sample too small, scoring stage didn't run); walkthrough fixtures #4 and #5 still use it correctly. Closes issue #90.
+- `docs/getting-started.md` programmatic example updated to declare the real method; v0.1 "Known limitations" entry about empirical CI bounds marked resolved.
+
 ### Added — Phase E.1 (paired-percentile bootstrap algorithm + property tests)
 
 - **New module: `whatifd.statistical`**, with `paired_percentile_bootstrap(deltas, *, resamples, ci_level, seed) -> BootstrapResult`. Doctrinally-correct replacement for the v0.1 empirical-percentile shortcut in `whatifd.pipeline`. Resamples paired-trace deltas with replacement, returns the empirical (alpha/2, 1 - alpha/2) percentile of the bootstrap median distribution.

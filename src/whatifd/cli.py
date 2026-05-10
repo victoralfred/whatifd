@@ -74,6 +74,11 @@ from whatifd.diff import (
     load_report,
     render_diff_markdown,
 )
+from whatifd.statistical import (
+    BOOTSTRAP_CI_LEVEL_DECIMAL,
+    BOOTSTRAP_RESAMPLES,
+    BOOTSTRAP_SEED,
+)
 
 # Default config-file path. Operators override via `--config`.
 _DEFAULT_CONFIG_PATH = Path("whatifd.config.yaml")
@@ -306,28 +311,33 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
         practical_delta_epsilon=cfg.decision.practical_delta_epsilon,
     )
 
-    # MethodologyDisclosure: v0.1 ships an empirical-percentile CI
-    # shortcut (per pipeline.py docstring + phases.md gap inventory).
-    # The methodology truthfully declares this via
-    # bootstrap.method="unavailable"; v0.2 stats layer flips the
-    # disclosure to "paired_percentile_bootstrap".
+    # MethodologyDisclosure: Phase E.2 flipped this to declare the
+    # real `paired_percentile_bootstrap` method. Cardinal #10
+    # (statistical claims match the design): every bootstrap
+    # parameter the disclosure carries (seed, resamples, ci_level)
+    # MUST echo what the pipeline actually ran. Importing all three
+    # from `whatifd.pipeline` instead of duplicating literals
+    # eliminates the silent-drift class — a future change to any
+    # parameter updates both sites at once. Cluster-paired bootstrap
+    # (where resamples respect cluster boundaries like session_id)
+    # is the v0.3 surface; the schema enum already distinguishes
+    # `cluster_paired_percentile_bootstrap`.
     methodology = MethodologyDisclosure(
         unit_of_analysis="paired_trace_delta",
         primary_metric="faithfulness",
         primary_endpoints=("failure.faithfulness", "baseline.faithfulness"),
         cohorts=("failure", "baseline"),
         bootstrap=BootstrapMethodDisclosure(
-            method="unavailable",
-            resamples=None,
-            seed=None,
+            method="paired_percentile_bootstrap",
+            resamples=BOOTSTRAP_RESAMPLES,
+            seed=BOOTSTRAP_SEED,
             sample_unit="paired_trace_delta",
-            ci_level=DecimalString("0.950"),
+            ci_level=BOOTSTRAP_CI_LEVEL_DECIMAL,
             cluster_key=None,
-            assumptions=(),
-            unavailable_reason=(
-                "v0.1 empirical-percentile shortcut; stratified bootstrap "
-                "is the v0.2 stats-layer surface."
+            assumptions=(
+                "i.i.d. resampling across paired traces (no cluster boundaries respected)",
             ),
+            unavailable_reason=None,
         ),
         multiplicity=MultiplicityDisclosure(
             primary_endpoint_count=2,

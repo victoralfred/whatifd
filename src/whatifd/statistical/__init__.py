@@ -43,8 +43,31 @@ from whatifd.statistical.bootstrap import (
     paired_percentile_bootstrap,
 )
 from whatifd.statistical.wire_boundary import to_decimal_string
+from whatifd.types.primitives import DecimalString
+
+# Phase E.2 statistical-layer constants. Single source of truth for
+# every bootstrap parameter that crosses the cardinal #10
+# disclosure boundary. `whatifd.pipeline` imports these to drive
+# the bootstrap call; `whatifd.cli` imports the same constants to
+# populate `MethodologyDisclosure.bootstrap.{seed, resamples,
+# ci_level}`. Living in `whatifd.statistical` (not pipeline) so
+# `whatifd.cli` can import them at module-level without dragging
+# the pipeline → adapters import graph into the core load path.
+BOOTSTRAP_SEED = 4_872_109
+BOOTSTRAP_RESAMPLES = 2000
+BOOTSTRAP_CI_LEVEL = 0.95
+# Pre-formatted wire-shape view of `BOOTSTRAP_CI_LEVEL`. Provided as
+# a constant (rather than a `DecimalString(f"{BOOTSTRAP_CI_LEVEL:.3f}")`
+# expression at each call site) so the format spec lives in exactly
+# one place. A future change to ci_level's display precision updates
+# both the disclosure surface and any docs example at once.
+BOOTSTRAP_CI_LEVEL_DECIMAL = DecimalString(f"{BOOTSTRAP_CI_LEVEL:.3f}")
 
 __all__ = [
+    "BOOTSTRAP_CI_LEVEL",
+    "BOOTSTRAP_CI_LEVEL_DECIMAL",
+    "BOOTSTRAP_RESAMPLES",
+    "BOOTSTRAP_SEED",
     "BootstrapResult",
     "paired_percentile_bootstrap",
     "to_decimal_string",

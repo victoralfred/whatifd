@@ -125,6 +125,21 @@ two-comment outcome as the cost of changing comment authorship.
 
 ## What this Action does NOT do
 
+- **Upload `./reports/` as a workflow artifact.** The action emits
+  `report-json` and `report-md` as outputs (paths to the rendered
+  files) but does not call `actions/upload-artifact`. Operators who
+  want the JSON/Markdown available for download from the workflow
+  run UI should add an explicit upload step:
+  ```yaml
+  - uses: actions/upload-artifact@v4
+    if: always()
+    with:
+      name: whatifd-report
+      path: reports/
+  ```
+  The `if: always()` makes the upload run even when the verdict
+  fails the workflow (the report is most useful precisely on
+  Don't Ship and Inconclusive verdicts).
 - Manage adapter credentials. Set `LANGFUSE_*` / `ANTHROPIC_API_KEY` in
   the workflow's `env:` from your repo secrets.
 - Install whatifd. Use a separate `pip install` step (see usage example);

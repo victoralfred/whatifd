@@ -266,10 +266,23 @@ runs:
       shell: bash
       env:
         EXIT_CODE: ${{ steps.fork.outputs.exit_code }}
+      # GitHub Actions outputs are always strings; bash's `exit`
+      # coerces a numeric-string argument to its integer form via
+      # POSIX strtol. The CLI's contract is "exit code is one of
+      # '0' / '1' / '2'" — verified by whatifd.cli's exit-code
+      # tests — so EXIT_CODE is always one of those three numeric
+      # strings and the implicit coercion is safe. We deliberately
+      # do NOT use `exit $((EXIT_CODE + 0))` for arithmetic
+      # coercion: that form silently maps non-numeric values to 0,
+      # which would mask a real bug (a future CLI change that
+      # emits a non-numeric token, or a tampered output) as a
+      # successful run. Cardinal #1 — let bash's "numeric argument
+      # required" message surface a real anomaly instead of
+      # silently treating it as Ship.
+      #
       # No second `::error` emit — the fork step already emitted one
       # for dont_ship/inconclusive verdicts, and a duplicate would
-      # show up twice in the Actions UI annotation list. The `exit`
-      # alone fails the workflow.
+      # show up twice in the Actions UI annotation list.
       run: exit "$EXIT_CODE"
 
 branding:

@@ -46,4 +46,4 @@ started_at: 2026-05-10T00:00:00Z
 
 **Notes for the next session:**
 - Phase C is the verdict-policy branch on `experiment_shape`. Walkthrough fixture #7 (regression-check shape) needs to land before Phase C ships.
-- Follow-up docs PR in `whatifd-docs/`: drop v0.1 caveat admonitions; replace YAML examples that use `adapter: stub` (with caveat note) with the now-working `adapter: inspect_ai` form.
+- Follow-up docs PR in `whatifd-docs/` is tracked as **issue #81** (https://github.com/victoralfred/whatifd/issues/81): drop v0.1 caveat admonitions across inspect-ai.md, langfuse.md, workflow.md, first-experiment.md, live-langfuse.md, config.md; replace `adapter: stub` (with caveat note) examples with the now-working `adapter: inspect_ai` form. <!-- TODO(docs-followup): close this once #81 ships. -->

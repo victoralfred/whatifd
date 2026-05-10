@@ -222,7 +222,12 @@ class ScorerConfig(BaseModel):
 
     model_config = _STRICT
 
-    adapter: str
+    adapter: Literal["stub", "inspect_ai"]
+    """Scorer adapter name. Pinned to the v0.2 supported set as a
+    Literal so unknown values fail at config-load with a named-field
+    error rather than at factory dispatch time. New adapters land
+    here + a corresponding factory branch + a cascade-catalog entry."""
+
     cache_mode: Literal["auto", "on", "off", "read_only", "refresh"] = "auto"
 
     # v0.2 inspect_ai fields. All optional at the schema level so

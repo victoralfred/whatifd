@@ -414,9 +414,26 @@ def test_build_scorer_inspect_ai_with_real_score_fn_returns_inspect_scorer() -> 
     }
 
 
-def test_build_scorer_unknown_adapter_raises() -> None:
+def test_build_scorer_unknown_adapter_blocked_by_validator() -> None:
+    # adapter is a Literal["stub", "inspect_ai"] (cardinal "fail
+    # early"): unknown adapter names fail at config-load time with
+    # a Pydantic ValidationError naming the field, not at factory
+    # dispatch time. The factory's "Unknown scorer adapter" branch
+    # is now belt-and-suspenders for callers using model_construct
+    # to bypass validation.
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="adapter"):
+        ScorerConfig(adapter="not_a_real_scorer")
+
+
+def test_build_scorer_unknown_adapter_belt_and_suspenders() -> None:
+    # Direct factory hit via model_construct (skipping validation)
+    # surfaces the unreachable-under-normal-flow branch with an
+    # actionable error.
+    cfg = ScorerConfig.model_construct(adapter="not_a_real_scorer")
     with pytest.raises(AdapterFactoryError, match="Unknown scorer adapter"):
-        build_scorer(ScorerConfig(adapter="not_a_real_scorer"))
+        build_scorer(cfg)
 
 
 def test_factory_does_not_import_real_adapter_packages() -> None:

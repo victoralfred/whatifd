@@ -544,11 +544,29 @@ class TestEditLastGrepLocaleFragility:
     lands, this class can be deleted.
     """
 
-    # Regex pattern from action.yml — kept in sync via the source-
-    # text test in TestDisclosureSeedCoupling. If the action's
-    # regex diverges from this string, that test fails and forces
-    # this class's tests to re-check the boundary.
-    _PATTERN = re.compile(r"no.*comment|not found|no comments", re.IGNORECASE)
+    @staticmethod
+    def _extract_pattern_from_action_yml() -> re.Pattern[str]:
+        """Extract the literal regex from action.yml's PR-comment
+        step rather than duplicating it. If the action's regex
+        changes, this extraction picks up the new string
+        automatically — no risk of the test silently exercising a
+        stale pattern.
+        """
+        action_text = _ACTION_YML.read_text(encoding="utf-8")
+        # Match the literal `grep -qiE "<pattern>"` invocation in
+        # the PR-comment step's run script.
+        m = re.search(r'grep -qiE "([^"]+)"', action_text)
+        if m is None:
+            raise AssertionError(
+                'Could not locate `grep -qiE "..."` in action.yml. '
+                "If the failure-class-discrimination implementation changed, "
+                "update this extractor accordingly."
+            )
+        return re.compile(m.group(1), re.IGNORECASE)
+
+    @pytest.fixture(scope="class")
+    def pattern(self) -> re.Pattern[str]:
+        return self._extract_pattern_from_action_yml()
 
     @pytest.mark.parametrize(
         "stderr,expected_match",
@@ -572,8 +590,10 @@ class TestEditLastGrepLocaleFragility:
             ("validation failed: body must not be empty", False),
         ],
     )
-    def test_grep_heuristic_boundary(self, stderr: str, expected_match: bool) -> None:
-        match = bool(self._PATTERN.search(stderr))
+    def test_grep_heuristic_boundary(
+        self, pattern: re.Pattern[str], stderr: str, expected_match: bool
+    ) -> None:
+        match = bool(pattern.search(stderr))
         assert match is expected_match, (
             f"Locale boundary regression: expected match={expected_match} for "
             f"stderr={stderr!r}, got {match}. If gh CLI's stderr text changed "

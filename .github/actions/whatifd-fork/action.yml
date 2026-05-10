@@ -240,6 +240,16 @@ runs:
         # the marker-based replacement: post our comments with an
         # HTML marker (`<!-- whatifd-fork -->`), find them via
         # `gh api` instead of relying on `--edit-last`.
+        # Capture pattern: `2>&1 1>/dev/null` swaps the streams —
+        # stderr → captured pipe, stdout → /dev/null. The DISCARD
+        # of stdout is INTENTIONAL: on success `gh pr comment`
+        # prints the comment URL to stdout, but we don't echo it
+        # to the workflow log (the URL is already accessible via
+        # the PR's comments tab + the GitHub Actions UI surfaces
+        # the rendered comment inline). Capturing stdout would
+        # bloat the workflow log without operator value; we want
+        # ONLY stderr (used by the failure-class discrimination
+        # below). Verified by test_stderr_capture_redirect_order.
         edit_stderr=$(gh pr comment "$PR_NUMBER" --body-file "$comment_file" --edit-last 2>&1 1>/dev/null) \
           && edit_status=0 \
           || edit_status=$?

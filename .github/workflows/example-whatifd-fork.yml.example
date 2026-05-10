@@ -33,7 +33,7 @@ jobs:
       # version: the whatifd repo pins by tag (`@v7`); production
       # forks should switch to `@<sha>  # v7.x.y` before checking in.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v7  # pin to SHA before production use; see CONTRIBUTING.md
         with:
           python-version: "3.12"
 

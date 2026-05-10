@@ -58,7 +58,7 @@ The push triggers `.github/workflows/release.yml`. Monitor at `https://github.co
 After the workflow completes:
 
 - [ ] All four packages visible at `https://pypi.org/project/whatifd/<version>/` (and `/whatifd-langfuse/`, `/whatifd-inspect-ai/`, `/whatifd-phoenix/`)
-- [ ] GitHub Release created at `https://github.com/victoralfred/whatifd/releases/tag/v0.1.0` with auto-generated notes
+- [ ] GitHub Release created at `https://github.com/victoralfred/whatifd/releases/tag/vX.Y.Z` with auto-generated notes
 - [ ] `pip install whatifd whatifd-langfuse whatifd-inspect-ai whatifd-phoenix` in a clean venv resolves cleanly
 - [ ] `whatifd --help` works after install
 - [ ] **Schema URL `https://whatif.codes/schema/report/v0.1.json` resolves with HTTP 200** (every report's `schema_uri` field points here; a 404 silently breaks any consumer that fetches the schema for validation). If the URL still 404s post-tag-push, deploy `src/whatifd/report/schema/v0.1.schema.json` to the static host backing `whatif.codes` BEFORE announcing the release. This is a load-bearing post-release step, not optional.

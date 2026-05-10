@@ -90,25 +90,20 @@ runs:
         esac
 
         # Locate the latest report files. The CLI writes to ./reports/
-        # by convention (see whatifd.cli._run_fork_pipeline). Using
-        # `find ... -newer` against a marker file the action created
-        # before invoking the CLI would be ideal, but the CLI's own
-        # filenames already encode a UTC timestamp
-        # (`whatifd-fork-<YYYY-MM-DD-HHMMSS>.{json,md}`) so a
-        # stat-based mtime sort is sufficient. `printf '%T@ %p\n'`
-        # produces space-separated `epoch path` records that handle
-        # spaces in paths (the path is the LAST field, not the
-        # first); `sort -k1,1nr | head -n1 | cut -d' ' -f2-` picks
-        # the newest. Filed cli.py follow-up to emit chosen paths
-        # directly via GITHUB_OUTPUT so this discovery becomes
-        # unnecessary.
+        # by convention (see whatifd.cli._run_fork_pipeline).
+        #
+        # Uses Python for portability: GNU find's printf-format
+        # extension is not available on macOS (BSD find), and
+        # `stat`'s format spec also diverges between GNU and BSD.
+        # Every GitHub runner ships with Python 3, so a one-liner
+        # is the cross-platform way to get an mtime-sorted newest
+        # match. Issue #93 tracks the cleaner CLI-emits-its-own-
+        # paths follow-up; this discovery is the v0.2 fallback.
         report_json=""
         report_md=""
         if [[ -d reports ]]; then
-          report_json=$(find reports -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\n' 2>/dev/null \
-            | sort -k1,1nr | head -n1 | cut -d' ' -f2- || true)
-          report_md=$(find reports -maxdepth 1 -type f -name '*.md' -printf '%T@ %p\n' 2>/dev/null \
-            | sort -k1,1nr | head -n1 | cut -d' ' -f2- || true)
+          report_json=$(python3 -c "import glob,os,sys; m=glob.glob('reports/*.json'); m and sys.stdout.write(max(m, key=os.path.getmtime))" 2>/dev/null || true)
+          report_md=$(python3 -c "import glob,os,sys; m=glob.glob('reports/*.md'); m and sys.stdout.write(max(m, key=os.path.getmtime))" 2>/dev/null || true)
         fi
 
         echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"

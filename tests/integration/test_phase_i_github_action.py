@@ -206,6 +206,33 @@ class TestExitCodeMapping:
         assert '*) verdict="inconclusive"' in run
 
 
+class TestCrossPlatformPathDiscovery:
+    """The action runs on Linux / macOS / Windows runners; the
+    path-discovery shell fragment must work on all three. GNU
+    `find -printf` is not available on macOS (BSD find); `stat`'s
+    format spec diverges between GNU and BSD. Python is on every
+    GitHub runner.
+    """
+
+    def test_path_discovery_does_not_use_gnu_find_printf(self, action: dict[str, Any]) -> None:
+        for step in action["runs"]["steps"]:
+            if step.get("id") == "fork":
+                run = step["run"]
+                assert "-printf" not in run, (
+                    "Path discovery must not use `find -printf` — that's GNU-only "
+                    "and silently produces empty output on macOS runners (BSD "
+                    "find). Use the Python fallback (portable across every GitHub "
+                    "runner)."
+                )
+                # And the Python fallback must actually be present.
+                assert "python3 -c" in run, (
+                    "Path discovery must use a Python one-liner for portability "
+                    "across Linux / macOS / Windows runners."
+                )
+                return
+        raise AssertionError("fork step not found")
+
+
 class TestPRCommentDeduplication:
     """Repeated pushes to the same PR must produce one rolling
     whatifd comment, not a stack. `gh pr comment --edit-last`

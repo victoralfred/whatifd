@@ -106,6 +106,23 @@ Operators adopting this Action in production should replace each
 A repo-wide SHA-pin migration is tracked separately and applies to
 the whatifd repo's own workflows alongside the example.
 
+## Edge cases
+
+### `--edit-last` and token-author identity
+
+The PR-comment step uses `gh pr comment --edit-last`, which updates
+the most-recent comment **authored by the supplied token**. If the
+`github-token` input changes between workflow runs on the same PR
+(e.g., a workflow swaps from the default `${{ github.token }}` to a
+custom PAT, or vice versa), `--edit-last` searches only for comments
+authored by the new token. The previous comment authored by the old
+token stays put, and a fresh comment from the new token gets added —
+producing a two-comment stack instead of one rolling comment.
+
+If you need consistent identity across runs, pin the token (PAT or
+default) and don't switch between them mid-PR. Or, accept the
+two-comment outcome as the cost of changing comment authorship.
+
 ## What this Action does NOT do
 
 - Manage adapter credentials. Set `LANGFUSE_*` / `ANTHROPIC_API_KEY` in

@@ -601,7 +601,8 @@ class TestInspectAiScorerConfig:
         # rejection.
         from whatifd.config import ScorerConfig
 
-        with pytest.raises(ValidationError, match="nested structures not allowed"):
-            ScorerConfig(adapter="stub", scoring_parameters={"k": [1, 2, 3]})
-        with pytest.raises(ValidationError, match="nested structures not allowed"):
-            ScorerConfig(adapter="stub", scoring_parameters={"k": {"nested": True}})
+        # Exhaustive: list, dict, tuple, set — the four collection
+        # types the pre-validator rejects.
+        for bad_value in ([1, 2, 3], {"nested": True}, (1, 2, 3), {1, 2, 3}):
+            with pytest.raises(ValidationError, match="nested structures not allowed"):
+                ScorerConfig(adapter="stub", scoring_parameters={"k": bad_value})

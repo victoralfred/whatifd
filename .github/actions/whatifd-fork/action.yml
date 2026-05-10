@@ -139,14 +139,25 @@ runs:
         # Annotation level mirrors the fail-step's blocking behavior:
         # Ship => notice (informational), Don't Ship + Inconclusive
         # both block the workflow under fail-on-dont-ship=true, so
-        # both surface as ::error for visual consistency. A floor-
-        # failure Inconclusive blocks Ship just as firmly as a
-        # Don't-Ship verdict; softening one of them to ::warning
-        # would mislead a reviewer scanning the Actions UI.
+        # both surface as ::error for visual consistency. Cardinal
+        # #8 (every blocking finding must be actionable): the
+        # message points the operator at the rendered Markdown
+        # verdict, which the CLI emits with the fix-suggestion
+        # templates the trust floor + decision policy registered.
+        # The annotation itself can't render the templates (it's a
+        # one-line GitHub UI element); the PR comment OR the
+        # uploaded report-md artifact is where actionable detail
+        # lives.
         case "$verdict" in
-          ship) echo "::notice title=whatifd verdict::Ship" ;;
-          dont_ship) echo "::error title=whatifd verdict::Don't Ship" ;;
-          inconclusive) echo "::error title=whatifd verdict::Inconclusive" ;;
+          ship)
+            echo "::notice title=whatifd verdict::Ship — see ${report_md:-./reports/} for full report"
+            ;;
+          dont_ship)
+            echo "::error title=whatifd verdict::Don't Ship — see ${report_md:-./reports/} for blocking findings + fix suggestions"
+            ;;
+          inconclusive)
+            echo "::error title=whatifd verdict::Inconclusive — see ${report_md:-./reports/} for floor failures + fix suggestions (cardinal #8)"
+            ;;
         esac
 
     # Post the rendered Markdown verdict as a PR comment when running on a
@@ -206,11 +217,10 @@ runs:
         # rephrase the error message can break the discrimination —
         # falling through the `elif` to the else-branch surfaces
         # the failure as a real error (correctly), but treats a
-        # legitimate first-run as a real error too. Issue #94 (TODO:
-        # file) tracks the marker-based replacement: post our
-        # comments with an HTML marker (`<!-- whatifd-fork -->`),
-        # find them via `gh api` instead of relying on `--edit-last`.
-        # Tracked as issue #94.
+        # legitimate first-run as a real error too. Issue #94 tracks
+        # the marker-based replacement: post our comments with an
+        # HTML marker (`<!-- whatifd-fork -->`), find them via
+        # `gh api` instead of relying on `--edit-last`.
         edit_stderr=$(gh pr comment "$PR_NUMBER" --body-file "$comment_file" --edit-last 2>&1 1>/dev/null) \
           && edit_status=0 \
           || edit_status=$?
@@ -219,8 +229,14 @@ runs:
           : # success
         elif echo "$edit_stderr" | grep -qiE "no.*comment|not found|no comments"; then
           # First run on this PR — no prior whatifd comment to edit.
-          # Create a fresh one.
-          gh pr comment "$PR_NUMBER" --body-file "$comment_file"
+          # Create a fresh one. Capture the create's exit code so a
+          # failure here doesn't get swallowed (cardinal #1: no
+          # silent failures, even on the recovery path).
+          if ! gh pr comment "$PR_NUMBER" --body-file "$comment_file"; then
+            create_status=$?
+            echo "::error title=whatifd PR comment::fresh-create fallback failed (exit $create_status); both --edit-last and create paths exhausted"
+            exit "$create_status"
+          fi
         else
           # Real failure (auth, network, validation). Surface
           # everything we know and exit non-zero.

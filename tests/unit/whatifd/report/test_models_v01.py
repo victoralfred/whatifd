@@ -193,6 +193,7 @@ def _report(
     return ReportV01(
         schema_version=REPORT_SCHEMA_VERSION,
         schema_uri=REPORT_SCHEMA_URI,
+        experiment_shape="failure_rescue",
         verdict_state=verdict_state,
         cohort_results=cohort_results
         if cohort_results is not None
@@ -216,10 +217,10 @@ class TestSchemaConstants:
     def test_version_is_pinned(self) -> None:
         # Pinning the literal value: a rename would break wire
         # compatibility for every downstream consumer.
-        assert REPORT_SCHEMA_VERSION == "0.1"
+        assert REPORT_SCHEMA_VERSION == "0.2"
 
     def test_uri_is_canonical(self) -> None:
-        assert REPORT_SCHEMA_URI == "https://whatif.codes/schema/report/v0.1.json"
+        assert REPORT_SCHEMA_URI == "https://whatif.codes/schema/report/v0.2.json"
 
     def test_uri_contains_version(self) -> None:
         # Defends against the URI and version drifting apart.
@@ -356,6 +357,7 @@ class TestDeterminismFieldList:
         expected = {
             "schema_version",
             "schema_uri",
+            "experiment_shape",
             "verdict_state",
             "cohort_results",
             "failures",
@@ -468,7 +470,7 @@ class TestImportShape:
     def test_module_exports(self) -> None:
         from whatifd import report as pkg
 
-        assert pkg.REPORT_SCHEMA_VERSION == "0.1"
+        assert pkg.REPORT_SCHEMA_VERSION == "0.2"
         assert pkg.REPORT_SCHEMA_URI == REPORT_SCHEMA_URI
         assert pkg.ReportV01 is ReportV01
         # `VerdictState` is a typing alias (`Literal[...]`), not a

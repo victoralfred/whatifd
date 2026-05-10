@@ -12,6 +12,13 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase A (v0.2 schema groundwork)
+
+- **`ExperimentShape` literal + top-level `experiment_shape` field on `ReportV01`** — `Literal["failure_rescue", "regression_check"]`. v0.1 was failure-rescue only; the field is now structural so the v0.2 verdict-policy branch (Phase C) has somewhere to dispatch. Default on `RunManifest` is `"failure_rescue"` for caller ergonomics; required (no default) on the wire shape.
+- **Schema bumped to v0.2** — `REPORT_SCHEMA_VERSION = "0.2"`, `REPORT_SCHEMA_URI = "https://whatif.codes/schema/report/v0.2.json"`. v0.1 schema file is FROZEN at `src/whatifd/report/schema/v0.1.schema.json` (sha256 pinned in `tests/unit/whatifd/report/test_schema_v0_1_frozen.py`); v0.2 ships at `src/whatifd/report/schema/v0.2.schema.json`. Schema-gen script now derives filename from `REPORT_SCHEMA_VERSION`.
+- **`whatifd report-migrate` real v0.1 → v0.2 logic** — replaces the v0.1 no-op stub. Loads JSON, walks the migration chain via `whatifd.report.migrate.migrate_report`, writes `<name>.v0.2.json` (or overwrites with `--in-place`). Idempotent: a v0.2 input is a reported no-op exit 0. Cardinal #1: malformed input produces a typed `MigrationError` → stderr message → exit 2.
+- **`whatifd.report.migrate` module** — extension point for future v0.X → v0.Y migrations via the `_MIGRATIONS` chain dispatcher.
+
 ### Fixed
 
 - **`__version__` drift between `pyproject.toml` and source literal** — `src/whatifd/__init__.py` previously hardcoded `__version__ = "0.0.1"` and was never bumped when `pyproject.toml` moved to `0.1.0`. The TestPyPI dry-run install verification surfaced the drift (`whatifd 0.0.1` reported by an installed `0.1.0rc1` distribution). All three packages (`whatifd`, `whatifd-langfuse`, `whatifd-inspect-ai`) now read `__version__` from `importlib.metadata.version(<dist>)` at import time, so the distribution metadata is the single source of truth. Source-only checkouts fall back to `0.0.0+unknown`. A new `tests/unit/whatifd/test_version_parity.py` pins the parity to prevent regression.

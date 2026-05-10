@@ -83,12 +83,12 @@ from whatifd.cache.summary import CacheSummary
 from whatifd.types.cohort import CohortResult
 from whatifd.types.failure import FailureRecord
 from whatifd.types.finding import DecisionFinding
-from whatifd.types.manifest import RunManifest
+from whatifd.types.manifest import ExperimentShape, RunManifest
 from whatifd.types.policy import DecisionPolicy, TrustFloor
 from whatifd.types.statistical import MethodologyDisclosure
 
-_SchemaVersion = Literal["0.1"]
-_SchemaUri = Literal["https://whatif.codes/schema/report/v0.1.json"]
+_SchemaVersion = Literal["0.2"]
+_SchemaUri = Literal["https://whatif.codes/schema/report/v0.2.json"]
 
 # Type-level pins for schema_version / schema_uri: callers cannot
 # construct a `ReportV01` with a stale or wrong version. mypy strict
@@ -98,8 +98,8 @@ _SchemaUri = Literal["https://whatif.codes/schema/report/v0.1.json"]
 # its own constants; a future `whatifd report-migrate` consumes the
 # wire JSON without instantiating the typed dataclass, so this pin
 # does not block migration paths.
-REPORT_SCHEMA_VERSION: _SchemaVersion = "0.1"
-REPORT_SCHEMA_URI: _SchemaUri = "https://whatif.codes/schema/report/v0.1.json"
+REPORT_SCHEMA_VERSION: _SchemaVersion = "0.2"
+REPORT_SCHEMA_URI: _SchemaUri = "https://whatif.codes/schema/report/v0.2.json"
 
 VerdictState = Literal["ship", "dont_ship", "inconclusive"]
 """Wire-format verdict literal. The internal `Verdict` sealed union
@@ -159,6 +159,7 @@ class ReportV01:
     schema_version: _SchemaVersion
     schema_uri: _SchemaUri
 
+    experiment_shape: ExperimentShape
     verdict_state: VerdictState
 
     cohort_results: list[CohortResult]

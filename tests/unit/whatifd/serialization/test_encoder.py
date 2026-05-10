@@ -270,7 +270,7 @@ class TestEncodeReportV01:
     def test_round_trips_to_dict(self) -> None:
         out = self._report_bytes()
         parsed = json.loads(out)
-        assert parsed["schema_version"] == "0.1"
+        assert parsed["schema_version"] == "0.2"
         assert parsed["verdict_state"] == "ship"
         assert isinstance(parsed["cohort_results"], list)
         assert isinstance(parsed["failures"], list)

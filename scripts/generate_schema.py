@@ -70,7 +70,8 @@ from whatifd.report.models_v01 import (  # noqa: E402
     ReportV01,
 )
 
-_SCHEMA_FILE = _REPO_ROOT / "src" / "whatifd" / "report" / "schema" / "v0.1.schema.json"
+_SCHEMA_DIR = _REPO_ROOT / "src" / "whatifd" / "report" / "schema"
+_SCHEMA_FILE = _SCHEMA_DIR / f"v{REPORT_SCHEMA_VERSION}.schema.json"
 
 # Top-level fields annotated `x-deterministic: false` per cardinal #4.
 # Everything else defaults to deterministic. Per-field annotations

@@ -125,6 +125,7 @@ def project_to_report_v01(
     return ReportV01(
         schema_version=REPORT_SCHEMA_VERSION,
         schema_uri=REPORT_SCHEMA_URI,
+        experiment_shape=runtime.experiment_shape,
         verdict_state=verdict_state,
         cohort_results=cohort_results,
         failures=list(failures),

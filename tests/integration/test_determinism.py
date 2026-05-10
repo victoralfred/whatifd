@@ -215,6 +215,7 @@ def test_deterministic_field_set_matches_schema() -> None:
     expected = {
         "schema_version",
         "schema_uri",
+        "experiment_shape",
         "verdict_state",
         "cohort_results",
         "failures",

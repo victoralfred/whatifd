@@ -173,12 +173,27 @@ class PhoenixTraceSource:
         return ClusterKeySupport(available_keys=())
 
     def _project(self, trace_id: str, spans: list[dict[str, object]]) -> RawTrace:
-        # Find the root span — that's where input/output user content
-        # lives. If multiple candidates pass `_is_root_span`, prefer
-        # the parent-less one; if none, fall back to the first span.
-        roots = [s for s in spans if s.get(_ATTR_PARENT_ID) in (None, "")]
-        if not roots:
-            roots = [s for s in spans if _is_root_span(s)]
+        # Defensive: an empty `spans` list is structurally impossible
+        # under the current iter_traces (a span is only added to
+        # spans_by_trace if it has a valid trace_id; no trace_id =>
+        # no entry => _project not called). Cardinal #1 belt-and-
+        # suspenders for a future refactor that decouples grouping
+        # from projection.
+        if not spans:
+            return RawTrace(
+                trace_id=trace_id,
+                cohort=self.cohort_classifier(spans),
+                user_message=Sensitive("", classification="user_content"),
+                original_response=Sensitive("", classification="user_content"),
+                metadata={},
+            )
+
+        # Find the root span via the unified `_is_root_span` helper.
+        # `_is_root_span` returns True for parent-less spans first
+        # and falls back to OpenInference span-kind. A previous
+        # version inlined the parent_id check here, drifting from
+        # _is_root_span; the two now share a single source of truth.
+        roots = [s for s in spans if _is_root_span(s)]
         root = roots[0] if roots else spans[0]
 
         # `input.value` / `output.value` arrived pre-wrapped as

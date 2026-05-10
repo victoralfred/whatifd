@@ -15,11 +15,12 @@ from whatifd_phoenix import PhoenixTraceSource
 client = Client(endpoint="...")
 
 def spans_provider():
-    # `query_spans` returns a pandas DataFrame in arize-phoenix-client
-    # v4+; iterate rows-as-dicts. Adjust to your client's surface.
-    df = client.query_spans(query=...)
-    for _, row in df.iterrows():
-        yield row.to_dict()
+    # Cardinal #9 — avoid `df.iterrows()` (pandas/NumPy row iteration).
+    # `to_dict(orient="records")` materializes once into a list of
+    # dicts; the adapter then iterates that list at orchestration
+    # speed.
+    spans = client.query_spans(query=...).to_dict(orient="records")
+    yield from spans
 
 source = PhoenixTraceSource(
     spans_provider=spans_provider,

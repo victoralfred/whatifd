@@ -29,11 +29,14 @@ from whatifd_phoenix import PhoenixTraceSource
 client = Client(endpoint="http://localhost:6006")
 
 def spans_provider():
-    # `query_spans` returns a pandas DataFrame in arize-phoenix-client
-    # v4+; iterate rows-as-dicts. Adjust to your client's surface.
-    df = client.query_spans(query=...)
-    for _, row in df.iterrows():
-        yield row.to_dict()
+    # Cardinal #9 (orchestration, not compute) note: avoid
+    # `df.iterrows()` — it's pandas-backed row iteration that pulls
+    # NumPy buffers per row. Prefer the streaming form below
+    # (`itertuples` returns lightweight named tuples) or, better,
+    # iterate a list-of-dicts response directly if your Phoenix
+    # client surface offers one.
+    spans = client.query_spans(query=...).to_dict(orient="records")
+    yield from spans
 
 def classify(spans):
     # Cohort classification has access to ALL spans of a trace

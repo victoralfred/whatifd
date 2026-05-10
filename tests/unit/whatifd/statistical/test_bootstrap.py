@@ -241,6 +241,28 @@ class TestWireBoundary:
 
         assert to_decimal_string(0.0) == "0.000"
 
+    def test_precision_zero_produces_integer_format(self) -> None:
+        from whatifd.statistical import to_decimal_string
+
+        # precision=0 is legal — produces no decimal point at all
+        # (matches f"{x:.0f}" semantics).
+        assert to_decimal_string(3.7, precision=0) == "4"
+        assert to_decimal_string(-2.4, precision=0) == "-2"
+
+    @pytest.mark.parametrize("bad_precision", [-1, -5, -100])
+    def test_negative_precision_raises_value_error(self, bad_precision: int) -> None:
+        from whatifd.statistical import to_decimal_string
+
+        with pytest.raises(ValueError, match="precision must be >= 0"):
+            to_decimal_string(0.5, precision=bad_precision)
+
+
+class TestEdgeCases:
+    """Bootstrap algorithm edge cases that don't fit a single
+    behavioral category — collected so a future reader navigating
+    by class name finds them in one place.
+    """
+
     def test_resamples_one_produces_degenerate_collapsed_ci(self) -> None:
         # Edge case pinned by the docstring: resamples=1 is valid
         # but degenerate. Both indices round to 0; ci_lower ==
@@ -248,3 +270,36 @@ class TestWireBoundary:
         # docstring claim is structurally enforced.
         result = paired_percentile_bootstrap([0.1, 0.2, 0.3], resamples=1, seed=42)
         assert result.ci_lower == result.ci_upper
+
+    def test_full_wire_boundary_round_trip(self) -> None:
+        # Integration smoke: bootstrap output → to_decimal_string →
+        # CohortResult.median_delta. Pins that the typed wire shape
+        # actually accepts the helper's output (cardinal #6 boundary
+        # crossing) and that the bootstrap-bound DecimalStrings
+        # parse-and-round-trip cleanly.
+        from whatifd.statistical import to_decimal_string
+        from whatifd.types.cohort import CohortResult
+
+        result = paired_percentile_bootstrap(
+            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+            seed=42,
+        )
+        cohort = CohortResult(
+            name="failure",
+            selected=10,
+            replayed=10,
+            scored=10,
+            ci_computable=True,
+            ci_unavailable_reason=None,
+            median_delta=to_decimal_string(result.median),
+            ci_lower=to_decimal_string(result.ci_lower),
+            ci_upper=to_decimal_string(result.ci_upper),
+            floor_passed=True,
+            improved_count=10,
+            unchanged_count=0,
+            regressed_count=0,
+        )
+        assert isinstance(cohort.median_delta, str)  # DecimalString is a NewType over str
+        # Round-trip: parse the wire shape back to a float; should
+        # equal the bootstrap median rounded to 3 decimals.
+        assert abs(float(cohort.median_delta) - round(result.median, 3)) < 1e-9

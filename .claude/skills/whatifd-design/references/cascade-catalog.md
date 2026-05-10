@@ -1176,13 +1176,15 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 - 19 tests pin: deterministic-with-seed, no-global-random-perturbation, empty-input rejection, ci_level monotonicity, Hypothesis property tests on arbitrary delta sequences.
 
 **What this PR explicitly does NOT change:**
-- `whatifd.pipeline._cohort_result_from_bucket` still calls `statistics.quantiles`. The pipeline-side switch is Phase E.2.
+- `whatifd.pipeline._cohort_result_from_bucket` still calls `statistics.quantiles`. The pipeline-side switch is Phase E.2 (issue #90).
 - `MethodologyDisclosure.bootstrap.method` still emits `"unavailable"` from `cli.py`. Phase E.2 flips this to `"paired_percentile_bootstrap"`.
 - The six committed walkthrough fixtures (`docs/walkthroughs/01..06`) still encode `"unavailable"` in their methodology blocks. Regeneration is Phase E.2's main scope.
 
 **Why split:** the algorithm is one substantive change; flipping the disclosure default + regenerating six golden walkthrough fixtures is another substantive change. Bundling them produces a PR with ~125+ test references touched, which becomes hard to review for the actual algorithmic correctness.
 
-**Resolved by:** PR on branch `phase-e-paired-bootstrap`. Phase E.2 (the disclosure flip + walkthrough regen) is the explicit follow-up.
+**On the CI-width monotonicity claim:** an earlier draft of this entry called the property "structurally guaranteed by the index formula." That overstates the case. The percentile-index formula `round((alpha/2)*(N-1))` IS deterministic, so for a fixed seeded resample distribution, higher `ci_level` produces indices that move outward in the sorted distribution — but at small `resamples` (e.g., 50) the rounded indices CAN collide between adjacent ci_levels, producing equal widths rather than strictly larger ones. The Hypothesis test asserts `<=`, which is the correct invariant; the cascade claim is "non-decreasing in ci_level on the same seed," not "strictly increasing."
+
+**Resolved by:** PR on branch `phase-e-paired-bootstrap`. Phase E.2 (the disclosure flip + walkthrough regen) is the explicit follow-up tracked at issue #90.
 
 
 

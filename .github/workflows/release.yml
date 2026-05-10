@@ -52,8 +52,30 @@ jobs:
           ]
           bad = 0
           for pkg in packages:
-              data = tomllib.loads(Path(pkg).read_text())
-              pkg_version = data["project"]["version"]
+              path = Path(pkg)
+              if not path.exists():
+                  print(
+                      f"::error file={pkg}::pyproject.toml is missing — the "
+                      f"workspace package set in release.yml drifted from the "
+                      f"actual repo layout. Update the `packages` list."
+                  )
+                  bad += 1
+                  continue
+              try:
+                  data = tomllib.loads(path.read_text())
+              except tomllib.TOMLDecodeError as exc:
+                  print(f"::error file={pkg}::malformed TOML: {exc}")
+                  bad += 1
+                  continue
+              try:
+                  pkg_version = data["project"]["version"]
+              except KeyError:
+                  print(
+                      f"::error file={pkg}::missing [project].version — "
+                      f"the file parses but has no version field."
+                  )
+                  bad += 1
+                  continue
               if pkg_version != tag_version:
                   print(
                       f"::error file={pkg}::tag {tag} implies version "

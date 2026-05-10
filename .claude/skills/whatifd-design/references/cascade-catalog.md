@@ -1165,6 +1165,8 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 
 ## Resolved cascades
 
+> **Ordering convention:** entries are reverse-chronological — newest at the top, oldest at the bottom. New resolved cascades are PREPENDED to this section, not appended. Reasoning: a contributor scanning for "what shipped recently" or "what's the latest doctrine on X" gets the answer in the first few entries instead of paging to the end. The original v0.1 entries (PRs #26, #31, etc.) sit at the bottom because they were resolved earliest; the most recent v0.2 phases sit at the top.
+
 ### Phase I — `whatifd-fork` GitHub Action wrapper (resolved 2026-05-10)
 
 **Source decision:** The public site (whatif.codes) promises a "GitHub Action wrapper" as a v0.2 feature. The CLI is already CI-ready (config-file driven, structured exit codes 0/1/2, deterministic `./reports/` artifacts); the Action's job is to capture the artifacts and surface the verdict through GitHub's PR/status surface.

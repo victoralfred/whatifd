@@ -313,29 +313,53 @@ def test_build_scorer_inspect_ai_with_score_fn_constructs() -> None:
         build_scorer(cfg)
 
 
+def _test_score_fn_stand_in(case: object) -> object:
+    """ScoreCase-shaped stand-in for the factory wiring test.
+
+    Returns a fixed shape compatible with what InspectAIScorer.score
+    expects from score_fn. Defined at module level so the
+    `python:<module>:<attr>` resolver can find it.
+    """
+    return None
+
+
 def test_build_scorer_inspect_ai_with_real_score_fn_returns_inspect_scorer() -> None:
     # End-to-end: a score_fn that resolves to a real callable produces
-    # an InspectAIScorer. Uses a trivial stand-in callable exposed
-    # for testing. importorskip guards optional-adapter absence.
+    # an InspectAIScorer with all config fields wired through. Uses
+    # `_test_score_fn_stand_in` defined at module top — a callable
+    # with a ScoreCase-shaped signature, not an arbitrary builtin —
+    # so the test's structural claim ("factory wires score_fn") is
+    # not muddled with "factory accepts any old callable shape."
+    # importorskip guards optional-adapter absence.
     pytest.importorskip("whatifd_inspect_ai")
     from whatifd_inspect_ai import InspectAIScorer
 
     cfg = ScorerConfig(
         adapter="inspect_ai",
-        # `len` is a stand-in callable — the factory only needs a
-        # callable to wire into InspectAIScorer.score_fn; the actual
-        # score-call shape is exercised by the InspectAIScorer
-        # contract tests, not here.
-        score_fn="python:builtins:len",
+        score_fn=f"python:{__name__}:_test_score_fn_stand_in",
         judge_provider="anthropic",
         judge_model_id="claude-haiku-4-5",
+        judge_model_snapshot="claude-haiku-4-5-20251001",
         rubric_id="test-rubric-v1",
         rubric_text="Score 0-1 by faithfulness.",
+        scoring_parameters={"temperature": 0.0, "max_tokens": 1024, "deterministic": True},
     )
     scorer = build_scorer(cfg)
     assert isinstance(scorer, InspectAIScorer)
+    assert scorer.score_fn is _test_score_fn_stand_in
     assert scorer.judge_provider == "anthropic"
+    assert scorer.judge_model_id == "claude-haiku-4-5"
+    assert scorer.judge_model_snapshot == "claude-haiku-4-5-20251001"
     assert scorer.rubric_id == "test-rubric-v1"
+    assert scorer.rubric_text == "Score 0-1 by faithfulness."
+    # scoring_parameters pass-through (cardinal #10 — methodology
+    # disclosure: knobs the operator declared must reach the scorer
+    # unchanged).
+    assert dict(scorer.scoring_parameters) == {
+        "temperature": 0.0,
+        "max_tokens": 1024,
+        "deterministic": True,
+    }
 
 
 def test_build_scorer_unknown_adapter_raises() -> None:

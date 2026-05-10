@@ -151,7 +151,17 @@ def build_scorer(cfg: ScorerConfig) -> Scorer:
         # Lazy import — the inspect_ai package is an optional adapter
         # extra. Importing at module top-level would violate the
         # core-modules-do-not-load-real-adapter-packages contract.
-        from whatifd_inspect_ai import InspectAIScorer
+        # Cardinal #1: a missing optional package surfaces as a typed
+        # AdapterFactoryError with an actionable install hint, never
+        # a raw ImportError stack trace.
+        try:
+            from whatifd_inspect_ai import InspectAIScorer
+        except ImportError as exc:
+            raise AdapterFactoryError(
+                "scorer.adapter='inspect_ai' requires the optional "
+                "`whatifd-inspect-ai` package. Install with: "
+                "`pip install whatifd-inspect-ai` (or `uv pip install whatifd-inspect-ai`)."
+            ) from exc
 
         # MyPy: cfg.* fields narrowed-non-None by the validator;
         # explicit asserts make the type-narrow visible.

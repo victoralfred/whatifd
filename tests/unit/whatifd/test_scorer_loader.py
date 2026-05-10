@@ -16,10 +16,19 @@ class TestHappyPath:
         assert fn is len
 
     def test_returns_attribute_not_module(self) -> None:
-        fn = load_score_fn("python:json:dumps")
+        # Defends against a loader bug returning `module` instead of
+        # `getattr(module, attr)`. The two assertions are needed
+        # together: `fn is json.dumps` would pass even if `json` were
+        # somehow returned (because `getattr` resolves at access
+        # time), so we also assert `fn is not json` to pin the
+        # attribute-vs-module distinction structurally.
         import json
+        import types
 
+        fn = load_score_fn("python:json:dumps")
         assert fn is json.dumps
+        assert fn is not json
+        assert not isinstance(fn, types.ModuleType)
 
 
 class TestStructuralErrors:

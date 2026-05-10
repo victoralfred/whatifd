@@ -51,6 +51,35 @@ def _stringify(value: object) -> str:
     return str(value)
 
 
+def _wrap_user_content_in_span(span: dict[str, object]) -> dict[str, object]:
+    """Return a shallow copy of `span` with `input.value` and
+    `output.value` wrapped as `Sensitive[str]`.
+
+    Cardinal #5 boundary: any span attribute that may carry user
+    content is wrapped at adapter ingress so the classifier callable
+    (and any other downstream consumer of the span list) sees a
+    `Sensitive[str]` rather than a raw user-content string. Other
+    attributes pass through unchanged because they carry tooling
+    state (model names, latencies, span kinds), not user content.
+
+    Original spans are NOT mutated — the caller may reuse them.
+    """
+    if _ATTR_INPUT not in span and _ATTR_OUTPUT not in span:
+        return span
+    wrapped: dict[str, object] = dict(span)
+    if _ATTR_INPUT in wrapped:
+        wrapped[_ATTR_INPUT] = Sensitive(
+            _stringify(wrapped[_ATTR_INPUT]),
+            classification="user_content",
+        )
+    if _ATTR_OUTPUT in wrapped:
+        wrapped[_ATTR_OUTPUT] = Sensitive(
+            _stringify(wrapped[_ATTR_OUTPUT]),
+            classification="user_content",
+        )
+    return wrapped
+
+
 def _is_root_span(span: dict[str, object]) -> bool:
     """Identify the root span of a trace.
 
@@ -106,7 +135,17 @@ class PhoenixTraceSource:
                     {k: v for k, v in span.items() if k != _ATTR_INPUT},
                 )
                 continue
-            spans_by_trace[trace_id].append(span)
+            # Cardinal #5: pre-wrap input.value / output.value on
+            # EVERY span (not just the root) before the classifier
+            # sees them. The classifier receives the full span list
+            # — child spans may carry user content in their own
+            # input.value / output.value (e.g., a sub-agent call's
+            # prompt). Wrapping at ingress means the classifier
+            # cannot accidentally exfiltrate user content via plain
+            # dict-key access; an operator who genuinely needs to
+            # read those values must call .unwrap(reason=...) and
+            # an audit record is generated.
+            spans_by_trace[trace_id].append(_wrap_user_content_in_span(span))
 
         for emitted, (trace_id, spans) in enumerate(spans_by_trace.items()):
             if self.max_traces is not None and emitted >= self.max_traces:
@@ -136,30 +175,35 @@ class PhoenixTraceSource:
     def _project(self, trace_id: str, spans: list[dict[str, object]]) -> RawTrace:
         # Find the root span — that's where input/output user content
         # lives. If multiple candidates pass `_is_root_span`, prefer
-        # the parent-less one; if none, fall back to the first span
-        # (still better than emitting nothing; the projection becomes
-        # empty Sensitive[""] strings, which downstream guards will
-        # surface as a structured failure rather than silently scoring).
+        # the parent-less one; if none, fall back to the first span.
         roots = [s for s in spans if s.get(_ATTR_PARENT_ID) in (None, "")]
         if not roots:
             roots = [s for s in spans if _is_root_span(s)]
         root = roots[0] if roots else spans[0]
 
-        # Sensitive-wrap boundary (cardinal #5): input.value and
-        # output.value are user content. Other attributes are tooling
-        # state (model name, latency, tool calls) and the conformance
-        # contract requires them to flow as plain dict[str, Any].
+        # `input.value` / `output.value` arrived pre-wrapped as
+        # Sensitive[str] from `_wrap_user_content_in_span` (cardinal
+        # #5 ingress boundary). Re-bind to the typed slots on
+        # RawTrace; fall back to an empty Sensitive[""] if the root
+        # span lacks them (downstream guards surface that as a
+        # structured failure).
+        wrapped_input = root.get(_ATTR_INPUT)
+        wrapped_output = root.get(_ATTR_OUTPUT)
+        user_message = (
+            wrapped_input
+            if isinstance(wrapped_input, Sensitive)
+            else Sensitive(_stringify(wrapped_input), classification="user_content")
+        )
+        original_response = (
+            wrapped_output
+            if isinstance(wrapped_output, Sensitive)
+            else Sensitive(_stringify(wrapped_output), classification="user_content")
+        )
         return RawTrace(
             trace_id=trace_id,
             cohort=self.cohort_classifier(spans),
-            user_message=Sensitive(
-                _stringify(root.get(_ATTR_INPUT)),
-                classification="user_content",
-            ),
-            original_response=Sensitive(
-                _stringify(root.get(_ATTR_OUTPUT)),
-                classification="user_content",
-            ),
+            user_message=user_message,
+            original_response=original_response,
             metadata={k: v for k, v in root.items() if k not in (_ATTR_INPUT, _ATTR_OUTPUT)},
         )
 

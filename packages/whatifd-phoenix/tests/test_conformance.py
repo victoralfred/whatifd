@@ -109,9 +109,28 @@ class TestSpanGrouping:
         )
         [trace] = list(source.iter_traces())
         # Sensitive[T] doesn't expose its value via repr; check via
-        # the audited unwrap path.
-        assert trace.user_message.unwrap(reason="conformance test").endswith("Q?")
-        assert trace.original_response.unwrap(reason="conformance test").endswith("A.")
+        # the audited unwrap path. Equality assertion (not endswith)
+        # — the projection is identity for str inputs.
+        assert trace.user_message.unwrap(reason="conformance test") == "Q?"
+        assert trace.original_response.unwrap(reason="conformance test") == "A."
+
+    @pytest.mark.parametrize("bad_trace_id", [None, "", 42, 3.14, b"bytes-id", []])
+    def test_skips_spans_with_non_string_trace_id(self, bad_trace_id: object) -> None:
+        # Defensive: any non-string trace_id (None, empty str, int,
+        # float, bytes, list) is dropped rather than crashing or
+        # emitting a malformed RawTrace. The isinstance guard in
+        # iter_traces is the structural check.
+        spans = [
+            _make_root_span("good"),
+            {"context.trace_id": bad_trace_id, "parent_id": None, "input.value": "x"},
+        ]
+        source = PhoenixTraceSource(
+            spans_provider=lambda: spans,
+            cohort_classifier=_classify_baseline,
+        )
+        traces = list(source.iter_traces())
+        assert len(traces) == 1
+        assert traces[0].trace_id == "good"
 
     def test_metadata_excludes_input_output_attrs(self) -> None:
         spans = [_make_root_span("t-1")]
@@ -176,6 +195,77 @@ class TestAdapterMetadata:
             sdk_version="1.5.0-test",
         )
         assert source.adapter_metadata().sdk_version == "1.5.0-test"
+
+
+class TestSensitiveWrappingAtIngress:
+    """Cardinal #5 boundary: input.value / output.value on EVERY
+    span (root + children) must be Sensitive-wrapped before the
+    classifier sees them. A naive implementation would only wrap
+    at projection time, leaving child-span user content available
+    as raw strings to the classifier callable — a covert exfiltration
+    surface.
+    """
+
+    def test_classifier_sees_wrapped_root_input(self) -> None:
+        from whatifd.types.sensitive import Sensitive
+
+        captured: list[object] = []
+
+        def capturing_classifier(spans: list[dict[str, object]]) -> str:
+            captured.append(spans[0].get("input.value"))
+            return "baseline"
+
+        spans = [_make_root_span("t-1", user_input="secret-prompt")]
+        source = PhoenixTraceSource(
+            spans_provider=lambda: spans,
+            cohort_classifier=capturing_classifier,
+        )
+        list(source.iter_traces())
+        # The classifier saw a Sensitive wrapper, NOT the raw string.
+        assert isinstance(captured[0], Sensitive)
+
+    def test_classifier_sees_wrapped_child_input(self) -> None:
+        # Critical case: a child span carries its own user content
+        # (e.g., a sub-agent's prompt). It must reach the classifier
+        # already wrapped — not just the root's input.
+        from whatifd.types.sensitive import Sensitive
+
+        captured: list[object] = []
+
+        def capturing_classifier(spans: list[dict[str, object]]) -> str:
+            for s in spans:
+                if "input.value" in s:
+                    captured.append(s["input.value"])
+            return "baseline"
+
+        child_with_input = _make_child_span("t-1")
+        child_with_input["input.value"] = "child-prompt-secret"
+        spans = [_make_root_span("t-1", user_input="root-prompt"), child_with_input]
+        source = PhoenixTraceSource(
+            spans_provider=lambda: spans,
+            cohort_classifier=capturing_classifier,
+        )
+        list(source.iter_traces())
+        # Both root AND child input.value reached the classifier
+        # wrapped. Two values; both Sensitive.
+        assert len(captured) == 2
+        assert all(isinstance(v, Sensitive) for v in captured)
+
+    def test_original_input_dicts_not_mutated(self) -> None:
+        # _wrap_user_content_in_span returns a copy — the caller's
+        # original span dicts must remain raw so a future iteration
+        # over the same fixture (e.g., a test that runs twice)
+        # doesn't see double-wrapped Sensitive[Sensitive[str]].
+        original = _make_root_span("t-1", user_input="raw")
+        spans = [original]
+        source = PhoenixTraceSource(
+            spans_provider=lambda: spans,
+            cohort_classifier=_classify_baseline,
+        )
+        list(source.iter_traces())
+        # Original dict still has a plain string at input.value.
+        assert original["input.value"] == "raw"
+        assert isinstance(original["input.value"], str)
 
 
 class TestClusterKeySupport:

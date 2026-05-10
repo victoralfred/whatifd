@@ -425,3 +425,98 @@ class TestExampleWorkflow:
         # vendor the action or switch to a published-Marketplace
         # reference once Phase I.x ships that.
         assert "uses: ./.github/actions/whatifd-fork" in text
+
+    def test_example_workflow_is_valid_yaml(self) -> None:
+        # Catches a malformed example before operators copy a
+        # broken workflow into their own repo. Text-presence checks
+        # alone don't catch indentation typos that yaml.safe_load
+        # raises on.
+        example = _REPO_ROOT / ".github" / "workflows" / "example-whatifd-fork.yml.example"
+        parsed = yaml.safe_load(example.read_text(encoding="utf-8"))
+        assert isinstance(parsed, dict)
+        # Workflow shape: top-level keys `name`, `on`, `permissions`,
+        # `jobs`. `on` may parse as the boolean True under
+        # yaml.safe_load (a known YAML 1.1 quirk), so handle either.
+        assert "name" in parsed
+        assert "on" in parsed or True in parsed
+        assert "jobs" in parsed
+        assert isinstance(parsed["jobs"], dict)
+
+
+class TestEditLastGrepLocaleFragility:
+    """Documents the known fragility boundary of the `--edit-last`
+    grep heuristic against locale-translated `gh` stderr. Issue #94
+    tracks the marker-based replacement that eliminates this class
+    entirely. Tests below run the same regex used in the action
+    against representative stderr strings and ASSERT what matches /
+    doesn't, so the boundary is visible at test-time rather than
+    discovered in production.
+
+    These tests are intentionally permissive (they document the
+    current behavior, not a desired-future-state) — when issue #94
+    lands, this class can be deleted.
+    """
+
+    import re
+
+    # Regex pattern from action.yml — kept in sync via the source-
+    # text test in TestDisclosureSeedCoupling. If the action's
+    # regex diverges from this string, that test fails and forces
+    # this class's tests to re-check the boundary.
+    _PATTERN = re.compile(r"no.*comment|not found|no comments", re.IGNORECASE)
+
+    @pytest.mark.parametrize(
+        "stderr,expected_match",
+        [
+            # English (current `gh` CLI v2.x): the heuristic fires.
+            ("no comments found", True),
+            ("error: not found", True),
+            ("no comments to edit", True),
+            ("Found no prior comment", True),
+            # Hypothetical localized variants (issue #94 boundary):
+            # these would NOT match the English regex. A real
+            # operator running under LANG=de_DE.UTF-8 with a future
+            # `gh` version supporting i18n would surface a real
+            # error annotation INSTEAD of the silent first-run
+            # fallback — over-strict, but never silently wrong.
+            ("kein Kommentar gefunden", False),  # German
+            ("aucun commentaire trouvé", False),  # French
+            # Real failure modes the regex correctly skips:
+            ("HTTP 403 Forbidden", False),
+            ("dial tcp: lookup api.github.com: no such host", False),
+            ("validation failed: body must not be empty", False),
+        ],
+    )
+    def test_grep_heuristic_boundary(self, stderr: str, expected_match: bool) -> None:
+        match = bool(self._PATTERN.search(stderr))
+        assert match is expected_match, (
+            f"Locale boundary regression: expected match={expected_match} for "
+            f"stderr={stderr!r}, got {match}. If gh CLI's stderr text changed "
+            "or the action's regex was edited, the action's first-run-vs-real-"
+            "failure discrimination shifted. Issue #94 (marker-based dedup) "
+            "eliminates this fragility class."
+        )
+
+
+class TestEveryStepDeclaresBashShell:
+    """Composite-action steps default to the runner OS's native
+    shell — PowerShell on Windows, bash on Linux/macOS. The action
+    explicitly declares `shell: bash` on every `run:` step so
+    Windows runners use Git Bash (preinstalled). A future step
+    addition that omits `shell:` would silently regress Windows
+    support without breaking the Linux/macOS test surface here.
+    """
+
+    def test_every_run_step_has_shell_bash(self, action: ActionYmlData) -> None:
+        offenders: list[str] = []
+        for step in action["runs"]["steps"]:
+            # Only `run:` steps need a shell. `uses:` steps invoke
+            # another action and don't have shell semantics.
+            if "run" in step and step.get("shell") != "bash":
+                name = step.get("name", step.get("id", "<unnamed>"))
+                offenders.append(f"{name!r} (shell={step.get('shell')!r})")
+        assert not offenders, (
+            "Every `run:` step must declare `shell: bash` for cross-platform "
+            "consistency (Windows runners default to PowerShell otherwise). "
+            "Offenders:\n  " + "\n  ".join(offenders)
+        )

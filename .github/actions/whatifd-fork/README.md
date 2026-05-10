@@ -96,15 +96,15 @@ step fails with a 403.
 
 ## Security: pinning third-party actions
 
-The example workflow above uses `astral-sh/setup-uv@v7` (version-tag
-pinning) to match the whatifd repo's own CI convention. For
-**security-hardened production workflows**, GitHub
-[recommends pinning to a commit SHA](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions)
-so a compromised tag cannot silently swap the action's source.
-Operators adopting this Action in production should replace each
-`uses: ...@v7` with `uses: ...@<sha>  # v7.x.y` before checking in.
-A repo-wide SHA-pin migration is tracked separately and applies to
-the whatifd repo's own workflows alongside the example.
+The whatifd repo's pinning convention — and the rationale — lives
+in [`CONTRIBUTING.md` § "Third-party action pinning convention"](../../../CONTRIBUTING.md#third-party-action-pinning-convention).
+Read that section for the canonical guidance; this README and the
+example workflow's inline comment both defer to it.
+
+**Short version for operators copying the example into production:**
+the whatifd repo uses `@v7` tag pins. For security-hardened
+production forks, follow GitHub's recommendation and switch each
+`uses: ...@v7` to `uses: ...@<sha>  # v7.x.y` before checking in.
 
 ## Edge cases
 

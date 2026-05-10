@@ -11,13 +11,97 @@ permissions:
 jobs:
   build:
     name: build distributions
-    runs-on: ubuntu-latest
+    # Pinned (not `ubuntu-latest`) because the tag↔version guard step
+    # below uses stdlib `tomllib`, which requires Python 3.11+. The
+    # runner's system python3 needs to be 3.11+ at the moment that
+    # step runs (before setup-uv installs anything). `ubuntu-24.04`
+    # ships python3.12; a future drift back to an older default would
+    # silently fail the guard with an ImportError. Pinning is the
+    # cheapest structural fix. Update this pin (and the comment)
+    # together when migrating runner images.
+    runs-on: ubuntu-24.04
     outputs:
       ref-name: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Tag↔version parity guard. The `version` field in each
+      # pyproject.toml is what PyPI actually publishes; the git tag
+      # is decorative metadata. A mismatch silently publishes the
+      # wrong version, burning the slot forever (PyPI rejects
+      # republishing). Surfaced during the v0.2.0rc1 TestPyPI dry-run
+      # where the tag was `v0.2.0rc1` but pyproject still declared
+      # `0.2.0` — the dry-run published `0.2.0` to TestPyPI, not the
+      # intended rc1. This step fails the build before any artifact
+      # is produced if the tag (minus leading `v`) doesn't match the
+      # declared version in every workspace pyproject.
+      - name: Verify tag matches package versions
+        # Uses stdlib `tomllib` (Python 3.11+, present on the pinned
+        # `ubuntu-24.04` runner — see `runs-on` comment above) rather
+        # than `grep ^version =` so a future pyproject layout (a
+        # `[tool.X] version = ...` subsection, a multi-line array
+        # whose first line happens to begin with `version =`, etc.)
+        # can't false-positive. Runs before setup-uv so we depend on
+        # the runner's system python3 here, not on uv being installed.
+        run: |
+          python3 <<'PY'
+          import os
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          tag_version = tag.removeprefix("v")
+          packages = [
+              "pyproject.toml",
+              "packages/whatifd-langfuse/pyproject.toml",
+              "packages/whatifd-inspect-ai/pyproject.toml",
+              "packages/whatifd-phoenix/pyproject.toml",
+          ]
+          bad = 0
+          for pkg in packages:
+              path = Path(pkg)
+              if not path.exists():
+                  print(
+                      f"::error file={pkg}::pyproject.toml is missing — the "
+                      f"workspace package set in release.yml drifted from the "
+                      f"actual repo layout. Update the `packages` list."
+                  )
+                  bad += 1
+                  continue
+              try:
+                  data = tomllib.loads(path.read_text())
+              except tomllib.TOMLDecodeError as exc:
+                  print(f"::error file={pkg}::malformed TOML: {exc}")
+                  bad += 1
+                  continue
+              try:
+                  pkg_version = data["project"]["version"]
+              except KeyError:
+                  print(
+                      f"::error file={pkg}::missing [project].version — "
+                      f"the file parses but has no version field."
+                  )
+                  bad += 1
+                  continue
+              if pkg_version != tag_version:
+                  print(
+                      f"::error file={pkg}::tag {tag} implies version "
+                      f"{tag_version} but [project].version declares {pkg_version}"
+                  )
+                  bad += 1
+          if bad:
+              print(
+                  f"::error::{bad} pyproject.toml file(s) disagree with tag "
+                  f"{tag}. Bump versions in lockstep and re-tag."
+              )
+              sys.exit(1)
+          print(
+              f"Tag {tag} matches all four workspace pyproject.toml "
+              f"versions ({tag_version})."
+          )
+          PY
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"

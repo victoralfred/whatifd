@@ -1,0 +1,51 @@
+# Example workflow for the `whatifd-fork` composite action.
+#
+# Rename to `whatifd-pr-check.yml` (or any `.yml`) and check it in to
+# enable. The `.example` suffix prevents this file from being collected
+# by GitHub Actions on the whatifd repo itself — it would otherwise try
+# to run against PRs that touch this file and require credentials the
+# whatifd repo doesn't have.
+#
+# Action pinning: the whatifd repo pins third-party actions by tag
+# (e.g., `@v7`). Operators copying this example into a security-
+# hardened production fork should switch to commit-SHA pins. The
+# canonical rationale lives in:
+#   https://github.com/victoralfred/whatifd/blob/main/CONTRIBUTING.md#third-party-action-pinning-convention
+
+name: whatifd PR verdict
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write   # required for the PR-comment step
+
+jobs:
+  whatifd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Security note: see CONTRIBUTING.md § "Third-party action
+      # pinning convention" for the canonical guidance. Short
+      # version: the whatifd repo pins by tag (`@v7`); production
+      # forks should switch to `@<sha>  # v7.x.y` before checking in.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7  # pin to SHA before production use; see CONTRIBUTING.md
+        with:
+          python-version: "3.12"
+
+      - name: Install whatifd + adapter packages
+        run: uv pip install whatifd whatifd-langfuse whatifd-inspect-ai
+
+      - name: Run whatifd fork
+        uses: ./.github/actions/whatifd-fork
+        with:
+          config: whatifd.config.yaml
+        env:
+          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

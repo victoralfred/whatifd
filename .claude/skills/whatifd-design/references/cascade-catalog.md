@@ -1165,6 +1165,33 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 
 ## Resolved cascades
 
+> **Ordering convention:** entries are reverse-chronological — newest at the top, oldest at the bottom. New resolved cascades are PREPENDED to this section, not appended. Reasoning: a contributor scanning for "what shipped recently" or "what's the latest doctrine on X" gets the answer in the first few entries instead of paging to the end. The original v0.1 entries (PRs #26, #31, etc.) sit at the bottom because they were resolved earliest; the most recent v0.2 phases sit at the top.
+
+### Phase I — `whatifd-fork` GitHub Action wrapper (resolved 2026-05-10)
+
+**Source decision:** The public site (whatif.codes) promises a "GitHub Action wrapper" as a v0.2 feature. The CLI is already CI-ready (config-file driven, structured exit codes 0/1/2, deterministic `./reports/` artifacts); the Action's job is to capture the artifacts and surface the verdict through GitHub's PR/status surface.
+
+**Rippled to / refactor protection:**
+- Composite action at `.github/actions/whatifd-fork/action.yml` — pure shell + standard `gh` CLI. No Docker, no NumPy, no compute (cardinal #9 — orchestration not compute).
+- Inputs: `config`, `profile`, `comment-on-pr`, `github-token`, `fail-on-dont-ship`. Outputs: `verdict` / `exit-code` / `report-json` / `report-md`.
+- Exit-code → verdict mapping: `0 → "ship"`, `1 → "dont_ship"`, `* → "inconclusive"` (the `*` arm covers exit 2 + any future exit codes; cardinal #1 — never crash on an unrecognized signal).
+- PR-comment step guards on `github.event_name == 'pull_request'` AND `comment-on-pr: true` AND `report_md != ''`. The third guard prevents commenting on setup-failure paths where the CLI exits before writing artifacts.
+- PR-comment step uses `gh pr comment --edit-last` for rolling-update behavior. Failure-class discrimination: capture stderr; grep-match "no comment / not found" patterns to identify legitimate first-run; on any other non-zero exit, surface `::error` annotation + exit non-zero. Locale-fragile (issue #94 tracks the marker-based replacement).
+- Path discovery uses a Python one-liner (`glob` + `os.path.getmtime`) for cross-platform portability — GNU `find -printf` and BSD `stat` diverge; Python is on every GitHub runner. Issue #93 tracks the cleaner CLI-emits-paths follow-up.
+- Cross-runner: Linux + macOS supported via the Python discovery; Windows works via Git Bash because every step declares `shell: bash`. PowerShell-only runners are unsupported.
+- `fail-on-dont-ship: true` is the default — the workflow fails on Don't Ship and Inconclusive. `fail-on-dont-ship: false` exposes the verdict as an output for downstream steps to inspect (e.g., a "warn but don't block" mode).
+- Cardinal #7 (two-affirmation) preserved: when the action is invoked with `profile: forensic`, the underlying CLI still requires the config's `forensic_acknowledgment` block. The action does NOT bypass cardinal #7.
+- 31 structural tests in `tests/integration/test_phase_i_github_action.py` parse `action.yml` and pin: top-level shape, YAML schema (lists vs maps, mapping-of-mapping for inputs/outputs), every input default the README documents, every output, the load-bearing `if:` guards on the PR-comment and fail steps (with `${{ }}` interpolation wrapping enforced), the exit-code mapping branches, the `--edit-last` failure-class discrimination, the `$RUNNER_TEMP` matrix-safety pattern, the no-duplicate-`::error` discipline, the cross-platform Python-based path discovery, and the path-discovery error surfacing (real failures produce `::error` annotations + non-zero exit, not silent empty paths).
+- Example workflow at `.github/workflows/example-whatifd-fork.yml.example`. The `.example` suffix prevents the whatifd repo's own Actions runner from collecting it (the example references adapter credentials this repo doesn't have).
+- Tag-pin convention documented in `CONTRIBUTING.md` (`### Third-party action pinning convention`); the README's `## Security: pinning third-party actions` section tells operators to SHA-pin in security-hardened production forks.
+- Marketplace publication (separate repo) deferred to v0.3+; the action is currently consumable via `uses: ./.github/actions/whatifd-fork` (in-repo) or by vendoring into the consumer's repo.
+
+**Known limitations (filed as follow-ups, do not block v0.2.0):**
+- **#94 [HIGHEST-PRIORITY Phase I follow-up]**: replace `--edit-last` + grep with marker-based dedup (`<!-- whatifd-fork:run-id=... -->` HTML comment, `gh api` to find/update). Locale-independent. The English-only grep heuristic is a latent correctness hole on localized runners; rare in practice today (English LANG dominates GitHub-hosted runners) but should land in v0.3 ahead of broader Marketplace adoption.
+- #93: CLI should emit chosen report paths via `GITHUB_OUTPUT` directly so the action's Python path-discovery scaffolding becomes unnecessary. **Couple to the v0.3 `whatifd diff` workflow** — both Actions then share one path-discovery surface instead of each writing its own shell scaffolding. Clean simplification.
+
+**Resolved by:** Phase I PR on branch `phase-i-github-action`.
+
 ### Phase E.2 — pipeline switch + MethodologyDisclosure flip (resolved 2026-05-10)
 
 **Source decision:** Phase E.1 (PR #89) shipped the `paired_percentile_bootstrap` algorithm in `whatifd.statistical`. The pipeline still called `statistics.quantiles` and the methodology disclosure still emitted `bootstrap.method = "unavailable"`. Phase E.2 closes that loop: the pipeline now calls the real bootstrap, and the disclosure declares `paired_percentile_bootstrap` truthfully. The doctrine bot raised this as a cardinal-#10 concern across PRs #82, #86, #88, and #89; the disclosure flip is what earns v0.2 the right to claim non-`unavailable` methodology.

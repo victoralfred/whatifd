@@ -12,6 +12,16 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — Phase I (`whatifd-fork` GitHub Action wrapper)
+
+- **Composite GitHub Action** at `.github/actions/whatifd-fork/`. Wraps `whatifd fork --config <path>`, captures the `./reports/*.json` and `./reports/*.md` artifacts, posts the rendered Markdown verdict as a PR comment on `pull_request` events, and surfaces the verdict via a GitHub status annotation (`::notice` / `::warning` / `::error` based on the verdict).
+- **Outputs:** `verdict` (`ship` / `dont_ship` / `inconclusive`), `exit-code`, `report-json`, `report-md`. Downstream steps can branch on the verdict instead of relying on workflow-level pass/fail.
+- **Inputs:** `config`, `profile`, `comment-on-pr`, `github-token`, `fail-on-dont-ship`. The `fail-on-dont-ship: true` default makes the workflow fail on Don't Ship and Inconclusive; setting it to `false` exposes the verdict for downstream steps without failing the workflow.
+- **Cardinal alignment:** #1 (every outcome surfaces as a structured GitHub annotation, never a stack trace), #2 (floor-failure Inconclusives map to verdict=inconclusive), #7 (two-affirmation preserved through the action — `profile: forensic` still requires the config's `forensic_acknowledgment` block), #9 (pure shell + `gh` CLI; no Docker, no compute).
+- **Example workflow** at `.github/workflows/example-whatifd-fork.yml.example`. The `.example` suffix prevents the whatifd repo's own Actions from collecting it.
+- **31 structural tests** in `tests/integration/test_phase_i_github_action.py` parse `action.yml` and pin: top-level shape, YAML schema (lists vs maps, mapping-of-mapping for inputs/outputs), every input default the README documents, every output, the load-bearing `if:` guards on the PR-comment and fail steps (with mandatory `${{ }}` interpolation wrapping), the exit-code mapping branches, the `--edit-last` failure-class discrimination, the `$RUNNER_TEMP` matrix-safety pattern, the no-duplicate-`::error` discipline, the cross-platform Python-based path discovery, and the path-discovery error surfacing (real failures produce `::error` annotations + non-zero exit, not silent empty paths).
+- Marketplace publication (separate repo) deferred to v0.3+. v0.2 ships the in-repo composite-action shape consumable via `uses: ./.github/actions/whatifd-fork`.
+
 ### Changed — Phase E.2 (pipeline switch + MethodologyDisclosure flip)
 
 - **`whatifd.pipeline._cohort_result_from_bucket` now calls `paired_percentile_bootstrap`** (Phase E.1's algorithm in `whatifd.statistical`) instead of the v0.1 `statistics.quantiles` empirical-percentile shortcut. Per-cohort CI bounds are now real bootstrap percentiles, not raw-data quantiles.

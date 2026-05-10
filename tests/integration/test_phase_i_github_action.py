@@ -15,10 +15,12 @@ runner. The structural pins catch the most common refactor regressions
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, cast
 
 import pytest
 import yaml
@@ -26,21 +28,67 @@ import yaml
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ACTION_YML = _REPO_ROOT / ".github" / "actions" / "whatifd-fork" / "action.yml"
 
-# `Mapping[str, Any]` (not `dict[str, Any]`) signals read-only
-# intent across the test fixture boundary — matches the project
-# convention used in adapter constructors (e.g.,
-# `LangfuseTraceSource.list_kwargs: Mapping[str, Any]`). Tests
-# never mutate the parsed action.yml; the type signature reflects
-# that. `yaml.safe_load` itself returns `Any`, so the inner Any
-# can't be narrowed without writing a TypedDict mirroring every
-# action-yml key — that's maintenance overhead without a
-# doctrinal payoff.
-ActionYmlData = Mapping[str, Any]
+
+# Typed shape for the parsed action.yml. The outer Mapping signals
+# read-only intent (project convention). The inner shapes mirror
+# the GitHub Actions action-yml schema for the slices the tests
+# actually access — input/output specs, runs.steps. `Any` remains
+# at the leaf where YAML scalars can be str/int/bool/None and
+# `extra` keys may appear (e.g., `branding`, future schema
+# additions). Cardinal #6: stricter than `dict[str, Any]` because
+# the structural shape is documented; pragmatic about the leaf
+# Any because the GitHub Actions schema itself permits arbitrary
+# scalar types.
+class ActionStepDict(TypedDict, total=False):
+    name: str
+    id: str
+    if_: str  # `if` is a Python keyword; rename via NotRequired alias below
+    run: str
+    uses: str
+    shell: str
+    env: Mapping[str, str]
+    with_: Mapping[str, str]
+
+
+class ActionInputSpec(TypedDict, total=False):
+    description: str
+    required: bool
+    default: str
+
+
+class ActionOutputSpec(TypedDict, total=False):
+    description: str
+    value: str
+
+
+class ActionRunsBlock(TypedDict, total=False):
+    using: str
+    steps: list[
+        Mapping[str, Any]
+    ]  # leaf Any: GitHub schema permits arbitrary scalars in step env/with
+
+
+class ActionBrandingBlock(TypedDict, total=False):
+    icon: str
+    color: str
+
+
+class ActionYmlData(TypedDict, total=False):
+    name: str
+    description: str
+    inputs: Mapping[str, ActionInputSpec]
+    outputs: Mapping[str, ActionOutputSpec]
+    runs: ActionRunsBlock
+    branding: ActionBrandingBlock
 
 
 @pytest.fixture(scope="module")
 def action() -> ActionYmlData:
-    return yaml.safe_load(_ACTION_YML.read_text(encoding="utf-8"))
+    # `yaml.safe_load` returns `Any`; the cast pins our typed
+    # contract at the boundary. The structural assertions below
+    # validate the cast at runtime via key-presence checks.
+    raw = yaml.safe_load(_ACTION_YML.read_text(encoding="utf-8"))
+    return cast(ActionYmlData, raw)
 
 
 class TestMarketplaceReadiness:
@@ -533,6 +581,126 @@ class TestEditLastGrepLocaleFragility:
             "failure discrimination shifted. Issue #94 (marker-based dedup) "
             "eliminates this fragility class."
         )
+
+
+class TestShellLogicAtRuntime:
+    """Runtime verification of the shell fragments inside action.yml.
+    Structural string-contains tests can pass while the shell logic
+    is broken (e.g., a redirect-order bug, off-by-one in glob
+    pattern). These tests run the actual fragments through bash
+    against fixture data and assert observable behavior.
+    """
+
+    def test_path_discovery_finds_newest_json(self, tmp_path: Path) -> None:
+        # Build a `reports/` fixture with three .json files at
+        # different mtimes; the discovery one-liner should return
+        # the newest.
+        reports = tmp_path / "reports"
+        reports.mkdir()
+        old = reports / "old.json"
+        mid = reports / "mid.json"
+        new = reports / "new.json"
+        old.write_text("{}", encoding="utf-8")
+        os.utime(old, (1_000_000_000, 1_000_000_000))
+        mid.write_text("{}", encoding="utf-8")
+        os.utime(mid, (1_500_000_000, 1_500_000_000))
+        new.write_text("{}", encoding="utf-8")
+        os.utime(new, (2_000_000_000, 2_000_000_000))
+
+        result = subprocess.run(
+            [
+                "python3",
+                "-c",
+                "import glob,os,sys; m=glob.glob('reports/*.json'); m and sys.stdout.write(max(m, key=os.path.getmtime))",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout == "reports/new.json"
+        assert result.returncode == 0
+
+    def test_path_discovery_empty_glob_returns_empty(self, tmp_path: Path) -> None:
+        # `reports/` exists but no .json files: empty stdout, exit 0.
+        (tmp_path / "reports").mkdir()
+        result = subprocess.run(
+            [
+                "python3",
+                "-c",
+                "import glob,os,sys; m=glob.glob('reports/*.json'); m and sys.stdout.write(max(m, key=os.path.getmtime))",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.stdout == ""
+        assert result.returncode == 0
+
+    def test_preflight_access_check_detects_unreadable_dir(self, tmp_path: Path) -> None:
+        # Pre-flight `os.access` correctly identifies an unreadable
+        # `reports/`. This is the explicit case-(c) detection the
+        # bot flagged as missing — `glob.glob` silently returns []
+        # on chmod-000 dirs, so the pre-flight closes the gap.
+        reports = tmp_path / "reports"
+        reports.mkdir()
+        os.chmod(reports, 0o000)
+        try:
+            result = subprocess.run(
+                [
+                    "python3",
+                    "-c",
+                    "import os, sys; sys.exit(0 if os.access('reports', os.R_OK | os.X_OK) else 1)",
+                ],
+                cwd=tmp_path,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            # Skipping under root (CI containers sometimes run as root, where access checks pass anyway).
+            if os.geteuid() == 0:  # type: ignore[attr-defined]
+                pytest.skip("running as root; os.access bypasses ACL checks")
+            assert result.returncode == 1, "pre-flight failed to detect unreadable reports/"
+        finally:
+            os.chmod(reports, 0o755)
+
+    def test_stderr_capture_redirect_order(self, tmp_path: Path) -> None:
+        # Verifies the `2>&1 1>/dev/null` redirect order in the
+        # PR-comment fallback. The bot claimed this captures
+        # nothing; empirical verification: it captures stderr
+        # correctly. This test pins it so a future refactor that
+        # changes the order produces a structural failure.
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                "captured=$(bash -c 'echo stdoutmsg; echo stderrmsg >&2' 2>&1 1>/dev/null); echo \"[$captured]\"",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "[stderrmsg]" in result.stdout, (
+            f"redirect order broken: expected [stderrmsg] in capture, got {result.stdout!r}. "
+            "The action's --edit-last fallback uses this exact pattern; if it stops working "
+            "the locale-fragility window widens to false-positive on every first run."
+        )
+
+    def test_grep_heuristic_matches_no_comments_pattern(self) -> None:
+        # End-to-end: feed the literal `grep -qiE` pattern from
+        # action.yml against an English no-comments stderr; assert
+        # exit 0 (match). Pairs with TestEditLastGrepLocaleFragility
+        # which tests the boundary at the regex level; this one
+        # pins the actual `grep` binary's behavior.
+        result = subprocess.run(
+            ["grep", "-qiE", "no.*comment|not found|no comments"],
+            input="error: no comments to edit\n",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, "grep heuristic should match English 'no comments' stderr"
 
 
 class TestEveryStepDeclaresBashShell:

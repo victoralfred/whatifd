@@ -106,30 +106,21 @@ runs:
         #   (c) `reports/` exists but is unreadable / Python helper
         #       crashes → REAL bug; surface ::error + non-zero exit.
         #
-        # Exception-handling verification (cardinal #1):
-        #   - `glob.glob` on Linux/macOS silently returns [] for
-        #     unreadable directories AND non-existent paths — no
-        #     OSError surfaces. Verified empirically on Python 3.11
-        #     against `chmod 000` directories: glob returns []
-        #     with exit 0 (the os.scandir under the hood swallows
-        #     PermissionError and yields nothing).
-        #   - `os.path.getmtime` on a file the process owns the
-        #     parent directory of: succeeds even when the file
-        #     itself is `chmod 000`. stat() only requires read on
-        #     the parent. Verified empirically.
-        # On Windows or self-hosted runners with exotic ACL setups,
-        # an uncaught OSError WOULD surface via Python's default
-        # behavior (traceback to stderr + exit non-zero), which
-        # bash's exit-code check below captures as case (c). So:
-        # the implicit Python exception path covers the documented
-        # case (c) without needing explicit try/except. A try/except
-        # block here was attempted via `python3 - <<'PYEOF'` heredoc
-        # but consistently broke YAML parsing of action.yml; the
-        # empirical verification + bash exit-code check is the
-        # production-safe form.
+        # Pre-flight: verify reports/ is readable. `glob.glob` on
+        # Linux/macOS silently returns [] when the directory is
+        # unreadable (os.scandir swallows PermissionError), making
+        # case (c) — "reports/ exists but unreadable" —
+        # indistinguishable from case (b) — "glob is empty" —
+        # WITHOUT this explicit check. The pre-flight closes that
+        # ambiguity (cardinal #1: failure-as-data, never silent
+        # masking).
         report_json=""
         report_md=""
         if [[ -d reports ]]; then
+          if ! python3 -c "import os, sys; sys.exit(0 if os.access('reports', os.R_OK | os.X_OK) else 1)"; then
+            echo "::error title=whatifd path discovery::./reports/ exists but is not readable. Check directory permissions."
+            exit 75
+          fi
           report_json=$(python3 -c "import glob,os,sys; m=glob.glob('reports/*.json'); m and sys.stdout.write(max(m, key=os.path.getmtime))")
           json_exit=$?
           if [[ $json_exit -ne 0 ]]; then
@@ -165,15 +156,26 @@ runs:
         # one-line GitHub UI element); the PR comment OR the
         # uploaded report-md artifact is where actionable detail
         # lives.
+        # When report_md is empty (CLI exit-before-write — typical
+        # setup-failure path), the bare `./reports/` path is
+        # actionably useless. Emit the actual setup-failure
+        # guidance instead so cardinal #8 (every blocking finding
+        # actionable) holds even when the rendered Markdown
+        # report doesn't exist.
+        if [[ -n "$report_md" ]]; then
+          report_pointer="see $report_md for full findings + fix suggestions"
+        else
+          report_pointer="setup failure (CLI exited before writing a report). Re-run with -v / check the workflow log above; common causes: bad config (run \`whatifd config check\`), missing adapter package, missing credentials. Cardinal #8 fix: see https://github.com/victoralfred/whatifd/blob/main/CONTRIBUTING.md for the setup-failure runbook."
+        fi
         case "$verdict" in
           ship)
-            echo "::notice title=whatifd verdict::Ship — see ${report_md:-./reports/} for full report"
+            echo "::notice title=whatifd verdict::Ship — $report_pointer"
             ;;
           dont_ship)
-            echo "::error title=whatifd verdict::Don't Ship — see ${report_md:-./reports/} for blocking findings + fix suggestions"
+            echo "::error title=whatifd verdict::Don't Ship — $report_pointer"
             ;;
           inconclusive)
-            echo "::error title=whatifd verdict::Inconclusive — see ${report_md:-./reports/} for floor failures + fix suggestions (cardinal #8)"
+            echo "::error title=whatifd verdict::Inconclusive — $report_pointer"
             ;;
         esac
 

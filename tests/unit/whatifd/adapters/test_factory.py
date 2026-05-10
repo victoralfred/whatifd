@@ -1,4 +1,16 @@
-"""Phase 10 CLI wiring foundation — adapter factory tests."""
+"""Phase 10 CLI wiring foundation — adapter factory tests.
+
+## Optional-adapter skip discipline
+
+Tests that touch `whatifd_inspect_ai` (the v0.2 inspect_ai factory
+path) gate on `pytest.importorskip("whatifd_inspect_ai")` — including
+the parametrized belt-and-suspenders test
+`test_build_scorer_inspect_ai_belt_and_suspenders_judge_fields`. CI
+matrices that don't install the optional adapter package will skip
+those rows; the lazy-import contract is preserved at the test
+boundary. Coverage of the inspect_ai-specific branches is therefore
+conditional on the adapter being installed in the test environment.
+"""
 
 from __future__ import annotations
 
@@ -258,23 +270,170 @@ def test_build_scorer_satisfies_protocol() -> None:
     assert isinstance(scorer, Scorer)
 
 
-def test_build_scorer_inspect_ai_raises_actionable() -> None:
-    # v0.1 doesn't load score_fn from config (it's user code, not
-    # config data). The factory surfaces this with an actionable
-    # error pointing at the programmatic path. Pinned because a
-    # future contributor might silently default `score_fn` to a
-    # zero-stub here, which would produce uniformly zero deltas
-    # under an `inspect_ai` config — a misleading Ship verdict.
-    with pytest.raises(AdapterFactoryError) as excinfo:
-        build_scorer(ScorerConfig(adapter="inspect_ai"))
-    msg = str(excinfo.value)
-    assert "score_fn" in msg
-    assert "run_pipeline" in msg
+def test_build_scorer_inspect_ai_belt_and_suspenders_branch() -> None:
+    # The factory's `score_fn is None` branch is normally unreachable
+    # because ScorerConfig's model_validator catches the gap at
+    # config-load time. This test bypasses the validator via
+    # `model_construct` — which Pydantic explicitly documents as the
+    # "construct without validation" escape hatch — to exercise the
+    # belt-and-suspenders branch. If a future refactor drops the
+    # validator, this test becomes the last line of defense.
+    cfg = ScorerConfig.model_construct(adapter="inspect_ai", score_fn=None)
+    with pytest.raises(AdapterFactoryError, match=r"requires scorer\.score_fn"):
+        build_scorer(cfg)
 
 
-def test_build_scorer_unknown_adapter_raises() -> None:
+@pytest.mark.parametrize(
+    "missing_field",
+    ["judge_provider", "judge_model_id", "rubric_id", "rubric_text"],
+)
+def test_build_scorer_inspect_ai_belt_and_suspenders_judge_fields(missing_field: str) -> None:
+    # Each of the four judge-config fields has its own belt-and-
+    # suspenders guard in the factory. The model_validator catches
+    # missing fields at config-load; this test bypasses the validator
+    # via model_construct and asserts each guard fires individually
+    # with a field-named error message (cardinal #1: actionable
+    # failure-as-data).
+    pytest.importorskip("whatifd_inspect_ai")
+    fields: dict[str, object] = {
+        "adapter": "inspect_ai",
+        "score_fn": f"python:{__name__}:_test_score_fn_stand_in",
+        "judge_provider": "anthropic",
+        "judge_model_id": "claude-haiku-4-5",
+        "rubric_id": "test-rubric-v1",
+        "rubric_text": "Score 0-1 by faithfulness.",
+    }
+    fields[missing_field] = None
+    cfg = ScorerConfig.model_construct(**fields)
+    with pytest.raises(AdapterFactoryError, match=rf"requires scorer\.{missing_field}"):
+        build_scorer(cfg)
+
+
+def test_build_scorer_inspect_ai_missing_score_fn_blocked_by_validator() -> None:
+    # v0.2: ScorerConfig's model_validator enforces score_fn + judge
+    # fields when adapter='inspect_ai'. Validation fires at config
+    # construction, BEFORE factory dispatch. The factory branch that
+    # would re-raise is now an unreachable belt-and-suspenders check;
+    # this test pins the validator-time enforcement instead.
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="score_fn"):
+        ScorerConfig(adapter="inspect_ai")
+
+
+def test_build_scorer_stub_silently_ignores_inspect_ai_fields() -> None:
+    # Pin: ScorerConfig docstring promises that inspect_ai-specific
+    # fields are silently ignored when adapter='stub' (so a config
+    # block can be retargeted from stub→inspect_ai with one keystroke
+    # during development). Without this test, the silent-ignore claim
+    # is doc-only.
+    cfg = ScorerConfig(
+        adapter="stub",
+        score_fn="python:my_pkg.scorers:faithfulness",
+        judge_provider="anthropic",
+        judge_model_id="claude-haiku-4-5",
+        rubric_id="faith-v1",
+        rubric_text="Score 0-1 by faithfulness.",
+    )
+    scorer = build_scorer(cfg)
+    assert isinstance(scorer, StubScorer)
+
+
+def test_build_scorer_inspect_ai_bad_attr_raises_actionable() -> None:
+    # Exercises the loader's "module has no attribute" path against
+    # a real (importable) module + an intentionally-missing attribute.
+    # The match= assertion below is the mechanical pin; the literal
+    # attribute name `_dummy_score_fn_does_not_exist` is bogus by
+    # construction. importorskip guards optional-adapter absence.
+    pytest.importorskip("whatifd_inspect_ai")
+    cfg = ScorerConfig(
+        adapter="inspect_ai",
+        score_fn="python:whatifd_inspect_ai.scorer:_dummy_score_fn_does_not_exist",
+        judge_provider="anthropic",
+        judge_model_id="claude-haiku-4-5",
+        rubric_id="test-rubric-v1",
+        rubric_text="Score 0-1 by faithfulness.",
+    )
+    # The score_fn ref is intentionally bogus so we don't depend on
+    # a real Inspect AI score function — but the load helper raises
+    # AdapterFactoryError when the attr is missing, surfacing the
+    # actionable "module has no attribute" message.
+    with pytest.raises(AdapterFactoryError, match="has no attribute"):
+        build_scorer(cfg)
+
+
+def _test_score_fn_stand_in(case: object) -> object:
+    """ScoreCase-shaped stand-in for the factory wiring test.
+
+    Returns a fixed shape compatible with what InspectAIScorer.score
+    expects from score_fn. MUST stay at module level — the
+    `python:<module>:<attr>` resolver uses `importlib.import_module`
+    + `getattr`, which only resolves module-level attributes. A
+    future refactor that pulls this into a test method (or a
+    fixture function) silently breaks the resolver path.
+    """
+    return None
+
+
+def test_build_scorer_inspect_ai_with_real_score_fn_returns_inspect_scorer() -> None:
+    # End-to-end: a score_fn that resolves to a real callable produces
+    # an InspectAIScorer with all config fields wired through. Uses
+    # `_test_score_fn_stand_in` defined at module top — a callable
+    # with a ScoreCase-shaped signature, not an arbitrary builtin —
+    # so the test's structural claim ("factory wires score_fn") is
+    # not muddled with "factory accepts any old callable shape."
+    # importorskip guards optional-adapter absence.
+    pytest.importorskip("whatifd_inspect_ai")
+    from whatifd_inspect_ai import InspectAIScorer
+
+    cfg = ScorerConfig(
+        adapter="inspect_ai",
+        score_fn=f"python:{__name__}:_test_score_fn_stand_in",
+        judge_provider="anthropic",
+        judge_model_id="claude-haiku-4-5",
+        judge_model_snapshot="claude-haiku-4-5-20251001",
+        rubric_id="test-rubric-v1",
+        rubric_text="Score 0-1 by faithfulness.",
+        scoring_parameters={"temperature": 0.0, "max_tokens": 1024, "deterministic": True},
+    )
+    scorer = build_scorer(cfg)
+    assert isinstance(scorer, InspectAIScorer)
+    assert scorer.score_fn is _test_score_fn_stand_in
+    assert scorer.judge_provider == "anthropic"
+    assert scorer.judge_model_id == "claude-haiku-4-5"
+    assert scorer.judge_model_snapshot == "claude-haiku-4-5-20251001"
+    assert scorer.rubric_id == "test-rubric-v1"
+    assert scorer.rubric_text == "Score 0-1 by faithfulness."
+    # scoring_parameters pass-through (cardinal #10 — methodology
+    # disclosure: knobs the operator declared must reach the scorer
+    # unchanged).
+    assert dict(scorer.scoring_parameters) == {
+        "temperature": 0.0,
+        "max_tokens": 1024,
+        "deterministic": True,
+    }
+
+
+def test_build_scorer_unknown_adapter_blocked_by_validator() -> None:
+    # adapter is a Literal["stub", "inspect_ai"] (cardinal "fail
+    # early"): unknown adapter names fail at config-load time with
+    # a Pydantic ValidationError naming the field, not at factory
+    # dispatch time. The factory's "Unknown scorer adapter" branch
+    # is now belt-and-suspenders for callers using model_construct
+    # to bypass validation.
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="adapter"):
+        ScorerConfig(adapter="not_a_real_scorer")
+
+
+def test_build_scorer_unknown_adapter_belt_and_suspenders() -> None:
+    # Direct factory hit via model_construct (skipping validation)
+    # surfaces the unreachable-under-normal-flow branch with an
+    # actionable error.
+    cfg = ScorerConfig.model_construct(adapter="not_a_real_scorer")
     with pytest.raises(AdapterFactoryError, match="Unknown scorer adapter"):
-        build_scorer(ScorerConfig(adapter="not_a_real_scorer"))
+        build_scorer(cfg)
 
 
 def test_factory_does_not_import_real_adapter_packages() -> None:

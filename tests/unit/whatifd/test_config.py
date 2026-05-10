@@ -46,7 +46,7 @@ def _minimal_config_dict() -> dict:
             "baseline_cohort": {"limit": 20},
         },
         "change": {"system_prompt": "be concise"},
-        "scorer": {"adapter": "inspect_ai", "cache_mode": "auto"},
+        "scorer": {"adapter": "stub", "cache_mode": "auto"},
         "decision": {},
         "reporting": {},
         "timeouts": {},
@@ -385,7 +385,7 @@ class TestLoadConfig:
             "  failure_cohort:\n    limit: 20\n"
             "  baseline_cohort:\n    limit: 20\n"
             "change:\n  system_prompt: be concise\n"
-            "scorer:\n  adapter: inspect_ai\n  cache_mode: auto\n"
+            "scorer:\n  adapter: stub\n  cache_mode: auto\n"
             "decision: {}\n"
             "reporting: {}\n"
             "timeouts: {}\n",
@@ -470,7 +470,7 @@ class TestLoadConfig:
             "  failure_cohort:\n    limit: 20\n"
             "  baseline_cohort:\n    limit: 20\n"
             "change: {}\n"
-            "scorer:\n  adapter: inspect_ai\n"
+            "scorer:\n  adapter: stub\n"
             "decision: {}\n"
             "reporting:\n"
             "  profile: forensic\n"
@@ -503,7 +503,7 @@ class TestLoadConfig:
             "  failure_cohort:\n    limit: 0\n"  # invalid: ge=1
             "  baseline_cohort:\n    limit: 20\n"
             "change: {}\n"
-            "scorer:\n  adapter: inspect_ai\n"
+            "scorer:\n  adapter: stub\n"
             "decision: {}\n"
             "reporting: {}\n"
             "timeouts: {}\n",
@@ -511,3 +511,98 @@ class TestLoadConfig:
         )
         with pytest.raises(ValidationError):
             load_config(p)
+
+
+# ---------------------------------------------------------------------------
+# Phase B: scorer.score_fn + judge fields + scoring_parameters round-trip
+# ---------------------------------------------------------------------------
+
+
+class TestInspectAiScorerConfig:
+    """v0.2 config-loaded inspect_ai pin."""
+
+    def _inspect_ai_config_dict(self) -> dict:
+        d = _minimal_config_dict()
+        d["scorer"] = {
+            "adapter": "inspect_ai",
+            "score_fn": "python:my_pkg.scorers:faithfulness",
+            "judge_provider": "anthropic",
+            "judge_model_id": "claude-haiku-4-5",
+            "rubric_id": "faith-v1",
+            "rubric_text": "Score 0-1 by faithfulness.",
+            "scoring_parameters": {
+                "temperature": 0.0,
+                "max_tokens": 1024,
+                "deterministic": True,
+                "system_prompt_suffix": "be concise",
+                "stop_token": None,
+            },
+            "cache_mode": "auto",
+        }
+        return d
+
+    def test_inspect_ai_full_config_validates(self) -> None:
+        cfg = WhatifConfig(**self._inspect_ai_config_dict())
+        assert cfg.scorer.adapter == "inspect_ai"
+        assert cfg.scorer.score_fn == "python:my_pkg.scorers:faithfulness"
+        assert cfg.scorer.judge_provider == "anthropic"
+
+    def test_scoring_parameters_round_trip_mixed_json_primitives(self) -> None:
+        # Pin: every JsonPrimitive variant survives the Pydantic
+        # boundary unchanged. A future regression that silently
+        # coerces (e.g., float -> int, None -> "") would fail this
+        # test.
+        cfg = WhatifConfig(**self._inspect_ai_config_dict())
+        params = cfg.scorer.scoring_parameters
+        assert params["temperature"] == 0.0 and isinstance(params["temperature"], float)
+        assert params["max_tokens"] == 1024 and isinstance(params["max_tokens"], int)
+        assert params["deterministic"] is True
+        assert params["system_prompt_suffix"] == "be concise"
+        assert params["stop_token"] is None
+
+    def test_inspect_ai_missing_score_fn_rejected(self) -> None:
+        d = self._inspect_ai_config_dict()
+        d["scorer"].pop("score_fn")
+        with pytest.raises(ValidationError, match="score_fn"):
+            WhatifConfig(**d)
+
+    def test_inspect_ai_missing_judge_provider_rejected(self) -> None:
+        d = self._inspect_ai_config_dict()
+        d["scorer"].pop("judge_provider")
+        with pytest.raises(ValidationError, match="judge_provider"):
+            WhatifConfig(**d)
+
+    def test_stub_silently_ignores_inspect_ai_fields(self) -> None:
+        # Pure ScorerConfig pin (no factory): the docstring promises
+        # inspect_ai-specific fields are silently accepted when
+        # adapter='stub' so a config block can be retargeted with one
+        # keystroke during development. Pinned independently of the
+        # factory test (which exercises the StubScorer construction
+        # path) so the docstring claim stands on its own.
+        from whatifd.config import ScorerConfig
+
+        cfg = ScorerConfig(
+            adapter="stub",
+            score_fn="python:my_pkg:scorer",
+            judge_provider="anthropic",
+            judge_model_id="claude-haiku-4-5",
+            rubric_id="r-v1",
+            rubric_text="Score 0-1.",
+            scoring_parameters={"temperature": 0.0},
+        )
+        assert cfg.adapter == "stub"
+        # Fields preserved (silent-ignore != silent-drop).
+        assert cfg.score_fn == "python:my_pkg:scorer"
+        assert cfg.scoring_parameters == {"temperature": 0.0}
+
+    def test_scoring_parameters_rejects_nested_structures(self) -> None:
+        # The validator catches nested values at config-load with a
+        # single named-field error instead of Pydantic's 4-arm union
+        # rejection.
+        from whatifd.config import ScorerConfig
+
+        # Exhaustive: list, dict, tuple, set — the four collection
+        # types the pre-validator rejects.
+        for bad_value in ([1, 2, 3], {"nested": True}, (1, 2, 3), {1, 2, 3}):
+            with pytest.raises(ValidationError, match="nested structures not allowed"):
+                ScorerConfig(adapter="stub", scoring_parameters={"k": bad_value})

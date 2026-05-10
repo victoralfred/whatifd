@@ -106,6 +106,81 @@ def test_whatif_fork_e2e_setup_failure_no_traces(
     assert json_files, artifacts
 
 
+def test_whatif_fork_e2e_experiment_shape_threaded_to_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #84 end-to-end: `experiment_shape: regression_check` in
+    YAML reaches the wire-format report's top-level
+    `experiment_shape` field via RunManifest → run_pipeline →
+    project_to_report_v01. WhatifConfig acceptance alone
+    (TestExperimentShapeConfig) is necessary but not sufficient — a
+    config field that's accepted but not threaded is a silent-zero
+    bug. This test pins the full CLI → JSON-on-disk path.
+    """
+    import json
+
+    monkeypatch.chdir(tmp_path)
+    cfg = textwrap.dedent(
+        f"""\
+        source:
+          adapter: stub
+        target:
+          runner: python:{_RUNNER_FIXTURE_MODULE}:run
+        selection:
+          failure_cohort:
+            limit: 5
+          baseline_cohort:
+            limit: 5
+        change:
+          system_prompt: e2e regression-check test
+        scorer:
+          adapter: stub
+        decision: {{}}
+        reporting:
+          profile: default
+        timeouts:
+          replay_seconds: 5.0
+          score_seconds: 5.0
+        experiment_shape: regression_check
+        """
+    )
+    cfg_path = tmp_path / "whatifd.config.yaml"
+    cfg_path.write_text(cfg, encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["fork", "--config", str(cfg_path)])
+    # Stub source yields zero traces → Inconclusive (exit 2). The
+    # interesting bit is the JSON-on-disk, not the verdict.
+    assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+
+    # Read the emitted JSON report and assert the experiment_shape
+    # field made it through CLI → cfg → manifest → pipeline →
+    # projection → wire shape.
+    json_files = sorted((tmp_path / "reports").glob("*.json"))
+    assert json_files, "no JSON report emitted"
+    report = json.loads(json_files[-1].read_text(encoding="utf-8"))
+    assert report["experiment_shape"] == "regression_check"
+
+
+def test_whatif_fork_e2e_default_experiment_shape_is_failure_rescue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Back-compat: a config WITHOUT experiment_shape (v0.1 shape)
+    emits `experiment_shape: failure_rescue` in the wire report."""
+    import json
+
+    monkeypatch.chdir(tmp_path)
+    cfg_path = _write_config(tmp_path)  # _write_config uses no experiment_shape key
+    runner = CliRunner()
+    result = runner.invoke(app, ["fork", "--config", str(cfg_path)])
+    assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+
+    json_files = sorted((tmp_path / "reports").glob("*.json"))
+    assert json_files
+    report = json.loads(json_files[-1].read_text(encoding="utf-8"))
+    assert report["experiment_shape"] == "failure_rescue"
+
+
 def test_whatif_fork_e2e_unknown_adapter_setup_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

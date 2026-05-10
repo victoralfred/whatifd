@@ -1165,6 +1165,23 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 
 ## Resolved cascades
 
+### Phase C completion — WhatifConfig.experiment_shape closes the CLI loop (resolved 2026-05-10)
+
+**Source decision:** Phase C (PR #82) wired the verdict-layer branch on `experiment_shape` in `compute_verdict`, but the field was reachable only by programmatic `RunManifest` construction. CLI users running `whatifd fork --config whatifd.config.yaml` could not select `regression_check` without dropping into Python. Issue #84 tracked this gap; PR #88 closes it.
+
+**Rippled to / refactor protection:**
+- `WhatifConfig.experiment_shape: ExperimentShape = "failure_rescue"` lives at the top level of the config (sibling to `source`, `target`, `selection`, etc.), not nested under a sub-block. Reasoning: the shape is a run-level concern, not adapter-level; placing it under `selection` or `experiment` would imply a future expansion point that doesn't exist yet.
+- Default is `"failure_rescue"`. Existing v0.1 configs validate unchanged (back-compat preserved).
+- Unknown values fail at config-load with a Pydantic ValidationError naming the field — fail-early discipline matching the rest of v0.2's config validators (cardinal #1).
+- `_run_fork_pipeline` threads `cfg.experiment_shape` into the `RunManifest` it constructs at dispatch time. `run_pipeline` already reads `runtime.experiment_shape` (Phase C); the projection layer copies it to `ReportV01.experiment_shape` (Phase A).
+- Two tests pin the integration end-to-end:
+  - Unit: `TestExperimentShapeConfig` (default, both literals, unknown rejected).
+  - Integration: `test_whatif_fork_e2e_experiment_shape_threaded_to_report` reads the emitted JSON report and asserts `report["experiment_shape"]` matches the YAML value. Catches a future regression where the field is accepted by config-load but silently dropped at the dispatch layer.
+
+**Resolved by:** PR #88 on branch `cli-experiment-shape`. Closes issue #84.
+
+
+
 ### Phase D — Phoenix / OpenInference TraceSource adapter; tracer-neutrality proof (resolved 2026-05-10)
 
 **Source decision:** v0.1 shipped a single trace-source adapter (`whatifd-langfuse`). The v0.2 roadmap declared Phoenix as the second adapter — not because Phoenix is the strongest competitor to Langfuse, but because shipping a second adapter proves the `TraceSource` Protocol isn't shape-coupled to Langfuse. The risk was that v0.1's Protocol absorbed Langfuse-specific assumptions silently; landing Phoenix surfaces any such coupling as a real refactor cost.

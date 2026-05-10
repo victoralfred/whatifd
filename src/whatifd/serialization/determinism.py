@@ -103,7 +103,11 @@ def _schema_properties() -> dict[str, SchemaProperty]:
     works under zipimport, namespace packages, and editable installs
     without depending on `__file__` resolution.
     """
-    schema_resource = files("whatifd.report.schema").joinpath("v0.1.schema.json")
+    from whatifd.report.models_v01 import REPORT_SCHEMA_VERSION
+
+    schema_resource = files("whatifd.report.schema").joinpath(
+        f"v{REPORT_SCHEMA_VERSION}.schema.json"
+    )
     schema = json.loads(schema_resource.read_text(encoding="utf-8"))
     properties: dict[str, SchemaProperty] = schema.get("properties", {})
     return properties

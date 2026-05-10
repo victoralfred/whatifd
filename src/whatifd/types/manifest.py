@@ -21,9 +21,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Literal
 
 from whatifd.types.policy import DecisionPolicy, TrustFloor
 from whatifd.types.sensitive import SensitiveUnwrap
+
+ExperimentShape = Literal["failure_rescue", "regression_check"]
+"""Which experiment shape this run executes (cardinal #10 — methodology
+must match the design). v0.1 was failure-rescue only; v0.2 adds
+regression-check. The verdict-policy branch on shape lands with Phase C;
+Phase A introduces the field structurally so the schema is ready.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,3 +105,7 @@ class RunManifest:
     agent_identity: Mapping[str, str] | None = None
     redaction: Mapping[str, str | bool] = field(default_factory=dict)
     sensitive_unwraps: list[SensitiveUnwrap] = field(default_factory=list)
+    experiment_shape: ExperimentShape = "failure_rescue"
+    """v0.2 addition. Defaulted on the manifest for caller ergonomics
+    (most existing constructors are failure-rescue). Projected to the
+    required top-level `experiment_shape` field on `ReportV01`."""

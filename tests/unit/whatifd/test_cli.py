@@ -316,13 +316,77 @@ class TestSubcommands:
         assert "# whatifd diff" in out
         assert "Don't Ship" in out and "Ship" in out
 
-    def test_report_migrate_no_op_exits_zero(self, runner: CliRunner, tmp_path) -> None:
-        # v0.1 has no schema bumps to migrate; the no-op IS a
-        # success, not a setup failure. Exit 0 (Ship-equivalent)
-        # so automated pipelines can wire this without false
-        # alarms.
+    def test_report_migrate_v0_1_to_v0_2(self, runner: CliRunner, tmp_path) -> None:
+        # v0.1 → v0.2 is structurally additive (experiment_shape).
+        # The CLI writes the upgraded report to <name>.v0.2.json and
+        # exits 0.
+        import json
+
+        report = tmp_path / "report.json"
+        report.write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1",
+                    "schema_uri": "https://whatif.codes/schema/report/v0.1.json",
+                    "verdict_state": "ship",
+                }
+            ),
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["report-migrate", str(report)])
+        assert result.exit_code == EXIT_SUCCESS, _all_output(result)
+        out_path = tmp_path / "report.v0.2.json"
+        assert out_path.exists()
+        upgraded = json.loads(out_path.read_text(encoding="utf-8"))
+        assert upgraded["schema_version"] == "0.2"
+        assert upgraded["experiment_shape"] == "failure_rescue"
+
+    def test_report_migrate_already_current_is_noop(self, runner: CliRunner, tmp_path) -> None:
+        import json
+
+        report = tmp_path / "report.json"
+        report.write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.2",
+                    "schema_uri": "https://whatif.codes/schema/report/v0.2.json",
+                    "experiment_shape": "failure_rescue",
+                }
+            ),
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["report-migrate", str(report)])
+        assert result.exit_code == EXIT_SUCCESS
+        assert "No-op" in _all_output(result)
+
+    def test_report_migrate_malformed_input_exits_two(self, runner: CliRunner, tmp_path) -> None:
+        # Missing `schema_version` — exercises the MigrationError
+        # branch (structural problem inside `migrate_report`), not
+        # the ReportLoadError branch (file/JSON-parse problems).
+        # Both branches map to exit 2; this test pins the migration-
+        # error path specifically.
         report = tmp_path / "report.json"
         report.write_text("{}", encoding="utf-8")
         result = runner.invoke(app, ["report-migrate", str(report)])
-        assert result.exit_code == EXIT_SUCCESS
-        assert "No-op success" in _all_output(result)
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+
+    def test_report_migrate_in_place_overwrites_input(self, runner: CliRunner, tmp_path) -> None:
+        import json
+
+        report = tmp_path / "report.json"
+        report.write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1",
+                    "schema_uri": "https://whatif.codes/schema/report/v0.1.json",
+                    "verdict_state": "ship",
+                }
+            ),
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["report-migrate", str(report), "--in-place"])
+        assert result.exit_code == EXIT_SUCCESS, _all_output(result)
+        assert not (tmp_path / "report.v0.2.json").exists()
+        upgraded = json.loads(report.read_text(encoding="utf-8"))
+        assert upgraded["schema_version"] == "0.2"
+        assert upgraded["experiment_shape"] == "failure_rescue"

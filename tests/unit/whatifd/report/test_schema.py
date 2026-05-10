@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from whatifd.report.models_v01 import ReportV01
+from whatifd.report.models_v01 import REPORT_SCHEMA_VERSION, ReportV01
 from whatifd.report.projection import project_to_report_v01
 from whatifd.serialization import encode_report_v01
 
@@ -40,7 +40,9 @@ from ._fixtures import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-_SCHEMA_FILE = _REPO_ROOT / "src" / "whatifd" / "report" / "schema" / "v0.1.schema.json"
+_SCHEMA_FILE = (
+    _REPO_ROOT / "src" / "whatifd" / "report" / "schema" / f"v{REPORT_SCHEMA_VERSION}.schema.json"
+)
 _GENERATOR = _REPO_ROOT / "scripts" / "generate_schema.py"
 
 
@@ -93,7 +95,7 @@ class TestSchemaDrift:
         committed = _SCHEMA_FILE.read_bytes()
         assert result.stdout == committed, (
             "Schema drift detected. Run `python scripts/generate_schema.py` "
-            "to regenerate, then commit the updated v0.1.schema.json."
+            f"to regenerate, then commit the updated v{REPORT_SCHEMA_VERSION}.schema.json."
         )
 
 
@@ -112,9 +114,7 @@ class TestTopLevelShape:
 
         assert schema["$id"] == REPORT_SCHEMA_URI
 
-    def test_schema_version_is_v01(self, schema: dict) -> None:
-        from whatifd.report.models_v01 import REPORT_SCHEMA_VERSION
-
+    def test_schema_version_matches_constant(self, schema: dict) -> None:
         assert schema["schema_version"] == REPORT_SCHEMA_VERSION
 
     def test_every_report_field_is_required(self, schema: dict) -> None:

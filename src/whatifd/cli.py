@@ -702,22 +702,64 @@ def diff(
 @app.command("report-migrate")
 def report_migrate(
     report: Annotated[Path, typer.Argument(help="Report file to migrate")],
+    in_place: Annotated[
+        bool,
+        typer.Option("--in-place", help="Overwrite the input file instead of writing alongside."),
+    ] = False,
 ) -> None:
     """Migrate a report to the current schema.
 
-    v0.1 has no schema bumps to migrate from, so this is an
-    intentional no-op. Exits 0 (success) because there's nothing
-    to fix — conflating "intentional no-op" with "setup failure"
-    in the exit-code contract would mislead operators wiring this
-    into automated pipelines.
+    v0.1 → v0.2 migration is structurally additive: v0.2 introduced
+    the required top-level `experiment_shape` field. Old v0.1 reports
+    are upgraded by injecting `experiment_shape: "failure_rescue"`
+    (the only shape that existed in v0.1) and bumping `schema_version`
+    + `schema_uri`.
 
-    Real migration logic lands in v0.2+ when v0.2 schema diverges
-    from v0.1.
+    Cardinal #1 (failure-as-data): malformed input produces a
+    structured stderr message + exit 2, never an unhandled exception.
+
+    Output: writes `<report>.v0.2.json` next to the input by default,
+    or overwrites the input with `--in-place`. Already-current reports
+    are reported as no-ops with exit 0.
     """
-    typer.echo(
-        f"whatifd report-migrate: v0.1 has no migrations to apply ({report}). No-op success.",
+    from whatifd.report.migrate import (
+        MigrationError,
+        migrate_report,
     )
-    raise typer.Exit(code=EXIT_SUCCESS)  # exit 0: intentional no-op
+    from whatifd.report.models_v01 import REPORT_SCHEMA_VERSION
+    from whatifd.serialization import ReportLoadError, load_report_json
+
+    try:
+        raw = load_report_json(report)
+    except ReportLoadError as exc:
+        typer.echo(f"whatifd report-migrate: {exc}", err=True)
+        raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE) from exc
+
+    try:
+        migrated, changed = migrate_report(raw)
+    except MigrationError as exc:
+        typer.echo(f"whatifd report-migrate: {exc}", err=True)
+        raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE) from exc
+
+    if not changed:
+        typer.echo(
+            f"whatifd report-migrate: {report} already at v{REPORT_SCHEMA_VERSION}. No-op.",
+        )
+        raise typer.Exit(code=EXIT_SUCCESS)
+
+    from whatifd.serialization import canonical_json_bytes
+
+    # `parent / (stem + suffix)` rather than `with_suffix` — explicit
+    # about intent: keep the original stem, append the version marker,
+    # land beside the input. `with_suffix` strips only the last suffix
+    # which works for `report.json` but is less obvious for multi-dot
+    # filenames like `run.2026-05-10.json`.
+    out_path = (
+        report if in_place else report.parent / f"{report.stem}.v{REPORT_SCHEMA_VERSION}.json"
+    )
+    out_path.write_bytes(canonical_json_bytes(migrated) + b"\n")
+    typer.echo(f"whatifd report-migrate: wrote {out_path} (v{REPORT_SCHEMA_VERSION}).")
+    raise typer.Exit(code=EXIT_SUCCESS)
 
 
 def main() -> None:

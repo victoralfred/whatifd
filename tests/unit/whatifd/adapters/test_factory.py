@@ -310,18 +310,11 @@ def test_build_scorer_inspect_ai_missing_score_fn_blocked_by_validator() -> None
 
 
 def test_build_scorer_inspect_ai_with_score_fn_constructs() -> None:
-    # v0.2 path: a fully-populated inspect_ai config; score_fn ref
-    # points at an INTENTIONALLY-MISSING attribute on a real module,
-    # surfacing the actionable "module has no attribute" error from
-    # the loader. The attribute name is `_dummy_score_fn_does_not_exist`
-    # — chosen to be obviously-bogus so a future contributor adding
-    # an attribute by that name (vanishingly unlikely) would notice.
-    # If `whatifd_inspect_ai.scorer` ever exports a real attribute
-    # matching this name, this test will silently flip to a
-    # different failure mode (callable but wrong shape, or a
-    # successful build), so the literal name is load-bearing.
-    # importorskip guards optional-adapter absence (lazy-import
-    # contract at the test boundary).
+    # Exercises the loader's "module has no attribute" path against
+    # a real (importable) module + an intentionally-missing attribute.
+    # The match= assertion below is the mechanical pin; the literal
+    # attribute name `_dummy_score_fn_does_not_exist` is bogus by
+    # construction. importorskip guards optional-adapter absence.
     pytest.importorskip("whatifd_inspect_ai")
     cfg = ScorerConfig(
         adapter="inspect_ai",

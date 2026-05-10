@@ -27,10 +27,14 @@ the field name through every error string.
 from __future__ import annotations
 
 import importlib
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
+# `Callable` is imported unconditionally (not under TYPE_CHECKING) so
+# the runtime annotation surface is unambiguous: `from __future__ import
+# annotations` defers evaluation, but a future linter or runtime
+# inspection (`typing.get_type_hints`) needs Callable resolvable at
+# import time. Cost is one extra collections.abc symbol; benefit is
+# the discipline reads correctly without the parenthetical caveat.
 
 
 class ScorerLoadError(Exception):

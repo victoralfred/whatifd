@@ -511,3 +511,63 @@ class TestLoadConfig:
         )
         with pytest.raises(ValidationError):
             load_config(p)
+
+
+# ---------------------------------------------------------------------------
+# Phase B: scorer.score_fn + judge fields + scoring_parameters round-trip
+# ---------------------------------------------------------------------------
+
+
+class TestInspectAiScorerConfig:
+    """v0.2 config-loaded inspect_ai pin."""
+
+    def _inspect_ai_config_dict(self) -> dict:
+        d = _minimal_config_dict()
+        d["scorer"] = {
+            "adapter": "inspect_ai",
+            "score_fn": "python:my_pkg.scorers:faithfulness",
+            "judge_provider": "anthropic",
+            "judge_model_id": "claude-haiku-4-5",
+            "rubric_id": "faith-v1",
+            "rubric_text": "Score 0-1 by faithfulness.",
+            "scoring_parameters": {
+                "temperature": 0.0,
+                "max_tokens": 1024,
+                "deterministic": True,
+                "system_prompt_suffix": "be concise",
+                "stop_token": None,
+            },
+            "cache_mode": "auto",
+        }
+        return d
+
+    def test_inspect_ai_full_config_validates(self) -> None:
+        cfg = WhatifConfig(**self._inspect_ai_config_dict())
+        assert cfg.scorer.adapter == "inspect_ai"
+        assert cfg.scorer.score_fn == "python:my_pkg.scorers:faithfulness"
+        assert cfg.scorer.judge_provider == "anthropic"
+
+    def test_scoring_parameters_round_trip_mixed_json_primitives(self) -> None:
+        # Pin: every JsonPrimitive variant survives the Pydantic
+        # boundary unchanged. A future regression that silently
+        # coerces (e.g., float -> int, None -> "") would fail this
+        # test.
+        cfg = WhatifConfig(**self._inspect_ai_config_dict())
+        params = cfg.scorer.scoring_parameters
+        assert params["temperature"] == 0.0 and isinstance(params["temperature"], float)
+        assert params["max_tokens"] == 1024 and isinstance(params["max_tokens"], int)
+        assert params["deterministic"] is True
+        assert params["system_prompt_suffix"] == "be concise"
+        assert params["stop_token"] is None
+
+    def test_inspect_ai_missing_score_fn_rejected(self) -> None:
+        d = self._inspect_ai_config_dict()
+        d["scorer"].pop("score_fn")
+        with pytest.raises(ValidationError, match="score_fn"):
+            WhatifConfig(**d)
+
+    def test_inspect_ai_missing_judge_provider_rejected(self) -> None:
+        d = self._inspect_ai_config_dict()
+        d["scorer"].pop("judge_provider")
+        with pytest.raises(ValidationError, match="judge_provider"):
+            WhatifConfig(**d)

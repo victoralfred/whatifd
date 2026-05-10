@@ -191,8 +191,10 @@ def build_scorer(cfg: ScorerConfig) -> Scorer:
         )
         return scorer
     raise AdapterFactoryError(
-        f"Unknown scorer adapter {name!r}. v0.1 CLI supports 'stub' "
-        "(programmatic API supports 'inspect_ai' via run_pipeline)."
+        f"Unknown scorer adapter {name!r}. Supported in v0.2: 'stub' and "
+        "'inspect_ai' (the latter requires the optional `whatifd-inspect-ai` "
+        "package and the score_fn / judge_provider / judge_model_id / "
+        "rubric_id / rubric_text fields)."
     )
 
 

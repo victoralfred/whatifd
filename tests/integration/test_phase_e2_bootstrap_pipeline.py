@@ -3,24 +3,32 @@
 Pins the load-bearing invariants of the pipeline switch:
 
 1. `_cohort_result_from_bucket` returns CI bounds equal to what
-   `paired_percentile_bootstrap(..., seed=BOOTSTRAP_SEED)` produces
-   directly — i.e., the pipeline really uses the bootstrap, not a
-   shadow empirical-quantile shortcut.
+   `paired_percentile_bootstrap(deltas, resamples=BOOTSTRAP_RESAMPLES,
+   ci_level=BOOTSTRAP_CI_LEVEL, seed=BOOTSTRAP_SEED)` produces
+   directly — i.e., the pipeline really uses the bootstrap with
+   the disclosed parameters, not a shadow shortcut and not the
+   bootstrap-with-some-other-parameters.
 
-2. The seed declared in `cli.py`'s MethodologyDisclosure matches
-   `whatifd.pipeline.BOOTSTRAP_SEED` at runtime, not just at write-
-   time. Cardinal #10: the disclosure must echo what the pipeline
-   actually ran.
+2. The seed/resamples/ci_level declared in `cli.py`'s
+   MethodologyDisclosure all live in `whatifd.statistical` and are
+   imported at module level by both the pipeline and the CLI.
+   Cardinal #10: the disclosure must echo what the pipeline
+   actually ran; structural coupling prevents silent drift.
 """
 
 from __future__ import annotations
 
-from whatifd.pipeline import (
+import inspect
+from pathlib import Path
+
+from whatifd.pipeline import _cohort_result_from_bucket, _CohortBuckets
+from whatifd.statistical import (
+    BOOTSTRAP_CI_LEVEL,
+    BOOTSTRAP_RESAMPLES,
     BOOTSTRAP_SEED,
-    _cohort_result_from_bucket,
-    _CohortBuckets,  # internal but stable test-time API
+    paired_percentile_bootstrap,
+    to_decimal_string,
 )
-from whatifd.statistical import paired_percentile_bootstrap, to_decimal_string
 from whatifd.types.policy import DecisionPolicy, TrustFloor
 
 
@@ -37,9 +45,18 @@ class TestPipelineCallsBootstrap:
         floor = TrustFloor()
         policy = DecisionPolicy()
 
-        # Direct bootstrap call — the source of truth the pipeline
-        # MUST agree with.
-        expected = paired_percentile_bootstrap(deltas, seed=BOOTSTRAP_SEED)
+        # Direct bootstrap call with the SAME parameters the
+        # disclosure echoes. The pipeline MUST agree with this
+        # output for the disclosure to match the design (cardinal
+        # #10). All three parameters are pinned so a future refactor
+        # that changes one without updating the disclosure fails
+        # this test.
+        expected = paired_percentile_bootstrap(
+            deltas,
+            resamples=BOOTSTRAP_RESAMPLES,
+            ci_level=BOOTSTRAP_CI_LEVEL,
+            seed=BOOTSTRAP_SEED,
+        )
 
         result = _cohort_result_from_bucket(bucket, policy=policy, floor=floor)
 
@@ -77,38 +94,55 @@ class TestPipelineCallsBootstrap:
 
 
 class TestDisclosureSeedCoupling:
-    """Cardinal #10 structural coupling: `cli.py` imports
-    `BOOTSTRAP_SEED` from `whatifd.pipeline`. A future change to
-    the constant updates both sites at once; a future divergence
-    (e.g., a contributor reverting `cli.py` to a duplicated literal)
-    fails this test.
+    """Cardinal #10 structural coupling: every bootstrap parameter
+    the disclosure declares lives in `whatifd.statistical` and is
+    imported at module level by both `whatifd.pipeline` and
+    `whatifd.cli`. Single source of truth — future changes update
+    both sites at once; a future divergence (e.g., a contributor
+    reverting `cli.py` to duplicated literals) fails this test.
     """
 
-    def test_cli_imports_bootstrap_seed_from_pipeline(self) -> None:
-        # The import lives inside `_run_fork_pipeline` (lazy) — the
-        # source-level proof is that the literal `BOOTSTRAP_SEED`
-        # appears in cli.py exactly via the `from whatifd.pipeline
-        # import BOOTSTRAP_SEED` form, not as a duplicated integer.
-        from pathlib import Path
+    @staticmethod
+    def _cli_source() -> str:
+        # Locate `whatifd.cli` via `inspect.getsourcefile` so the
+        # test is independent of pytest's current working directory.
+        # `Path("src/whatifd/cli.py")`-relative pathing would fail
+        # under any invocation that didn't `cd` to the repo root.
+        import whatifd.cli
 
-        cli_source = Path("src/whatifd/cli.py").read_text(encoding="utf-8")
-        assert "from whatifd.pipeline import BOOTSTRAP_SEED" in cli_source, (
-            "cli.py must import BOOTSTRAP_SEED from whatifd.pipeline so the "
-            "MethodologyDisclosure seed and the pipeline seed are structurally "
-            "coupled. Cardinal #10: the disclosure must match the design."
+        path = inspect.getsourcefile(whatifd.cli)
+        assert path is not None, "could not resolve whatifd.cli source path"
+        return Path(path).read_text(encoding="utf-8")
+
+    def test_cli_imports_bootstrap_constants_from_statistical(self) -> None:
+        cli_source = self._cli_source()
+        assert "from whatifd.statistical import" in cli_source and all(
+            name in cli_source
+            for name in ("BOOTSTRAP_CI_LEVEL", "BOOTSTRAP_RESAMPLES", "BOOTSTRAP_SEED")
+        ), (
+            "cli.py must import BOOTSTRAP_SEED, BOOTSTRAP_RESAMPLES, and "
+            "BOOTSTRAP_CI_LEVEL from whatifd.statistical so all three bootstrap "
+            "parameters in MethodologyDisclosure are structurally coupled to "
+            "the pipeline's actual bootstrap call. Cardinal #10."
         )
-        # And no duplicated literal — the integer 4_872_109 should
-        # appear exactly once across the codebase (in pipeline.py).
+
+    def test_cli_does_not_duplicate_bootstrap_literals(self) -> None:
+        cli_source = self._cli_source()
+        # The integer literal 4_872_109 should appear exactly once
+        # across the codebase (in whatifd.statistical) — not in
+        # cli.py as a duplicated mirror.
         assert "4_872_109" not in cli_source, (
             "cli.py contains the literal seed value as a duplicated integer. "
-            "Use `from whatifd.pipeline import BOOTSTRAP_SEED` instead so the "
-            "seed is structurally coupled, not manually mirrored."
+            "Use the BOOTSTRAP_SEED import so the seed is structurally "
+            "coupled, not manually mirrored."
         )
 
-    def test_pipeline_constant_value_is_pinned(self) -> None:
-        # If the seed ever changes, callers reading prior reports
-        # need to know the bootstrap distribution shifted. This test
-        # is a deliberate version-pin: changing it requires
-        # updating CHANGELOG with a methodology-disclosure note so
-        # downstream consumers learn the seed-rebase happened.
+    def test_pipeline_constants_are_pinned(self) -> None:
+        # Version-pin: if ANY of these constants change, callers
+        # reading prior reports need to know the bootstrap output
+        # shifted. Changing the literals here requires updating
+        # CHANGELOG with a methodology-disclosure note so
+        # downstream consumers learn about the rebase.
         assert BOOTSTRAP_SEED == 4_872_109
+        assert BOOTSTRAP_RESAMPLES == 2000
+        assert BOOTSTRAP_CI_LEVEL == 0.95

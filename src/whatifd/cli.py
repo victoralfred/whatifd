@@ -74,6 +74,11 @@ from whatifd.diff import (
     load_report,
     render_diff_markdown,
 )
+from whatifd.statistical import (
+    BOOTSTRAP_CI_LEVEL,
+    BOOTSTRAP_RESAMPLES,
+    BOOTSTRAP_SEED,
+)
 
 # Default config-file path. Operators override via `--config`.
 _DEFAULT_CONFIG_PATH = Path("whatifd.config.yaml")
@@ -308,16 +313,15 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
 
     # MethodologyDisclosure: Phase E.2 flipped this to declare the
     # real `paired_percentile_bootstrap` method. Cardinal #10
-    # (statistical claims match the design): the disclosure MUST
-    # echo the seed the pipeline actually ran. Importing
-    # `BOOTSTRAP_SEED` from `whatifd.pipeline` instead of
-    # duplicating the literal eliminates the silent-drift class —
-    # a future change to the seed updates both sites at once.
-    # Cluster-paired bootstrap (where resamples respect cluster
-    # boundaries like session_id) is the v0.3 surface and uses the
-    # schema's `cluster_paired_percentile_bootstrap` enum value.
-    from whatifd.pipeline import BOOTSTRAP_SEED
-
+    # (statistical claims match the design): every bootstrap
+    # parameter the disclosure carries (seed, resamples, ci_level)
+    # MUST echo what the pipeline actually ran. Importing all three
+    # from `whatifd.pipeline` instead of duplicating literals
+    # eliminates the silent-drift class — a future change to any
+    # parameter updates both sites at once. Cluster-paired bootstrap
+    # (where resamples respect cluster boundaries like session_id)
+    # is the v0.3 surface; the schema enum already distinguishes
+    # `cluster_paired_percentile_bootstrap`.
     methodology = MethodologyDisclosure(
         unit_of_analysis="paired_trace_delta",
         primary_metric="faithfulness",
@@ -325,10 +329,10 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
         cohorts=("failure", "baseline"),
         bootstrap=BootstrapMethodDisclosure(
             method="paired_percentile_bootstrap",
-            resamples=2000,
+            resamples=BOOTSTRAP_RESAMPLES,
             seed=BOOTSTRAP_SEED,
             sample_unit="paired_trace_delta",
-            ci_level=DecimalString("0.950"),
+            ci_level=DecimalString(f"{BOOTSTRAP_CI_LEVEL:.3f}"),
             cluster_key=None,
             assumptions=(
                 "i.i.d. resampling across paired traces (no cluster boundaries respected)",

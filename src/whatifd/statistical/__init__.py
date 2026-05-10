@@ -44,7 +44,22 @@ from whatifd.statistical.bootstrap import (
 )
 from whatifd.statistical.wire_boundary import to_decimal_string
 
+# Phase E.2 statistical-layer constants. Single source of truth for
+# every bootstrap parameter that crosses the cardinal #10
+# disclosure boundary. `whatifd.pipeline` imports these to drive
+# the bootstrap call; `whatifd.cli` imports the same constants to
+# populate `MethodologyDisclosure.bootstrap.{seed, resamples,
+# ci_level}`. Living in `whatifd.statistical` (not pipeline) so
+# `whatifd.cli` can import them at module-level without dragging
+# the pipeline → adapters import graph into the core load path.
+BOOTSTRAP_SEED = 4_872_109
+BOOTSTRAP_RESAMPLES = 2000
+BOOTSTRAP_CI_LEVEL = 0.95
+
 __all__ = [
+    "BOOTSTRAP_CI_LEVEL",
+    "BOOTSTRAP_RESAMPLES",
+    "BOOTSTRAP_SEED",
     "BootstrapResult",
     "paired_percentile_bootstrap",
     "to_decimal_string",

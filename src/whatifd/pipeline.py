@@ -48,7 +48,13 @@ from whatifd.decision.verdict import compute_verdict
 from whatifd.replay.closure_errors import _ReplayStageError, _ScorerStructuralError
 from whatifd.report.models_v01 import ReportV01
 from whatifd.report.projection import project_to_report_v01
-from whatifd.statistical import paired_percentile_bootstrap, to_decimal_string
+from whatifd.statistical import (
+    BOOTSTRAP_CI_LEVEL,
+    BOOTSTRAP_RESAMPLES,
+    BOOTSTRAP_SEED,
+    paired_percentile_bootstrap,
+    to_decimal_string,
+)
 from whatifd.types.cohort import CIUnavailableReason, CohortResult
 from whatifd.types.failure import FailureRecord
 from whatifd.types.manifest import RunManifest
@@ -56,23 +62,12 @@ from whatifd.types.policy import DecisionPolicy, TrustFloor
 from whatifd.types.primitives import DecimalString
 from whatifd.types.statistical import MethodologyDisclosure
 
-# Phase E.2: deterministic seed for the paired-percentile bootstrap.
-# Constant so the bootstrap CIs are reproducible across re-runs of
-# the same fixture (cardinal #4 determinism: per-cohort CI bounds
-# are part of the deterministic subset). A future surface may
-# parameterize this through `RunManifest.selection_seed` or a
-# dedicated stats-layer seed; v0.2 ships the constant.
-#
-# Public (no leading underscore) because `whatifd.cli` imports it
-# to populate `MethodologyDisclosure.bootstrap.seed`. Cardinal #10:
-# the disclosure MUST match what the pipeline actually ran; binding
-# both sites to the same symbol prevents silent drift between the
-# declared seed and the seed the bootstrap used. A test pins the
-# coupling structurally.
-BOOTSTRAP_SEED = 4_872_109
-# Backwards-compat alias — earlier in the same PR `_BOOTSTRAP_SEED`
-# was used internally; keep it pointing at the public name so an
-# in-flight reviewer's grep doesn't false-flag a missing constant.
+# Phase E.2 statistical-layer constants live in `whatifd.statistical`
+# and are imported above. They are re-exported here as
+# `whatifd.pipeline.BOOTSTRAP_*` for the prior in-flight PR's import
+# sites; the canonical source-of-truth is `whatifd.statistical`.
+# Backwards-compat alias for in-flight references; safe to drop
+# after the surrounding PR cycle settles.
 _BOOTSTRAP_SEED = BOOTSTRAP_SEED
 
 
@@ -259,7 +254,9 @@ def _cohort_result_from_bucket(
         # CI rather than a degenerate single-point empirical estimate.
         bootstrap_result = paired_percentile_bootstrap(
             bucket.deltas,
-            seed=_BOOTSTRAP_SEED,
+            resamples=BOOTSTRAP_RESAMPLES,
+            ci_level=BOOTSTRAP_CI_LEVEL,
+            seed=BOOTSTRAP_SEED,
         )
         median = to_decimal_string(bootstrap_result.median)
         ci_lower = to_decimal_string(bootstrap_result.ci_lower)

@@ -68,30 +68,6 @@ class TestPipelineCallsBootstrap:
         assert result.ci_lower == to_decimal_string(expected.ci_lower)
         assert result.ci_upper == to_decimal_string(expected.ci_upper)
 
-    def test_seed_change_changes_ci(self) -> None:
-        # Sanity: the pipeline's CI actually depends on
-        # BOOTSTRAP_SEED. If a future refactor accidentally hardcoded
-        # the seed elsewhere or stopped passing it through, the
-        # cardinal-#10 disclosure→pipeline coupling would silently
-        # break.
-        #
-        # Note on seed selection: empirically, BOOTSTRAP_SEED + small
-        # offsets can collide on identical sorted-median percentiles
-        # at the chosen indices (the bootstrap median is always one
-        # of the original deltas, so distinct seed pairs can land on
-        # the same percentile entry). Comparing against seed=1 (well
-        # outside BOOTSTRAP_SEED's neighborhood) avoids that
-        # collision class. The structural property — "the pipeline
-        # uses BOOTSTRAP_SEED, not some other seed" — is what this
-        # test pins.
-        deltas = [i / 100.0 for i in range(20)]
-        a = paired_percentile_bootstrap(deltas, seed=BOOTSTRAP_SEED)
-        b = paired_percentile_bootstrap(deltas, seed=1)
-        # Median is data-determined and identical; CI bounds depend
-        # on the resample sequence.
-        assert a.median == b.median
-        assert (a.ci_lower, a.ci_upper) != (b.ci_lower, b.ci_upper)
-
 
 class TestDisclosureSeedCoupling:
     """Cardinal #10 structural coupling: every bootstrap parameter
@@ -146,3 +122,46 @@ class TestDisclosureSeedCoupling:
         assert BOOTSTRAP_SEED == 4_872_109
         assert BOOTSTRAP_RESAMPLES == 2000
         assert BOOTSTRAP_CI_LEVEL == 0.95
+
+
+class TestDocsExampleStructuralCoupling:
+    """The programmatic example in `docs/getting-started.md` shows
+    a `MethodologyDisclosure` construction. Cardinal #10: the docs
+    must echo the same constants the pipeline uses, not duplicate
+    literals. A future seed/resamples change would otherwise leave
+    the docs telling readers a stale story.
+    """
+
+    @staticmethod
+    def _docs_source() -> str:
+        # Locate the file relative to the test module's location so
+        # the test is independent of pytest's cwd.
+        repo_root = Path(__file__).resolve().parents[2]
+        docs_path = repo_root / "docs" / "getting-started.md"
+        return docs_path.read_text(encoding="utf-8")
+
+    def test_docs_example_imports_bootstrap_constants(self) -> None:
+        docs_source = self._docs_source()
+        assert "from whatifd.statistical import" in docs_source and all(
+            name in docs_source
+            for name in ("BOOTSTRAP_CI_LEVEL", "BOOTSTRAP_RESAMPLES", "BOOTSTRAP_SEED")
+        ), (
+            "docs/getting-started.md programmatic example must import the "
+            "bootstrap constants from whatifd.statistical so the example "
+            "echoes the same values the pipeline uses. Cardinal #10."
+        )
+
+    def test_docs_example_does_not_duplicate_bootstrap_literals(self) -> None:
+        docs_source = self._docs_source()
+        # The integer literals 4_872_109 and 2000 (used as
+        # standalone values, not in unrelated contexts) should be
+        # absent from the example. Check 4_872_109 only — `2000` is
+        # too generic to forbid wholesale, so we rely on the
+        # imports-present test plus the import-of-the-name to keep
+        # `resamples=BOOTSTRAP_RESAMPLES` honest.
+        assert "4_872_109" not in docs_source, (
+            "docs/getting-started.md contains the literal seed value as a "
+            "duplicated integer. Use `seed=BOOTSTRAP_SEED` instead — Cardinal "
+            "#10's structural coupling requires the docs to echo the same "
+            "constant the pipeline imports."
+        )

@@ -62,13 +62,12 @@ from whatifd.types.policy import DecisionPolicy, TrustFloor
 from whatifd.types.primitives import DecimalString
 from whatifd.types.statistical import MethodologyDisclosure
 
-# Phase E.2 statistical-layer constants live in `whatifd.statistical`
-# and are imported above. They are re-exported here as
-# `whatifd.pipeline.BOOTSTRAP_*` for the prior in-flight PR's import
-# sites; the canonical source-of-truth is `whatifd.statistical`.
-# Backwards-compat alias for in-flight references; safe to drop
-# after the surrounding PR cycle settles.
-_BOOTSTRAP_SEED = BOOTSTRAP_SEED
+# Phase E.2 statistical-layer constants (BOOTSTRAP_SEED,
+# BOOTSTRAP_RESAMPLES, BOOTSTRAP_CI_LEVEL) live in
+# `whatifd.statistical` and are imported above. The canonical
+# source of truth is that module — both `whatifd.pipeline` and
+# `whatifd.cli` import directly from it. There are no aliases or
+# re-exports here.
 
 
 @dataclass(frozen=True, slots=True)

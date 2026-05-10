@@ -42,6 +42,11 @@ from whatifd.adapters.stub import StubTraceSource, StubTraceSpec
 from whatifd.cache.summary import CachePolicySnapshot, CacheSummary
 from whatifd.pipeline import run_pipeline
 from whatifd.serialization import encode_report_v01
+from whatifd.statistical import (
+    BOOTSTRAP_CI_LEVEL,
+    BOOTSTRAP_RESAMPLES,
+    BOOTSTRAP_SEED,
+)
 from whatifd.types.manifest import EnvironmentFingerprint, RunManifest
 from whatifd.types.policy import DecisionPolicy, TrustFloor
 from whatifd.types.statistical import (
@@ -110,10 +115,17 @@ methodology = MethodologyDisclosure(
     cohorts=("failure", "baseline"),
     bootstrap=BootstrapMethodDisclosure(
         method="paired_percentile_bootstrap",
-        resamples=2000,
-        seed=4_872_109,
+        # Cardinal #10: the disclosure echoes what the pipeline
+        # actually ran. Import the constants instead of duplicating
+        # literals so a future change to BOOTSTRAP_SEED /
+        # BOOTSTRAP_RESAMPLES / BOOTSTRAP_CI_LEVEL updates the
+        # disclosure automatically. (Module-level imports already in
+        # the file: `from whatifd.statistical import BOOTSTRAP_SEED,
+        # BOOTSTRAP_RESAMPLES, BOOTSTRAP_CI_LEVEL`.)
+        resamples=BOOTSTRAP_RESAMPLES,
+        seed=BOOTSTRAP_SEED,
         sample_unit="paired_trace_delta",
-        ci_level="0.950",
+        ci_level=DecimalString(f"{BOOTSTRAP_CI_LEVEL:.3f}"),
         cluster_key=None,
         assumptions=(
             "i.i.d. resampling across paired traces (no cluster boundaries respected)",

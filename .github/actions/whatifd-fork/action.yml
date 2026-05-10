@@ -1,0 +1,164 @@
+name: whatifd fork
+description: |
+  Run a whatifd experiment and surface the verdict as a PR comment + status
+  annotation. Thin wrapper over `whatifd fork --config <path>` per Phase I of
+  the v0.2 roadmap. The CLI is already CI-ready; this Action saves the
+  boilerplate of capturing the report files and posting the comment.
+
+inputs:
+  config:
+    description: Path to the whatifd config file (.yaml/.yml/.json).
+    required: false
+    default: whatifd.config.yaml
+  profile:
+    description: |
+      Reporting profile override. Must match the config's reporting.profile.
+      `forensic` requires the forensic_acknowledgment block per cardinal #7.
+    required: false
+    default: ""
+  comment-on-pr:
+    description: |
+      Post the rendered Markdown verdict as a PR comment. Defaults to true on
+      pull_request events; ignored otherwise.
+    required: false
+    default: "true"
+  github-token:
+    description: |
+      GitHub token used to post the PR comment. Defaults to the workflow's
+      automatic GITHUB_TOKEN; supply a PAT if the comment must be authored
+      by a specific account.
+    required: false
+    default: ${{ github.token }}
+  fail-on-dont-ship:
+    description: |
+      If 'true' (default), the Action fails the workflow when whatifd's
+      verdict is Don't Ship (exit 1) or Inconclusive / setup failure (exit
+      2). If 'false', the Action always succeeds and exposes the verdict
+      via the `verdict` output for downstream steps to inspect.
+    required: false
+    default: "true"
+
+outputs:
+  verdict:
+    description: |
+      The whatifd verdict: 'ship', 'dont_ship', or 'inconclusive'. Mirrors the
+      CLI exit code (0/1/2) for downstream steps that branch on the result.
+    value: ${{ steps.fork.outputs.verdict }}
+  exit-code:
+    description: Raw exit code from `whatifd fork` (0, 1, or 2).
+    value: ${{ steps.fork.outputs.exit_code }}
+  report-json:
+    description: Path to the emitted ReportV01 JSON file (relative to repo root).
+    value: ${{ steps.fork.outputs.report_json }}
+  report-md:
+    description: Path to the emitted Markdown verdict file (relative to repo root).
+    value: ${{ steps.fork.outputs.report_md }}
+
+runs:
+  using: composite
+  steps:
+    # Phase I keeps the wrapper thin: the heavy lifting (config validation,
+    # adapter wiring, replay, scoring, decision) is the CLI's job. The
+    # Action's job is to capture the artifacts and surface the verdict
+    # through the GitHub PR/status surface.
+    - name: Run whatifd fork
+      id: fork
+      shell: bash
+      env:
+        WHATIFD_CONFIG: ${{ inputs.config }}
+        WHATIFD_PROFILE: ${{ inputs.profile }}
+      run: |
+        set +e
+
+        cmd=(whatifd fork --config "$WHATIFD_CONFIG")
+        if [[ -n "$WHATIFD_PROFILE" ]]; then
+          cmd+=(--profile "$WHATIFD_PROFILE")
+        fi
+
+        echo "::group::whatifd fork"
+        "${cmd[@]}"
+        exit_code=$?
+        echo "::endgroup::"
+
+        # Map CLI exit code → verdict string. 0=ship, 1=dont_ship,
+        # 2=inconclusive (covers setup failures and floor-blocked
+        # Inconclusives — both are "not Ship and not a clean reject").
+        case "$exit_code" in
+          0) verdict="ship" ;;
+          1) verdict="dont_ship" ;;
+          *) verdict="inconclusive" ;;
+        esac
+
+        # Locate the latest report files. The CLI writes to ./reports/
+        # by convention (see whatifd.cli._run_fork_pipeline); the
+        # most-recently-modified .json + .md pair is the run we just
+        # did. `find -printf` keeps this portable across non-GNU find
+        # only when GNU find is present; the `ls -t | head -n1` form
+        # works on both BSD and GNU userlands.
+        report_json=""
+        report_md=""
+        if [[ -d reports ]]; then
+          report_json=$(ls -t reports/*.json 2>/dev/null | head -n1 || true)
+          report_md=$(ls -t reports/*.md 2>/dev/null | head -n1 || true)
+        fi
+
+        echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+        echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+        echo "report_json=$report_json" >> "$GITHUB_OUTPUT"
+        echo "report_md=$report_md" >> "$GITHUB_OUTPUT"
+
+        # Status annotation. The line shows up in the GitHub
+        # Actions UI as a notice/warning/error depending on the
+        # verdict. Cardinal #1: structured signal, not a stack
+        # trace.
+        case "$verdict" in
+          ship) echo "::notice title=whatifd verdict::Ship" ;;
+          dont_ship) echo "::warning title=whatifd verdict::Don't Ship" ;;
+          inconclusive) echo "::warning title=whatifd verdict::Inconclusive" ;;
+        esac
+
+    # Post the rendered Markdown verdict as a PR comment when running on a
+    # pull_request event. `gh pr comment` requires GH_TOKEN; the Action
+    # accepts an explicit token input so callers can override the default
+    # (e.g., to author the comment from a bot account).
+    - name: Post PR comment
+      if: |
+        inputs.comment-on-pr == 'true'
+        && github.event_name == 'pull_request'
+        && steps.fork.outputs.report_md != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPORT_MD: ${{ steps.fork.outputs.report_md }}
+        VERDICT: ${{ steps.fork.outputs.verdict }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        # Prepend a verdict header so PR-list scanners see the
+        # outcome without expanding the comment.
+        {
+          case "$VERDICT" in
+            ship) echo "## ✅ whatifd: Ship" ;;
+            dont_ship) echo "## ❌ whatifd: Don't Ship" ;;
+            inconclusive) echo "## ⚠️ whatifd: Inconclusive" ;;
+          esac
+          echo ""
+          cat "$REPORT_MD"
+        } > /tmp/whatifd-pr-comment.md
+
+        gh pr comment "$PR_NUMBER" --body-file /tmp/whatifd-pr-comment.md
+
+    - name: Fail on Don't Ship / Inconclusive
+      if: |
+        inputs.fail-on-dont-ship == 'true'
+        && steps.fork.outputs.exit_code != '0'
+      shell: bash
+      env:
+        VERDICT: ${{ steps.fork.outputs.verdict }}
+        EXIT_CODE: ${{ steps.fork.outputs.exit_code }}
+      run: |
+        echo "::error title=whatifd verdict::$VERDICT (exit $EXIT_CODE)"
+        exit "$EXIT_CODE"
+
+branding:
+  icon: shield
+  color: blue

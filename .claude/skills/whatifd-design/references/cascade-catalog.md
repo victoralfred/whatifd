@@ -1165,6 +1165,25 @@ The cycle is broken at import time because `TYPE_CHECKING` is False at runtime; 
 
 ## Resolved cascades
 
+### Phase I — `whatifd-fork` GitHub Action wrapper (resolved 2026-05-10)
+
+**Source decision:** The public site (whatif.codes) promises a "GitHub Action wrapper" as a v0.2 feature. The CLI is already CI-ready (config-file driven, structured exit codes 0/1/2, deterministic `./reports/` artifacts); the Action's job is to capture the artifacts and surface the verdict through GitHub's PR/status surface.
+
+**Rippled to / refactor protection:**
+- Composite action at `.github/actions/whatifd-fork/action.yml` — pure shell + standard `gh` CLI. No Docker, no NumPy, no compute (cardinal #9 — orchestration not compute).
+- Inputs: `config`, `profile`, `comment-on-pr`, `github-token`, `fail-on-dont-ship`. Outputs: `verdict` / `exit-code` / `report-json` / `report-md`.
+- Exit-code → verdict mapping: `0 → "ship"`, `1 → "dont_ship"`, `* → "inconclusive"` (the `*` arm covers exit 2 + any future exit codes; cardinal #1 — never crash on an unrecognized signal).
+- PR-comment step guards on `github.event_name == 'pull_request'` AND `comment-on-pr: true` AND `report_md != ''`. The third guard prevents commenting on setup-failure paths where the CLI exits before writing artifacts.
+- `fail-on-dont-ship: true` is the default — the workflow fails on Don't Ship and Inconclusive. `fail-on-dont-ship: false` exposes the verdict as an output for downstream steps to inspect (e.g., a "warn but don't block" mode).
+- Cardinal #7 (two-affirmation) preserved: when the action is invoked with `profile: forensic`, the underlying CLI still requires the config's `forensic_acknowledgment` block. The action does NOT bypass cardinal #7.
+- 21 structural tests in `tests/integration/test_phase_i_github_action.py` parse `action.yml` and pin: top-level shape, every input default the README documents, every output, the load-bearing `if:` guards on the PR-comment and fail steps, the exit-code mapping branches.
+- Example workflow at `.github/workflows/example-whatifd-fork.yml.example`. The `.example` suffix prevents the whatifd repo's own Actions runner from collecting it (the example references adapter credentials this repo doesn't have).
+- Marketplace publication (separate repo) deferred to v0.3+; the action is currently consumable via `uses: ./.github/actions/whatifd-fork` (in-repo) or by vendoring into the consumer's repo.
+
+**Resolved by:** Phase I PR on branch `phase-i-github-action`.
+
+
+
 ### Phase E.2 — pipeline switch + MethodologyDisclosure flip (resolved 2026-05-10)
 
 **Source decision:** Phase E.1 (PR #89) shipped the `paired_percentile_bootstrap` algorithm in `whatifd.statistical`. The pipeline still called `statistics.quantiles` and the methodology disclosure still emitted `bootstrap.method = "unavailable"`. Phase E.2 closes that loop: the pipeline now calls the real bootstrap, and the disclosure declares `paired_percentile_bootstrap` truthfully. The doctrine bot raised this as a cardinal-#10 concern across PRs #82, #86, #88, and #89; the disclosure flip is what earns v0.2 the right to claim non-`unavailable` methodology.

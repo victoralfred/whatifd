@@ -99,28 +99,32 @@ runs:
         # is the cross-platform way to get an mtime-sorted newest
         # match. Issue #93 tracks the cleaner CLI-emits-its-own-
         # paths follow-up; this discovery is the v0.2 fallback.
-        # Error swallowing here is INTENTIONAL: a missing reports/
-        # directory or empty glob is a legitimate "no artifact"
-        # outcome (the CLI exited before writing — typical of
-        # setup-failure paths). The downstream PR-comment guard
-        # checks `report_md != ''` and skips the comment if so;
-        # the fail-on-dont-ship step still fires off the
-        # exit_code so the operator sees the actual CLI failure
-        # via the workflow's annotation.
+        # Path discovery distinguishes three cases (cardinal #1):
+        #   (a) `reports/` does not exist → legitimate "no artifact"
+        #       outcome (CLI exited before writing). Empty paths.
+        #   (b) `reports/` exists but the glob is empty → same.
+        #   (c) `reports/` exists but is unreadable / Python helper
+        #       crashes → REAL bug; surface ::error + non-zero exit.
         #
-        # The narrow case this masks: a permission error on
-        # ./reports/ that's distinct from "doesn't exist." On a
-        # GitHub-hosted runner that's effectively unreachable
-        # (the runner owns its workspace); on self-hosted runners
-        # with constrained file ACLs it's a real but rare scenario.
-        # If a consumer reports it, the right fix is to migrate to
-        # the CLI-emits-paths pattern (issue #93) rather than
-        # plumbing a third error class through this discovery.
+        # The Python one-liner exits 0 with empty stdout on (a)/(b)
+        # and exits non-zero on (c) (PermissionError or any other
+        # uncaught exception). We capture both the stdout (path) and
+        # the exit code, distinguishing them.
         report_json=""
         report_md=""
         if [[ -d reports ]]; then
-          report_json=$(python3 -c "import glob,os,sys; m=glob.glob('reports/*.json'); m and sys.stdout.write(max(m, key=os.path.getmtime))" 2>/dev/null || true)
-          report_md=$(python3 -c "import glob,os,sys; m=glob.glob('reports/*.md'); m and sys.stdout.write(max(m, key=os.path.getmtime))" 2>/dev/null || true)
+          report_json=$(python3 -c "import glob,os,sys; m=glob.glob('reports/*.json'); m and sys.stdout.write(max(m, key=os.path.getmtime))")
+          json_exit=$?
+          if [[ $json_exit -ne 0 ]]; then
+            echo "::error title=whatifd path discovery::Python helper failed for *.json (exit $json_exit); check ./reports/ permissions"
+            exit "$json_exit"
+          fi
+          report_md=$(python3 -c "import glob,os,sys; m=glob.glob('reports/*.md'); m and sys.stdout.write(max(m, key=os.path.getmtime))")
+          md_exit=$?
+          if [[ $md_exit -ne 0 ]]; then
+            echo "::error title=whatifd path discovery::Python helper failed for *.md (exit $md_exit); check ./reports/ permissions"
+            exit "$md_exit"
+          fi
         fi
 
         echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
@@ -150,10 +154,12 @@ runs:
     # accepts an explicit token input so callers can override the default
     # (e.g., to author the comment from a bot account).
     - name: Post PR comment
-      if: |
-        inputs.comment-on-pr == 'true'
-        && github.event_name == 'pull_request'
-        && steps.fork.outputs.report_md != ''
+      # Wrapped in `${{ }}` per GitHub's safe-form recommendation
+      # for multi-line `if:` expressions with `&&` operators —
+      # bare expressions auto-evaluate in single-line form, but
+      # multi-line block scalars are safer with explicit
+      # interpolation.
+      if: ${{ inputs.comment-on-pr == 'true' && github.event_name == 'pull_request' && steps.fork.outputs.report_md != '' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
@@ -223,9 +229,7 @@ runs:
         fi
 
     - name: Fail on Don't Ship / Inconclusive
-      if: |
-        inputs.fail-on-dont-ship == 'true'
-        && steps.fork.outputs.exit_code != '0'
+      if: ${{ inputs.fail-on-dont-ship == 'true' && steps.fork.outputs.exit_code != '0' }}
       shell: bash
       env:
         EXIT_CODE: ${{ steps.fork.outputs.exit_code }}

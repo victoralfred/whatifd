@@ -134,6 +134,67 @@ class TestOutputs:
         )
 
 
+class TestIfExpressionWrapping:
+    """Multi-line `if:` expressions with `&&` operators must use
+    `${{ }}` interpolation per GitHub's safe-form recommendation.
+    A bare multi-line `if: |\\n  expr1\\n  && expr2` block scalar
+    can produce ambiguous evaluation depending on the runner
+    version; `${{ }}` is the explicit, documented form.
+    """
+
+    @staticmethod
+    def _step_by_name(action: dict[str, Any], name_prefix: str) -> dict[str, Any]:
+        for step in action["runs"]["steps"]:
+            if step.get("name", "").startswith(name_prefix):
+                return step
+        raise AssertionError(f"step starting with {name_prefix!r} not found")
+
+    def test_pr_comment_if_uses_interpolation_wrapper(self, action: dict[str, Any]) -> None:
+        step = self._step_by_name(action, "Post PR comment")
+        guard = step.get("if", "")
+        assert guard.startswith("${{") and guard.rstrip().endswith("}}"), (
+            "PR-comment step's `if:` must be wrapped in `${{ ... }}` for "
+            "explicit expression evaluation. Bare multi-line `if:` blocks "
+            "with `&&` operators are evaluated ambiguously across runner "
+            "versions; the wrapper makes the intent unambiguous."
+        )
+
+    def test_fail_step_if_uses_interpolation_wrapper(self, action: dict[str, Any]) -> None:
+        step = self._step_by_name(action, "Fail on Don't Ship")
+        guard = step.get("if", "")
+        assert guard.startswith("${{") and guard.rstrip().endswith("}}"), (
+            "fail-on-dont-ship step's `if:` must be wrapped in `${{ ... }}`."
+        )
+
+
+class TestPathDiscoveryErrorHandling:
+    """Cardinal #1: path discovery must distinguish "no reports/
+    directory" (legitimate empty case) from "reports/ exists but
+    unreadable" (real bug → surface ::error + exit non-zero).
+    """
+
+    def test_discover_propagates_real_errors(self, action: dict[str, Any]) -> None:
+        for step in action["runs"]["steps"]:
+            if step.get("id") == "fork":
+                run = step["run"]
+                # The discovery script must surface a real error
+                # via ::error annotation + non-zero exit, not
+                # silently swallow with `2>/dev/null || true`.
+                assert "::error title=whatifd path discovery" in run, (
+                    "Path discovery must surface real errors (PermissionError, "
+                    "I/O failures distinct from missing-directory) as ::error "
+                    "annotations + non-zero exit. Cardinal #1 — failure-as-data."
+                )
+                # And no blanket `2>/dev/null || true` swallow.
+                assert "2>/dev/null || true" not in run, (
+                    "Blanket `2>/dev/null || true` swallow on path discovery "
+                    "masks real errors. Use the discriminating shell from the "
+                    "current implementation."
+                )
+                return
+        raise AssertionError("fork step not found")
+
+
 class TestStepGuards:
     """The PR-comment + fail-on-dont-ship steps have load-bearing
     `if:` guards. A future refactor that drops the guard would

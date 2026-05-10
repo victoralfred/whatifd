@@ -118,8 +118,16 @@ class TestCustomConfiguration:
         assert result.ci_level == 0.99
 
     def test_higher_ci_level_widens_or_equals_interval(self) -> None:
-        # 99% CI is at least as wide as 95% CI on the same resample
-        # sequence. Sanity check on the percentile-index formula.
+        # Spot-check, NOT a universal proof. Monotonicity of CI width
+        # in ci_level is structurally guaranteed by the percentile-
+        # index formula (`(alpha/2)*(N-1)` and `(1-alpha/2)*(N-1)`):
+        # higher ci_level => smaller alpha => indices push outward
+        # in the sorted bootstrap distribution. But "outward" can
+        # collide with array bounds at small `resamples`, and on
+        # degenerate distributions different seeds can produce
+        # collapsed CIs that tie rather than strictly widen. Both
+        # calls below pin seed=42 so the resample sequence is
+        # identical; the assertion is `>=` not `>` for that reason.
         deltas = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         ci_95 = paired_percentile_bootstrap(deltas, ci_level=0.95, seed=42)
         ci_99 = paired_percentile_bootstrap(deltas, ci_level=0.99, seed=42)
@@ -141,8 +149,21 @@ class TestPropertyBased:
     def test_ci_brackets_median_for_arbitrary_input(self, deltas: list[float], seed: int) -> None:
         # Across arbitrary delta sequences (length 2-50, finite floats),
         # the empirical 95% CI bracket includes the median.
+        #
+        # Note on degenerate cases: if `deltas` is constant or has
+        # very low spread, the bootstrap distribution collapses and
+        # `ci_lower == result.median == ci_upper` — the assertion
+        # holds trivially in that case (`<=` is non-strict). The
+        # interesting property is the directional bracket, not strict
+        # inequality. Split into two explicit asserts so a future
+        # debugger sees which side of the bracket failed.
         result = paired_percentile_bootstrap(deltas, seed=seed, resamples=200)
-        assert result.ci_lower <= result.median <= result.ci_upper
+        assert result.ci_lower <= result.median, (
+            f"ci_lower ({result.ci_lower}) > median ({result.median})"
+        )
+        assert result.median <= result.ci_upper, (
+            f"median ({result.median}) > ci_upper ({result.ci_upper})"
+        )
 
     @given(
         deltas=st.lists(

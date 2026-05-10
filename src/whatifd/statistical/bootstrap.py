@@ -147,6 +147,13 @@ def paired_percentile_bootstrap(
     # medians.
     bootstrap_medians.sort()
     alpha = 1.0 - ci_level
+    # Edge case: `resamples=1` is structurally valid (the validator
+    # only blocks resamples<1) but produces a degenerate CI where
+    # `lower_idx == upper_idx == 0` — both bounds collapse to
+    # `bootstrap_medians[0]`. Callers running with resamples=1
+    # almost certainly want the deterministic-test behavior; for
+    # real CI estimation the cascade-catalog default of
+    # `resamples >= 200` is the floor.
     lower_idx = round((alpha / 2.0) * (resamples - 1))
     upper_idx = round((1.0 - alpha / 2.0) * (resamples - 1))
     ci_lower = bootstrap_medians[lower_idx]

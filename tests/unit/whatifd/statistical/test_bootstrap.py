@@ -187,3 +187,64 @@ class TestPropertyBased:
         a = paired_percentile_bootstrap(deltas, seed=seed, resamples=200)
         b = paired_percentile_bootstrap(deltas, seed=seed, resamples=200)
         assert a == b
+
+    @given(
+        deltas=st.lists(
+            st.floats(min_value=-1.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+            min_size=10,
+            max_size=30,
+        ),
+        seed=st.integers(min_value=0, max_value=10_000),
+    )
+    @settings(max_examples=30, deadline=3000)
+    def test_ci_width_monotone_in_ci_level(self, deltas: list[float], seed: int) -> None:
+        # Structural property: CI width is non-decreasing in
+        # ci_level. Higher confidence => indices push outward in
+        # the sorted bootstrap distribution. Companion to
+        # test_higher_ci_level_widens_or_equals_interval (which is
+        # a single spot-check); this Hypothesis property gives the
+        # invariant the same coverage depth as the bracket
+        # invariant.
+        ci_90 = paired_percentile_bootstrap(deltas, ci_level=0.90, seed=seed, resamples=200)
+        ci_95 = paired_percentile_bootstrap(deltas, ci_level=0.95, seed=seed, resamples=200)
+        ci_99 = paired_percentile_bootstrap(deltas, ci_level=0.99, seed=seed, resamples=200)
+        width_90 = ci_90.ci_upper - ci_90.ci_lower
+        width_95 = ci_95.ci_upper - ci_95.ci_lower
+        width_99 = ci_99.ci_upper - ci_99.ci_lower
+        assert width_90 <= width_95 <= width_99, (
+            f"non-monotone widths: 90={width_90}, 95={width_95}, 99={width_99}"
+        )
+
+
+class TestWireBoundary:
+    """Sanity for `to_decimal_string` — the helper exists so callers
+    don't repeat the f-string boilerplate at every wire-boundary
+    crossing."""
+
+    def test_default_precision_is_3(self) -> None:
+        from whatifd.statistical import to_decimal_string
+
+        assert to_decimal_string(0.123456) == "0.123"
+
+    def test_custom_precision_passes_through(self) -> None:
+        from whatifd.statistical import to_decimal_string
+
+        assert to_decimal_string(0.123456, precision=5) == "0.12346"
+
+    def test_negative_values_formatted(self) -> None:
+        from whatifd.statistical import to_decimal_string
+
+        assert to_decimal_string(-0.05) == "-0.050"
+
+    def test_zero_formatted_with_precision(self) -> None:
+        from whatifd.statistical import to_decimal_string
+
+        assert to_decimal_string(0.0) == "0.000"
+
+    def test_resamples_one_produces_degenerate_collapsed_ci(self) -> None:
+        # Edge case pinned by the docstring: resamples=1 is valid
+        # but degenerate. Both indices round to 0; ci_lower ==
+        # ci_upper == bootstrap_medians[0]. Test exists so the
+        # docstring claim is structurally enforced.
+        result = paired_percentile_bootstrap([0.1, 0.2, 0.3], resamples=1, seed=42)
+        assert result.ci_lower == result.ci_upper

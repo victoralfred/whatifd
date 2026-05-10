@@ -24,23 +24,28 @@ or `whatifd.report.models_v01.ReportV01` MUST format the float to
 `DecimalString` at the boundary, e.g.:
 
 ```python
-from whatifd.types.primitives import DecimalString
+from whatifd.statistical import paired_percentile_bootstrap, to_decimal_string
 
 result = paired_percentile_bootstrap(deltas, seed=42)
-median = DecimalString(f"{result.median:.3f}")
-ci_lower = DecimalString(f"{result.ci_lower:.3f}")
+median = to_decimal_string(result.median)
+ci_lower = to_decimal_string(result.ci_lower)
+ci_upper = to_decimal_string(result.ci_upper)
 ```
 
-Phase E.2 wires this into `_cohort_result_from_bucket` directly;
-direct external callers follow the same pattern.
+`to_decimal_string` defaults to 3-decimal precision (the convergent
+display precision for v0.1/v0.2 cohort medians); callers needing
+different precision pass it explicitly. Phase E.2 wires this into
+`_cohort_result_from_bucket` directly.
 """
 
 from whatifd.statistical.bootstrap import (
     BootstrapResult,
     paired_percentile_bootstrap,
 )
+from whatifd.statistical.wire_boundary import to_decimal_string
 
 __all__ = [
     "BootstrapResult",
     "paired_percentile_bootstrap",
+    "to_decimal_string",
 ]

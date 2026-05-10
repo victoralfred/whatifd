@@ -152,3 +152,4 @@ members = ["packages/whatifd-langfuse", "packages/whatifd-inspect-ai", "packages
 [tool.uv.sources]
 whatifd-langfuse = { workspace = true }
 whatifd-inspect-ai = { workspace = true }
+whatifd-phoenix = { workspace = true }

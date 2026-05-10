@@ -135,7 +135,19 @@ import fcntl  # POSIX-only; Windows fails the sys.platform check above
 import psutil
 
 from whatifd.cache._types import CacheLock, LockFileContent
-from whatifd.serialization import canonical_json_bytes, parse_lock_file_content
+
+# `whatifd.serialization` is imported lazily inside the functions that
+# use it (see issue #85). Importing it at module-load-time creates a
+# circular re-entry when `whatifd.serialization`'s own `__init__`
+# triggers the chain that loads this module (via `lock_io` →
+# `whatifd.cache._types` → `whatifd.cache.__init__` → `lock`). The
+# cycle resolves implicitly when the full test suite preloads other
+# modules first, but a single-test invocation surfaces the
+# ImportError. Function-local imports break the module-load-time
+# dependency without changing the public surface — every callable
+# defined here that needs serialization helpers imports them on
+# entry; the cost is one dict lookup per call (negligible against
+# the file I/O these functions already do).
 
 # Re-export the shared types so `whatifd.cache.lock` remains the stable
 # public surface — external callers should not reach into _types.py.
@@ -236,6 +248,9 @@ def acquire_cache_lock(
     PID-reuse evidence (both surface via the
     `psutil.NoSuchProcess`/`create_time` mismatch path).
     """
+    # Lazy import — see module-level comment about issue #85's cycle.
+    from whatifd.serialization import canonical_json_bytes
+
     lock_path = cache_root / _LOCK_FILENAME
     cache_root.mkdir(parents=True, exist_ok=True)
 
@@ -352,6 +367,9 @@ def _try_takeover_if_stale(
     `None` for empty/corrupted/wrong-shape input — both surface as
     "stale by definition" here.
     """
+    # Lazy import — see module-level comment about issue #85's cycle.
+    from whatifd.serialization import parse_lock_file_content
+
     fp.seek(0)
     recorded = parse_lock_file_content(fp.read())
     if recorded is None:
@@ -463,6 +481,9 @@ def _build_locked_error(lock_path: Path) -> CacheLockedError:
     unparseable," and we fall back to a degraded message rather than
     fabricating provenance.
     """
+    # Lazy import — see module-level comment about issue #85's cycle.
+    from whatifd.serialization import parse_lock_file_content
+
     try:
         raw = lock_path.read_text(encoding="utf-8")
     except OSError as diag_err:

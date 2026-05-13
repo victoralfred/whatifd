@@ -29,9 +29,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator
 from whatifd.adapters.protocols import (
-AdapterMetadata, CacheKeyComponents, JudgeResult, RawTrace, Scorecase,
+AdapterMetadata, CacheKeyComponents, JudgeResult, RawTrace, ScoreCase,
 )
-from whatifd.contract import ScoreCase
 
 # Cardinal #5: any user-content entering the adapter boundary MUST be wrapped
 # in Sensitive[T] before being stored or returned. Use:

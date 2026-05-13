@@ -27,4 +27,4 @@ CHANGELOG.md                   @victoralfred
 
 # capabilities.md is a skill-level document.
 .claude/skills/capabilities/   @princenyeche
-capabilities.md                @princenyeche
+src/whatifd/skills             @princenyeche

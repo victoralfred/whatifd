@@ -24,3 +24,7 @@ pyproject.toml                 @victoralfred
 # Public-facing copy.
 README.md                      @victoralfred
 CHANGELOG.md                   @victoralfred
+
+# capabilities.md is a skill-level document.
+.claude/skills/capabilities/   @princenyeche
+capabilities.md                @princenyeche

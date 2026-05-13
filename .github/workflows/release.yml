@@ -128,22 +128,22 @@ jobs:
       - name: List artifacts
         run: |
           ls -la dist-whatifd dist-whatifd-langfuse dist-whatifd-inspect-ai dist-whatifd-phoenix
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-whatifd
           path: dist-whatifd/
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-whatifd-langfuse
           path: dist-whatifd-langfuse/
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-whatifd-inspect-ai
           path: dist-whatifd-inspect-ai/
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-whatifd-phoenix
           path: dist-whatifd-phoenix/

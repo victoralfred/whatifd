@@ -102,6 +102,27 @@ class TraceSourceConformance:
     concrete adapter. `__test__ = False` so pytest does not collect
     the base — only concrete subclasses are run.
 
+    ## Fixture discipline (cardinal #1)
+
+    Subclasses MUST provide a `trace_source` fixture that emits at
+    least one trace. Several conformance tests
+    (`test_emitted_traces_wrap_user_content`,
+    `test_emitted_traces_wrap_pii_attributes`) materialize the stream
+    to assert per-trace properties; with zero emitted traces those
+    tests have nothing to walk and surface a `pytest.skip(...)` as
+    a diagnostic. **The skip is a safety net, not a sanctioned
+    design choice** — a subclass that ships an empty fixture
+    silently under-tests every per-trace property the harness
+    covers, and the conformance gate weakens to "the adapter is a
+    valid `TraceSource` instance with the right method signatures."
+    That's not enough to call an adapter conformance-passing.
+
+    Real-adapter authors: if you have a legitimate reason to wire a
+    fixture that may emit zero traces in some environments (e.g., a
+    hosted-service fixture that times out without credentials), file
+    a follow-up issue describing the case so the discipline can be
+    relaxed deliberately rather than by accident.
+
     **Real-adapter authors (Phase 4B):** `test_emitted_traces_wrap_user_content`
     materializes the entire stream via `list()` to assert
     `Sensitive[str]` wrapping on every emitted trace. The harness
@@ -169,12 +190,47 @@ class TraceSourceConformance:
         if not emitted:
             pytest.skip(
                 "trace_source emitted no traces; the harness cannot exercise "
-                "Sensitive-wrapping. Provide a fixture that emits at least one."
+                "Sensitive-wrapping. Provide a fixture that emits at least one. "
+                "See class docstring 'Fixture discipline' section: the skip is a "
+                "safety-net diagnostic, not a sanctioned design choice."
             )
         for rt in emitted:
             assert isinstance(rt, RawTrace)
             assert isinstance(rt.user_message, Sensitive)
             assert isinstance(rt.original_response, Sensitive)
+
+    def test_emitted_traces_wrap_pii_attributes(self, trace_source: TraceSource) -> None:
+        # Issue #87 / cardinal #5: every emitted RawTrace whose
+        # metadata contains a key registered in PII_ATTRIBUTE_KEYS
+        # must have that value wrapped as Sensitive[str] (or set to
+        # None). The Pydantic model_validator on RawTrace enforces
+        # this at construction — this harness test re-asserts at the
+        # adapter-boundary level so a regression that emits raw PII
+        # via model_construct (bypassing validation) fails loudly.
+        #
+        # Adapter authors satisfy this by calling
+        # `whatifd.adapters.wrap_pii_attributes(raw_dict)` in their
+        # projection step. A test failure here is the canonical
+        # signal that the adapter is missing the wrap.
+        from whatifd.adapters.pii import PII_ATTRIBUTE_KEYS
+
+        emitted = list(trace_source.iter_traces())
+        if not emitted:
+            pytest.skip(
+                "trace_source emitted no traces; the harness cannot exercise "
+                "PII-attribute wrapping. Provide a fixture that emits at least one. "
+                "See class docstring 'Fixture discipline' section."
+            )
+        for rt in emitted:
+            for key, value in rt.metadata.items():
+                if key not in PII_ATTRIBUTE_KEYS:
+                    continue
+                assert value is None or isinstance(value, Sensitive), (
+                    f"trace {rt.trace_id} emits unwrapped value at PII-registered "
+                    f"key {key!r} (got {type(value).__name__}). Cardinal #5: wrap "
+                    "via whatifd.adapters.wrap_pii_attributes(...) at the adapter "
+                    "projection boundary."
+                )
 
 
 class ScorerConformance:

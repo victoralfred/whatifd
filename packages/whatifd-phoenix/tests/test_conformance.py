@@ -132,6 +132,23 @@ class TestSpanGrouping:
         assert len(traces) == 1
         assert traces[0].trace_id == "good"
 
+    def test_pii_attributes_wrapped_at_boundary(self) -> None:
+        # Issue #87: OpenInference `user.id` and `session.id` are
+        # registered in `PII_ATTRIBUTE_KEYS` and MUST be wrapped at
+        # projection. The fixture in `_make_root_span` populates
+        # both; this test pins the wrap.
+        from whatifd.types.sensitive import Sensitive
+
+        spans = [_make_root_span("t-1")]
+        source = PhoenixTraceSource(
+            spans_provider=lambda: spans,
+            cohort_classifier=_classify_baseline,
+        )
+        [trace] = list(source.iter_traces())
+        assert isinstance(trace.metadata["user.id"], Sensitive)
+        assert isinstance(trace.metadata["session.id"], Sensitive)
+        assert isinstance(trace.metadata["model.name"], str)
+
     def test_metadata_excludes_input_output_attrs(self) -> None:
         spans = [_make_root_span("t-1")]
         source = PhoenixTraceSource(

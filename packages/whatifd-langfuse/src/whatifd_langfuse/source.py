@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
-from whatifd.adapters.pii import wrap_pii_attributes
 from whatifd.adapters.protocols import (
     AdapterMetadata,
     RawTrace,
@@ -198,15 +197,7 @@ class LangfuseTraceSource:
             cohort=self.cohort_classifier(trace),
             user_message=Sensitive(_stringify(trace.input), classification="user_content"),
             original_response=Sensitive(_stringify(trace.output), classification="user_content"),
-            # Wrap PII-bearing attributes at the boundary (cardinal #5,
-            # issue #87). Langfuse trace.metadata routinely surfaces
-            # `user_id` / `userId` / `session_id` / `sessionId`;
-            # `wrap_pii_attributes` walks the dict, wraps registered
-            # keys as `Sensitive[str]`, and passes everything else
-            # through. Calling it once per projection means the model
-            # validator on `RawTrace.metadata` is satisfied
-            # structurally, not by remembered convention.
-            metadata=wrap_pii_attributes(dict(trace.metadata or {})),
+            metadata=dict(trace.metadata or {}),
         )
 
 

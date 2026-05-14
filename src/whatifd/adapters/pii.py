@@ -27,7 +27,7 @@ This module ships the fix:
    `"user_content"`. Adapter authors call this once at the
    projection boundary instead of remembering the rule per key.
 
-3. **`_format_pii_violation()`** — shared message template used by
+3. **`format_pii_violation()`** — shared message template used by
    both `wrap_pii_attributes` (raising `PIIAttributeTypeError`) and
    `RawTrace`'s `model_validator` (raising `ValueError` / Pydantic
    `ValidationError`). Centralizing the message text means a future
@@ -91,6 +91,7 @@ from whatifd.types.sensitive import Sensitive
 __all__ = [
     "PII_ATTRIBUTE_KEYS",
     "PIIAttributeTypeError",
+    "format_pii_violation",
     "wrap_pii_attributes",
 ]
 
@@ -145,7 +146,7 @@ class PIIAttributeTypeError(TypeError):
     """
 
 
-def _format_pii_violation(key: str, value_description: str, *, context: str) -> str:
+def format_pii_violation(key: str, value_description: str, *, context: str) -> str:
     """Shared message template for cardinal-#5 PII-attribute
     violations.
 
@@ -239,7 +240,7 @@ def wrap_pii_attributes(metadata: Mapping[str, Any]) -> dict[str, Any]:
             result[key] = Sensitive(value=value, classification="user_content")
             continue
         raise PIIAttributeTypeError(
-            _format_pii_violation(
+            format_pii_violation(
                 key,
                 f"{type(value).__name__}, not str",
                 context=(

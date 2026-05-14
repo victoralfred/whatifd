@@ -23,7 +23,7 @@ import pytest
 from whatifd.adapters.pii import (
     PII_ATTRIBUTE_KEYS,
     PIIAttributeTypeError,
-    _format_pii_violation,
+    format_pii_violation,
     wrap_pii_attributes,
 )
 from whatifd.adapters.protocols import RawTrace
@@ -122,7 +122,7 @@ class TestWrapTypedFailure:
 
 
 class TestSharedMessageTemplate:
-    """The `_format_pii_violation` helper is the single source of
+    """The `format_pii_violation` helper is the single source of
     truth for the cardinal-#5 violation text. Both the
     `wrap_pii_attributes` surface (PIIAttributeTypeError) and the
     `RawTrace.metadata` validator (ValueError → Pydantic) route
@@ -131,15 +131,15 @@ class TestSharedMessageTemplate:
     must keep both surfaces actionable."""
 
     def test_template_names_the_offending_key(self) -> None:
-        msg = _format_pii_violation("user.id", "int, not str", context="x")
+        msg = format_pii_violation("user.id", "int, not str", context="x")
         assert "'user.id'" in msg
 
     def test_template_points_at_the_registry(self) -> None:
-        msg = _format_pii_violation("k", "v", context="x")
+        msg = format_pii_violation("k", "v", context="x")
         assert "PII_ATTRIBUTE_KEYS" in msg
 
     def test_template_names_the_wrap_helper(self) -> None:
-        msg = _format_pii_violation("k", "v", context="x")
+        msg = format_pii_violation("k", "v", context="x")
         assert "wrap_pii_attributes" in msg
 
     def test_helper_surface_message_uses_the_template(self) -> None:
@@ -209,6 +209,57 @@ class TestRawTraceBoundaryValidator:
             RawTrace(**_minimal_rawtrace_kwargs(metadata={"session.id": "s-leak"}))
         msg = str(exc_info.value)
         assert "session.id" in msg
+
+
+class TestPydanticNonWrappingContract:
+    """Pydantic v2 propagates `TypeError` subclasses raised inside a
+    `model_validator` directly — it does NOT wrap them into
+    `ValidationError`. The validator on `RawTrace.metadata` relies on
+    this so callers can write `except PIIAttributeTypeError` and
+    catch both the helper-surface raise site and the
+    validator-surface raise site (cardinal #1 taxonomy symmetry).
+
+    A future Pydantic upgrade that changes this behavior would
+    silently break the symmetry guarantee. This class pins the
+    contract explicitly: the validator raise must surface as
+    `PIIAttributeTypeError` exactly, not as `ValidationError`.
+    """
+
+    def test_validator_raise_is_not_wrapped_in_validation_error(self) -> None:
+        # Catch by Pydantic's ValidationError first; if that branch
+        # fires, the wrapping behavior changed and the
+        # taxonomy-symmetry guarantee is broken. The expected path
+        # raises PIIAttributeTypeError, not ValidationError.
+        from pydantic import ValidationError
+
+        try:
+            RawTrace(**_minimal_rawtrace_kwargs(metadata={"user.id": "leaked"}))
+        except PIIAttributeTypeError:
+            return  # contract holds
+        except ValidationError as exc:  # pragma: no cover (regression branch)
+            raise AssertionError(
+                "Pydantic wrapped `PIIAttributeTypeError` into "
+                "`ValidationError` — the cardinal-#1 taxonomy-symmetry "
+                "guarantee documented in `protocols.py` is broken. A "
+                "Pydantic upgrade likely changed the TypeError-propagation "
+                "behavior; either pin a Pydantic version that preserves "
+                "the no-wrap contract, or rework `RawTrace._enforce_pii_"
+                "attribute_wrapping` to raise `ValueError` and update the "
+                f"public exception class. Caught: {exc!r}"
+            ) from exc
+        raise AssertionError(
+            "RawTrace construction with unwrapped PII at a registered key "
+            "did not raise; the cardinal-#5 layer-(a) defense is broken."
+        )
+
+    def test_caught_exception_is_pii_attribute_type_error_exact_type(self) -> None:
+        # Belt-and-suspenders: even if a future refactor introduces a
+        # specialized subclass of `PIIAttributeTypeError` for the
+        # validator path, the public contract is that the EXACT class
+        # `PIIAttributeTypeError` catches both surfaces.
+        with pytest.raises(PIIAttributeTypeError) as exc_info:
+            RawTrace(**_minimal_rawtrace_kwargs(metadata={"user.id": "leaked"}))
+        assert type(exc_info.value) is PIIAttributeTypeError
 
 
 class TestModelConstructBypass:

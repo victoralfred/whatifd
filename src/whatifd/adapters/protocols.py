@@ -44,7 +44,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from whatifd.adapters.pii import (
     PII_ATTRIBUTE_KEYS,
     PIIAttributeTypeError,
-    _format_pii_violation,
+    format_pii_violation,
 )
 from whatifd.cache.keying.v1 import CacheKeyComponents
 from whatifd.contract import ScoreCase
@@ -174,7 +174,7 @@ class RawTrace(BaseModel):
         under non-PII keys — those are legitimately free-form
         tooling state per the docstring on `metadata`.
 
-        Routes the violation message through `_format_pii_violation`
+        Routes the violation message through `format_pii_violation`
         so the text stays in sync with the helper's
         `PIIAttributeTypeError` surface — a future registry-shape
         change updates both callers consistently.
@@ -195,7 +195,7 @@ class RawTrace(BaseModel):
             # into `ValidationError`; the exception surfaces as
             # `PIIAttributeTypeError` to the caller.
             raise PIIAttributeTypeError(
-                _format_pii_violation(
+                format_pii_violation(
                     key,
                     f"unwrapped ({type(value).__name__})",
                     context=(

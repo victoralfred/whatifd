@@ -33,7 +33,7 @@ from whatifd.adapters import (
     Scorer,
     TraceSource,
 )
-from whatifd.cache.keying.v1 import CacheKeyComponents
+from whatifd.cache.keying import CacheKeyComponents
 from whatifd.contract import ScoreCase
 from whatifd.types.sensitive import Sensitive
 
@@ -91,6 +91,8 @@ class _MinimalScorer:
             scoring_parameters_hash=_HEX,
             score_case_serialization_version="v1",
             score_case_hash=_HEX,
+            original_output_hash=_HEX,
+            replayed_output_hash=_HEX,
         )
 
     def adapter_metadata(self) -> AdapterMetadata:

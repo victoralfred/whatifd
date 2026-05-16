@@ -106,6 +106,40 @@ def test_whatif_fork_e2e_setup_failure_no_traces(
     assert json_files, artifacts
 
 
+def test_whatif_fork_e2e_filesystem_write_failure_no_stack_trace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F-1.3: filesystem write failures (read-only dir, ENOSPC,
+    PermissionError) must surface as a structured operator message +
+    setup-failure exit code, never a raw Python stack trace.
+
+    Pre-fix, `report_md_path.parent.mkdir` / `write_bytes` /
+    `write_text` ran outside any try/except, so a `PermissionError`
+    propagated past the dispatcher's cardinal-#1 boundary.
+
+    Simulated by monkeypatching `Path.mkdir` to raise PermissionError.
+    """
+    monkeypatch.chdir(tmp_path)
+    cfg_path = _write_config(tmp_path)
+
+    real_mkdir = Path.mkdir
+
+    def _raise_permission_error(self, *args: object, **kwargs: object) -> None:  # type: ignore[no-untyped-def]
+        if self.name == "reports":
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "mkdir", _raise_permission_error)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["fork", "--config", str(cfg_path)])
+    assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+    combined = (result.stdout or "") + (result.output or "")
+    assert "Traceback" not in combined, combined
+    assert "failed to write report artifacts" in combined
+    assert "PermissionError" in combined
+
+
 def test_whatif_fork_e2e_experiment_shape_threaded_to_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -127,8 +161,6 @@ def test_whatif_fork_e2e_experiment_shape_threaded_to_report(
         target:
           runner: python:{_RUNNER_FIXTURE_MODULE}:run
         selection:
-          failure_cohort:
-            limit: 5
           baseline_cohort:
             limit: 5
         change:

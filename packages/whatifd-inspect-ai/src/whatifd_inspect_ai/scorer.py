@@ -22,7 +22,7 @@ from whatifd.adapters.protocols import (
     AdapterMetadata,
     JudgeResult,
 )
-from whatifd.cache.keying.v1 import CacheKeyComponents
+from whatifd.cache.keying import CacheKeyComponents
 from whatifd.contract import ScoreCase
 from whatifd.types.sensitive import Sensitive
 
@@ -162,6 +162,14 @@ class InspectAIScorer:
             scoring_parameters_hash=_hash16_mapping(self.scoring_parameters),
             score_case_serialization_version=SCORE_CASE_SERIALIZATION_VERSION,
             score_case_hash=_hash16("case", case.trace_id, case.cohort),
+            # F-2.1 (v0.2.1): hash both outputs into the cache key so
+            # re-scoring after a runner/prompt edit (which changes
+            # replayed_output.text but not the input/cohort) does NOT
+            # collide with the prior cached JudgeResult. v1 omitted
+            # these and produced silent wrong deltas when the cache
+            # was enabled; v2 keying makes them required.
+            original_output_hash=_hash16("output", "original", case.original_output.text),
+            replayed_output_hash=_hash16("output", "replayed", case.replayed_output.text),
         )
 
     def adapter_metadata(self) -> AdapterMetadata:

@@ -88,8 +88,10 @@ def build_trace_source(cfg: SourceConfig) -> TraceSource:
         return StubTraceSource(specs=[])
     if name == "langfuse":
         return _build_langfuse_source()
+    if name == "phoenix":
+        return _build_phoenix_source(cfg)
     raise AdapterFactoryError(
-        f"Unknown trace-source adapter {name!r}. v0.1 supports 'stub' and 'langfuse'."
+        f"Unknown trace-source adapter {name!r}. v0.2 supports 'stub', 'langfuse', and 'phoenix'."
     )
 
 
@@ -259,6 +261,70 @@ def _build_langfuse_source() -> TraceSource:
             f"langfuse adapter construction failed: {type(exc).__name__}: {exc}. "
             "Check LANGFUSE_HOST format and credential validity."
         ) from exc
+    return source
+
+
+def _build_phoenix_source(cfg: SourceConfig) -> TraceSource:
+    # `cfg.spans_provider` presence is enforced by SourceConfig's
+    # model_validator at config-load time; reaching this branch with
+    # None means the validator was bypassed (e.g., model_construct).
+    # Cardinal #1: surface as a typed AdapterFactoryError, not an
+    # AttributeError on `.startswith` below.
+    if cfg.spans_provider is None:
+        raise AdapterFactoryError(
+            "source.adapter='phoenix' requires source.spans_provider; the "
+            "config-validation layer normally catches this before factory "
+            "dispatch."
+        )
+
+    # Resolve the `python:<module>:<attr>` reference via the generic
+    # loader (doctrine-review iter-1: the parameterized loader's
+    # error messages name `source.spans_provider` directly, so no
+    # fragile `.replace()` string-patching on the upstream message).
+    from whatifd.scorer_loader import ScorerLoadError, load_python_callable
+
+    try:
+        provider = load_python_callable(cfg.spans_provider, field_name="source.spans_provider")
+    except ScorerLoadError as exc:
+        raise AdapterFactoryError(str(exc)) from exc
+
+    # Lazy import — cardinal-enforced lazy-load contract
+    # (test_core_modules_do_not_load_real_adapter_packages). A missing
+    # optional `whatifd-phoenix` package surfaces as a typed
+    # AdapterFactoryError with an install hint.
+    try:
+        from whatifd_phoenix import (
+            PhoenixTraceSource,  # type: ignore[import-not-found,unused-ignore]
+        )
+    except ImportError as exc:
+        raise AdapterFactoryError(
+            "source.adapter='phoenix' requires the optional "
+            "`whatifd-phoenix` package. Install with: "
+            "`pip install whatifd-phoenix` (or `uv pip install whatifd-phoenix`)."
+        ) from exc
+
+    # Default cohort classifier mirrors the langfuse default's inline-
+    # closure pattern (`_build_langfuse_source` above): a `failure`
+    # marker in span attributes selects the failure cohort. The
+    # closure lives inline in the factory because v0.2 has no
+    # registry layer for cohort classifiers — the langfuse default
+    # set the precedent and this phoenix path mirrors it for
+    # consistency. v0.3 introduces config-driven classifier selection
+    # (see cascade-catalog "cohort_classifier configurable"), at
+    # which point both inline closures lift to a shared registry.
+    # Until then, this duplication is intentional and the langfuse-
+    # mirror shape is the lower-blast-radius default.
+    def _default_classifier(spans: list[dict[str, object]]) -> str:
+        for span in spans:
+            for key in ("attributes.tag.failed", "tag.failed"):
+                if span.get(key):
+                    return "failure"
+        return "baseline"
+
+    source: TraceSource = PhoenixTraceSource(
+        spans_provider=provider,
+        cohort_classifier=_default_classifier,
+    )
     return source
 
 

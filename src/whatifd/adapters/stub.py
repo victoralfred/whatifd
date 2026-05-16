@@ -64,7 +64,7 @@ from whatifd.adapters.protocols import (
     Scorer,
     TraceSource,
 )
-from whatifd.cache.keying.v1 import CacheKeyComponents
+from whatifd.cache.keying import CacheKeyComponents
 from whatifd.contract import ScoreCase
 from whatifd.types.sensitive import Sensitive
 from whatifd.types.statistical import ClusterKeySupport
@@ -213,6 +213,13 @@ class StubScorer:
             scoring_parameters_hash=_hash16("params", self.judge_model_id),
             score_case_serialization_version="v1",
             score_case_hash=_hash16("case", case.trace_id, case.cohort),
+            # F-2.1 (v0.2.1): hash both outputs into the cache key so
+            # re-runs with different replayed_output text don't collide
+            # with prior cached results. v1 omitted these and silently
+            # returned stale JudgeResults; v2 adds them as required
+            # fields (CacheKeyComponents.__post_init__ enforces hex).
+            original_output_hash=_hash16("output", "original", case.original_output.text),
+            replayed_output_hash=_hash16("output", "replayed", case.replayed_output.text),
         )
 
     def adapter_metadata(self) -> AdapterMetadata:

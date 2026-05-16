@@ -24,7 +24,7 @@ import dataclasses
 
 import pytest
 
-from whatifd.cache.keying import (
+from whatifd.cache.keying.v1 import (
     CACHE_KEY_VERSION,
     CacheKeyComponents,
     build_cache_key,

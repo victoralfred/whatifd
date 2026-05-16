@@ -481,12 +481,27 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
         )
         return EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
 
-    # JSON + Markdown artifacts.
+    # JSON + Markdown artifacts. Cardinal #1: filesystem failures
+    # (PermissionError, OSError(ENOSPC), IsADirectoryError, etc.)
+    # MUST NOT leak as raw stack traces — the dispatcher's docstring
+    # promises every expected failure surfaces as a structured
+    # operator-readable message + setup-failure exit code. Without
+    # this catch, a read-only ./reports directory crashes the CLI
+    # with a Python traceback past the cardinal-#1 boundary.
     report_md_path = Path(f"./reports/whatifd-fork-{started_at.strftime('%Y-%m-%d')}.md")
     report_json_path = report_md_path.with_suffix(".json")
-    report_md_path.parent.mkdir(parents=True, exist_ok=True)
-    report_json_path.write_bytes(encode_report_v01(report))
-    report_md_path.write_text(render_full_report(report), encoding="utf-8")
+    try:
+        report_md_path.parent.mkdir(parents=True, exist_ok=True)
+        report_json_path.write_bytes(encode_report_v01(report))
+        report_md_path.write_text(render_full_report(report), encoding="utf-8")
+    except OSError as exc:
+        typer.echo(
+            f"whatifd: failed to write report artifacts to "
+            f"{report_md_path.parent}: {type(exc).__name__}: {exc}. Check "
+            "directory permissions and available disk space.",
+            err=True,
+        )
+        return EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
     typer.echo(f"whatifd: report written to {report_md_path} (+ .json)")
 
     # Exit code from verdict_state.

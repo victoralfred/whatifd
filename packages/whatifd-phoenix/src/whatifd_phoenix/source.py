@@ -132,6 +132,18 @@ def _project_tool_span(span: dict[str, object]) -> dict[str, object]:
     content or identifiers. Issue #108 tracks the typed `ToolSpan`
     upgrade that will surface content via proper `Sensitive[T]`
     wrapping; until then, content stripping is the structural fix.
+
+    ## Caller precondition (doctrine-review iter-1)
+
+    The call site at `_project` uses `s is not root` (identity, not
+    equality) to exclude the root span. Callers MUST pass the same
+    span dict instance that was selected as `root` — defensively
+    copying or remapping the `spans` list before iteration would
+    break the identity match and silently include the root span in
+    `tool_spans`. The current `_project` body satisfies this by
+    iterating the same `spans` list it picked `root` from; any
+    refactor that materializes a fresh copy in between must restore
+    root-exclusion by a different mechanism (e.g., parent_id absence).
     """
     return {
         k: v

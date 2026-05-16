@@ -277,19 +277,16 @@ def _build_phoenix_source(cfg: SourceConfig) -> TraceSource:
             "dispatch."
         )
 
-    # Resolve the `python:<module>:<attr>` reference. Reuse the scorer
-    # loader's parser — error messages name `scorer.score_fn`, so wrap
-    # in a phoenix-specific message for actionability.
-    from whatifd.scorer_loader import ScorerLoadError, load_score_fn
+    # Resolve the `python:<module>:<attr>` reference via the generic
+    # loader (doctrine-review iter-1: the parameterized loader's
+    # error messages name `source.spans_provider` directly, so no
+    # fragile `.replace()` string-patching on the upstream message).
+    from whatifd.scorer_loader import ScorerLoadError, load_python_callable
 
     try:
-        provider = load_score_fn(cfg.spans_provider)
+        provider = load_python_callable(cfg.spans_provider, field_name="source.spans_provider")
     except ScorerLoadError as exc:
-        raise AdapterFactoryError(
-            f"source.spans_provider {cfg.spans_provider!r} could not be resolved: {exc}".replace(
-                "scorer.score_fn", "source.spans_provider"
-            )
-        ) from exc
+        raise AdapterFactoryError(str(exc)) from exc
 
     # Lazy import — cardinal-enforced lazy-load contract
     # (test_core_modules_do_not_load_real_adapter_packages). A missing
@@ -306,9 +303,17 @@ def _build_phoenix_source(cfg: SourceConfig) -> TraceSource:
             "`pip install whatifd-phoenix` (or `uv pip install whatifd-phoenix`)."
         ) from exc
 
-    # Default cohort classifier mirrors the langfuse default: looks for
-    # a `failure` marker in span attributes. v0.3 adds config-driven
-    # classifier selection (see cascade-catalog).
+    # Default cohort classifier mirrors the langfuse default's inline-
+    # closure pattern (`_build_langfuse_source` above): a `failure`
+    # marker in span attributes selects the failure cohort. The
+    # closure lives inline in the factory because v0.2 has no
+    # registry layer for cohort classifiers — the langfuse default
+    # set the precedent and this phoenix path mirrors it for
+    # consistency. v0.3 introduces config-driven classifier selection
+    # (see cascade-catalog "cohort_classifier configurable"), at
+    # which point both inline closures lift to a shared registry.
+    # Until then, this duplication is intentional and the langfuse-
+    # mirror shape is the lower-blast-radius default.
     def _default_classifier(spans: list[dict[str, object]]) -> str:
         for span in spans:
             for key in ("attributes.tag.failed", "tag.failed"):

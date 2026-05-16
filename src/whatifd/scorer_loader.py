@@ -53,11 +53,24 @@ _PYTHON_PREFIX = "python:"
 def load_score_fn(reference: str) -> Callable[..., object]:
     """Resolve `cfg.scorer.score_fn` to a callable.
 
-    Returns the callable itself; the caller (factory) wires it into
-    `InspectAIScorer.score_fn`. The `InspectAIScorer.score` method
-    handles sync/async dispatch internally via `inspect.iscoroutine`,
-    so this loader does NOT classify sync vs async — both shapes
-    work at the InspectAIScorer boundary.
+    Thin wrapper around `load_python_callable(reference,
+    field_name="scorer.score_fn")` — kept as a named entry point so
+    the InspectAI factory call site reads at-the-domain rather than
+    naming the generic loader.
+    """
+    return load_python_callable(reference, field_name="scorer.score_fn")
+
+
+def load_python_callable(reference: str, *, field_name: str) -> Callable[..., object]:
+    """Resolve a `python:<module.path>:<attr>` reference to a callable.
+
+    Used by both `scorer.score_fn` (via `load_score_fn`) and
+    `source.spans_provider` (Phoenix adapter wiring). Doctrine-review
+    iter-1 widened the loader from a single field name to a
+    parameterized one so callers can produce field-specific error
+    messages WITHOUT downstream `.replace(...)` string-patching (which
+    silently no-ops if the upstream message format changes — fragile
+    per cardinal #1).
 
     Raises `ScorerLoadError` on:
     - non-string or empty reference,
@@ -69,17 +82,17 @@ def load_score_fn(reference: str) -> Callable[..., object]:
     - resolved attribute is not callable.
     """
     if not isinstance(reference, str) or not reference:
-        raise ScorerLoadError(f"scorer.score_fn must be a non-empty string; got {reference!r}.")
+        raise ScorerLoadError(f"{field_name} must be a non-empty string; got {reference!r}.")
     if not reference.startswith(_PYTHON_PREFIX):
         raise ScorerLoadError(
-            f"scorer.score_fn {reference!r} has unsupported scheme. v0.2 supports "
+            f"{field_name} {reference!r} has unsupported scheme. v0.2 supports "
             "`python:<module.path>:<attr>` only."
         )
 
     body = reference[len(_PYTHON_PREFIX) :]
     if body.count(":") != 1:
         raise ScorerLoadError(
-            f"scorer.score_fn {reference!r} is malformed. Expected exactly one "
+            f"{field_name} {reference!r} is malformed. Expected exactly one "
             "`:` separator after the `python:` prefix; got "
             f"{body.count(':')} additional separator(s). Format: "
             "`python:<module.path>:<attr>`."
@@ -88,12 +101,12 @@ def load_score_fn(reference: str) -> Callable[..., object]:
     module_path, _, attr = body.partition(":")
     if not module_path:
         raise ScorerLoadError(
-            f"scorer.score_fn {reference!r} is missing the module path. Format: "
+            f"{field_name} {reference!r} is missing the module path. Format: "
             "`python:<module.path>:<attr>`."
         )
     if not attr:
         raise ScorerLoadError(
-            f"scorer.score_fn {reference!r} is missing the attribute name. "
+            f"{field_name} {reference!r} is missing the attribute name. "
             "Format: `python:<module.path>:<attr>`."
         )
 
@@ -101,14 +114,14 @@ def load_score_fn(reference: str) -> Callable[..., object]:
         module = importlib.import_module(module_path)
     except ImportError as exc:
         raise ScorerLoadError(
-            f"scorer.score_fn {reference!r}: module {module_path!r} could not be "
+            f"{field_name} {reference!r}: module {module_path!r} could not be "
             f"imported ({exc}). Check the module path and that the package is "
             "installed in the current environment."
         ) from exc
 
     if not hasattr(module, attr):
         raise ScorerLoadError(
-            f"scorer.score_fn {reference!r}: module {module_path!r} has no "
+            f"{field_name} {reference!r}: module {module_path!r} has no "
             f"attribute {attr!r}. Check the attribute name and the module's "
             "exports."
         )
@@ -116,9 +129,8 @@ def load_score_fn(reference: str) -> Callable[..., object]:
     candidate: Callable[..., object] = getattr(module, attr)
     if not callable(candidate):
         raise ScorerLoadError(
-            f"scorer.score_fn {reference!r}: resolved {attr!r} is not callable "
-            f"(got {type(candidate).__name__}). The score_fn must be a callable "
-            "(function or callable instance) accepting `(ScoreCase) -> Score | None`."
+            f"{field_name} {reference!r}: resolved {attr!r} is not callable "
+            f"(got {type(candidate).__name__})."
         )
 
     return candidate

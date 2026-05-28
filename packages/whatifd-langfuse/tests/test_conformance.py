@@ -182,13 +182,10 @@ class TestLangfuseSpecificBehaviors:
 
     def test_pii_attributes_in_metadata_wrapped_at_boundary(self) -> None:
         # Issue #87: Langfuse trace.metadata routinely surfaces
-        # `user_id` / `userId` / `session_id` / `sessionId` (depending
-        # on SDK version + producer convention). All four spellings
-        # are in `whatifd.adapters.PII_ATTRIBUTE_KEYS` and MUST be
-        # wrapped as `Sensitive[str]` at projection. This pins the
-        # wrap behavior for the Langfuse adapter specifically — a
-        # regression that drops the `wrap_pii_attributes` call would
-        # surface here.
+        # `user_id` / `userId` / `session_id` / `sessionId`. All four
+        # spellings are in `PII_ATTRIBUTE_KEYS` and MUST be wrapped
+        # as `Sensitive[str]` at projection. This pins the wrap
+        # behavior for the Langfuse adapter specifically.
         from whatifd.types.sensitive import Sensitive
 
         api = _FakeAPI(
@@ -200,7 +197,7 @@ class TestLangfuseSpecificBehaviors:
                     metadata={
                         "user_id": "u-7",
                         "sessionId": "s-42",
-                        "cohort_hint": "failure",  # non-PII, passes through
+                        "cohort_hint": "failure",
                     },
                     tags=["failure"],
                     user_id=None,
@@ -216,7 +213,6 @@ class TestLangfuseSpecificBehaviors:
         [trace] = list(src.iter_traces())
         assert isinstance(trace.metadata["user_id"], Sensitive)
         assert isinstance(trace.metadata["sessionId"], Sensitive)
-        # Non-PII key is unchanged — passthrough discipline.
         assert trace.metadata["cohort_hint"] == "failure"
 
     def test_pagination_streams_across_pages(self) -> None:

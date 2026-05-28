@@ -31,6 +31,7 @@ from whatifd.adapters.factory import AdapterFactoryError, build_scorer, build_tr
 from whatifd.adapters.pii import (
     PII_ATTRIBUTE_KEYS,
     PIIAttributeTypeError,
+    format_pii_violation,
     wrap_pii_attributes,
 )
 from whatifd.adapters.protocols import (
@@ -60,5 +61,6 @@ __all__ = [
     "TraceSource",
     "build_scorer",
     "build_trace_source",
+    "format_pii_violation",
     "wrap_pii_attributes",
 ]

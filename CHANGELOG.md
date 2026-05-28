@@ -14,11 +14,11 @@ change is called out under `### Changed (BREAKING)`.
 
 ### Added — cardinal-#5 enforcement for PII-bearing metadata attributes (#87)
 
-- **New `whatifd.adapters.pii` module.** Ships `PII_ATTRIBUTE_KEYS` (frozenset of OpenInference + Langfuse + generic PII attribute names), `wrap_pii_attributes(metadata)` helper that wraps registered keys as `Sensitive[str]` at the adapter boundary, and `PIIAttributeTypeError` for adapters emitting non-string values at registered keys.
-- **`RawTrace.metadata` boundary validator.** New Pydantic `model_validator(mode="after")` on `whatifd.adapters.protocols.RawTrace` rejects unwrapped values at any `PII_ATTRIBUTE_KEYS` member, raising at construction-time. Layer (a) of the cardinal-#5 three-layer chain; the graph-walk (b) and encoder fallback (c) remain in place as defense-in-depth.
-- **Conformance harness extension.** `tests/adapters/conformance.py::TraceSourceConformance::test_emitted_traces_wrap_pii_attributes` walks every emitted `RawTrace` from every adapter and asserts known-PII attributes are wrapped. Adapter regressions surface at the harness boundary, not at serialization downstream.
-- **`whatifd-langfuse` + `whatifd-phoenix` adapters wired.** Both adapter packages' projection paths now call `wrap_pii_attributes(...)` on the raw metadata dict. Adapter-specific tests pin the wrap on fixture traces carrying `user_id` / `sessionId` (Langfuse) and `user.id` / `session.id` (Phoenix / OpenInference).
-- **Enforcement-table row added** to `.claude/skills/whatifd-design/references/enforcement.md` covering the three-layer chain for PII-bearing metadata.
+- **New `whatifd.adapters.pii` module.** Ships `PII_ATTRIBUTE_KEYS` (frozenset of OpenInference + Langfuse + generic PII attribute names), `wrap_pii_attributes(metadata)` helper that wraps registered keys as `Sensitive[str]` at the adapter boundary, `PIIAttributeTypeError` for adapters emitting non-string values at registered keys, and `_format_pii_violation()` shared message template used by both the helper's raise site and the `RawTrace.metadata` model_validator.
+- **`RawTrace.metadata` boundary validator.** New Pydantic `model_validator(mode="after")` on `whatifd.adapters.protocols.RawTrace` rejects unwrapped values at any `PII_ATTRIBUTE_KEYS` member, raising at construction-time. Layer (a) of the cardinal-#5 three-layer chain.
+- **Conformance harness extension.** `tests/adapters/conformance.py::TraceSourceConformance::test_emitted_traces_wrap_pii_attributes` walks every emitted `RawTrace` from every adapter and asserts known-PII attributes are wrapped. The class docstring gains a "Fixture discipline" section explicitly stating subclasses MUST emit at least one trace; the existing `pytest.skip` for empty fixtures is documented as a safety-net diagnostic.
+- **`whatifd-langfuse` + `whatifd-phoenix` adapters wired.** Both adapter packages' projection paths now call `wrap_pii_attributes(...)`. Adapter-specific tests pin the wrap on fixture traces carrying `user_id` / `sessionId` (Langfuse) and `user.id` / `session.id` (Phoenix / OpenInference).
+- **Doctrine artifacts.** New `enforcement.md` row documents the three-layer chain. New Open cascade-catalog entries cover both the `PII_ATTRIBUTE_KEYS` resolution and the deferred `tool_spans` follow-up.
 
 ### Fixed
 

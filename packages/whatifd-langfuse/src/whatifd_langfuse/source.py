@@ -203,9 +203,9 @@ class LangfuseTraceSource:
             # `user_id` / `userId` / `session_id` / `sessionId`;
             # `wrap_pii_attributes` walks the dict, wraps registered
             # keys as `Sensitive[str]`, and passes everything else
-            # through. Calling it once per projection means the model
-            # validator on `RawTrace.metadata` is satisfied
-            # structurally, not by remembered convention.
+            # through. The model_validator on `RawTrace.metadata`
+            # would surface the same violation, but doing the wrap
+            # here produces the right shape directly.
             metadata=wrap_pii_attributes(dict(trace.metadata or {})),
         )
 

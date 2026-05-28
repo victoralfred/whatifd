@@ -27,12 +27,19 @@ This module ships the fix:
    `"user_content"`. Adapter authors call this once at the
    projection boundary instead of remembering the rule per key.
 
-3. **Conformance contract** — `tests/adapters/conformance.py`'s
-   `TestPIIAttributeWrapping` asserts every emitted `RawTrace` whose
-   `metadata` contains a `PII_ATTRIBUTE_KEYS` member has
-   `Sensitive[str]` at that key. Adapter implementations that
-   forget to call the helper fail the conformance harness on first
-   run, not at the serialization boundary downstream.
+3. **`format_pii_violation()`** — shared message template used by
+   both `wrap_pii_attributes` (raising `PIIAttributeTypeError`) and
+   `RawTrace`'s `model_validator` (raising `ValueError` / Pydantic
+   `ValidationError`). Centralizing the message text means a future
+   registry-shape change (per-key classification, v0.3 custom-key
+   registration) updates both surfaces consistently.
+
+4. **Conformance contract** — `tests/adapters/conformance.py`'s
+   `test_emitted_traces_wrap_pii_attributes` asserts every emitted
+   `RawTrace` whose `metadata` contains a `PII_ATTRIBUTE_KEYS`
+   member has `Sensitive[str]` at that key. Adapter implementations
+   that forget to call the helper fail the conformance harness on
+   first run, not at the serialization boundary downstream.
 
 ## Cardinal alignment
 
@@ -61,19 +68,17 @@ frozenset is the canonical surface.
 
 ## What's NOT in scope
 
-- `tool_spans` is a separate cardinal-#5 conversation. Tool I/O
-  is typed `list[dict[str, Any]]` for parity with
+- `tool_spans` is a separate cardinal-#5 conversation tracked in
+  issue #106 + a cascade-catalog entry. Tool I/O is typed
+  `list[dict[str, Any]]` for parity with
   `whatifd.contract.ReplayOutput.tool_spans`; tightening it
-  requires coordinated change to the runner contract, tracked
-  separately.
+  requires a coordinated runner-contract change.
 - Adapter-supplied custom-attribute registration. The static
   frozenset is intentional v0.2 scope.
 - Per-attribute classification beyond `"user_content"`. The
-  `Sensitive` wrapper supports richer classifications (e.g.,
-  `"credential"`, `"location"`); the wrapping helper uses
-  `"user_content"` uniformly because every key in the registry is
-  user-identifying or session-identifying. Future classifications
-  can specialize via the registration API.
+  `Sensitive` wrapper supports richer classifications; the
+  wrapping helper uses `"user_content"` uniformly because every
+  key in the registry is user-identifying or session-identifying.
 """
 
 from __future__ import annotations
@@ -86,6 +91,7 @@ from whatifd.types.sensitive import Sensitive
 __all__ = [
     "PII_ATTRIBUTE_KEYS",
     "PIIAttributeTypeError",
+    "format_pii_violation",
     "wrap_pii_attributes",
 ]
 
@@ -123,8 +129,7 @@ PII_ATTRIBUTE_KEYS: frozenset[str] = frozenset(
 The set is conservative: it covers the conventions surfaced by the
 two shipped adapter packages (`whatifd-langfuse`,
 `whatifd-phoenix`) plus a small cross-vendor common set. Custom
-keys can be added in a future v0.3 `register_pii_attribute()`
-API; for v0.2 the static frozenset is the canonical surface.
+keys can be added in a future v0.3 `register_pii_attribute()` API.
 """
 
 
@@ -194,12 +199,11 @@ def wrap_pii_attributes(metadata: Mapping[str, Any]) -> dict[str, Any]:
         through unchanged (idempotent — calling twice is safe).
       * If the value is a `str`, it is wrapped as
         `Sensitive(value=str_value, classification="user_content")`.
-      * If the value is `None`, it passes through as `None` (a
-        missing identifier is not PII to wrap).
+      * If the value is `None`, it passes through as `None`.
       * If the value is anything else (int, list, dict, ...),
         `PIIAttributeTypeError` is raised naming the offending key
-        and the actual type. This is cardinal #1: the adapter must
-        not silently pass through a wrong-shape value at a PII key.
+        and the actual type. Cardinal #1: silent passthrough at a
+        PII key is forbidden.
 
     Keys not in `PII_ATTRIBUTE_KEYS` pass through unchanged. The
     returned dict is a fresh `dict` (input is treated as read-only)
@@ -221,8 +225,7 @@ def wrap_pii_attributes(metadata: Mapping[str, Any]) -> dict[str, Any]:
 
     The helper is idempotent: passing a metadata dict through
     `wrap_pii_attributes` twice produces the same result as passing
-    it through once. This matters for tests and for any pipeline
-    stage that re-wraps defensively.
+    it through once.
     """
     result: dict[str, Any] = {}
     for key, value in metadata.items():
@@ -239,7 +242,7 @@ def wrap_pii_attributes(metadata: Mapping[str, Any]) -> dict[str, Any]:
             result[key] = Sensitive(value=value, classification="user_content")
             continue
         raise PIIAttributeTypeError(
-            _format_pii_violation(
+            format_pii_violation(
                 key,
                 f"{type(value).__name__}, not str",
                 context=(

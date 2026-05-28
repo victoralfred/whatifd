@@ -190,7 +190,9 @@ class TraceSourceConformance:
         if not emitted:
             pytest.skip(
                 "trace_source emitted no traces; the harness cannot exercise "
-                "Sensitive-wrapping. Provide a fixture that emits at least one."
+                "Sensitive-wrapping. Provide a fixture that emits at least one. "
+                "See class docstring 'Fixture discipline' section: the skip is a "
+                "safety-net diagnostic, not a sanctioned design choice."
             )
         for rt in emitted:
             assert isinstance(rt, RawTrace)
@@ -216,7 +218,8 @@ class TraceSourceConformance:
         if not emitted:
             pytest.skip(
                 "trace_source emitted no traces; the harness cannot exercise "
-                "PII-attribute wrapping. Provide a fixture that emits at least one."
+                "PII-attribute wrapping. Provide a fixture that emits at least one. "
+                "See class docstring 'Fixture discipline' section."
             )
         for rt in emitted:
             for key, value in rt.metadata.items():

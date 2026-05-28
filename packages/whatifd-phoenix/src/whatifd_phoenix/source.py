@@ -260,11 +260,7 @@ class PhoenixTraceSource:
             # attributes routinely surface `user.id` / `user.email` /
             # `session.id`; `wrap_pii_attributes` wraps registered
             # keys as `Sensitive[str]` and passes everything else
-            # through unchanged. The model validator on
-            # `RawTrace.metadata` would catch an unwrapped value here
-            # anyway, but doing the wrap at the projection step
-            # produces the right shape directly rather than relying
-            # on the validator to surface a failure.
+            # through unchanged.
             metadata=wrap_pii_attributes(
                 {k: v for k, v in root.items() if k not in (_ATTR_INPUT, _ATTR_OUTPUT)}
             ),

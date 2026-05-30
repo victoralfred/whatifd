@@ -146,7 +146,7 @@ class PIIAttributeTypeError(TypeError):
     """
 
 
-def _format_pii_violation(key: str, value_description: str, *, context: str) -> str:
+def format_pii_violation(key: str, value_description: str, *, context: str) -> str:
     """Shared message template for cardinal-#5 PII-attribute
     violations.
 

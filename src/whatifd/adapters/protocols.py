@@ -47,7 +47,7 @@ from whatifd.adapters.pii import (
     format_pii_violation,
 )
 from whatifd.cache.keying import CacheKeyComponents
-from whatifd.contract import ScoreCase
+from whatifd.contract import ScoreCase, ToolSpan
 from whatifd.types.sensitive import Sensitive
 from whatifd.types.statistical import ClusterKeySupport
 
@@ -105,19 +105,15 @@ class RawTrace(BaseModel):
     original_response: Sensitive[str] = Field(
         ..., description="The original agent response. Wrapped at the adapter boundary."
     )
-    # `tool_spans` and `metadata` are typed `dict[str, Any]` to
-    # mirror `whatifd.contract.TraceInput.metadata` /
-    # `ReplayOutput.tool_spans` exactly — the adapter projection
-    # produces the contract types unchanged. Cardinal #6 in this
-    # project ("public schema hand-written; internal types refactor
-    # freely") governs the public report schema (`ReportV01`), not
-    # the adapter→core internal boundary. Tightening to a typed
-    # `ToolSpan` here without lifting the contract would diverge
-    # the two shapes; revisit when the runner contract grows a
-    # typed span (currently tracked as a v0.2 cascade).
-    tool_spans: list[dict[str, Any]] = Field(
+    # `tool_spans` is the typed `whatifd.contract.ToolSpan` (issue #108):
+    # tool input/output are `Sensitive[str]` and `attributes` enforce the
+    # `PII_ATTRIBUTE_KEYS` contract, matching `ReplayOutput.tool_spans`. A
+    # plain `dict` still coerces (ToolSpan's before-validator wraps string
+    # content) so adapter call sites that build dicts keep working during
+    # the 108a soft window.
+    tool_spans: list[ToolSpan] = Field(
         default_factory=list,
-        description="Per-tool spans recorded in the original trace.",
+        description="Per-tool spans recorded in the original trace (typed ToolSpan, #108).",
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,

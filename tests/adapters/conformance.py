@@ -232,6 +232,51 @@ class TraceSourceConformance:
                     "projection boundary."
                 )
 
+    def test_emitted_traces_wrap_tool_span_user_content(self, trace_source: TraceSource) -> None:
+        # Issue #108 / cardinal #5: every `ToolSpan` an adapter emits must
+        # carry its tool input/output as `Sensitive[str]` (or None) — never a
+        # raw str — and any key in `PII_ATTRIBUTE_KEYS` on `ToolSpan.attributes`
+        # must itself be `Sensitive[str]` or None. `ToolSpan`'s validators
+        # enforce this at construction; this harness re-asserts at the adapter
+        # boundary so a `model_construct` bypass fails loudly.
+        #
+        # Adapters that don't surface tool spans (e.g., Langfuse, stub) skip;
+        # adapters that do (e.g., Phoenix) exercise the wrap.
+        from whatifd.adapters.pii import PII_ATTRIBUTE_KEYS
+        from whatifd.contract import ToolSpan
+
+        emitted = list(trace_source.iter_traces())
+        if not emitted:
+            pytest.skip(
+                "trace_source emitted no traces; the harness cannot exercise "
+                "tool-span wrapping. See class docstring 'Fixture discipline'."
+            )
+        spans = [(rt.trace_id, s) for rt in emitted for s in rt.tool_spans]
+        if not spans:
+            pytest.skip(
+                "trace_source emits no tool_spans; nothing to exercise. Provide a "
+                "fixture with at least one tool span to cover this adapter."
+            )
+        for trace_id, span in spans:
+            assert isinstance(span, ToolSpan), (
+                f"trace {trace_id} emits a non-ToolSpan entry ({type(span).__name__})"
+            )
+            assert span.input is None or isinstance(span.input, Sensitive), (
+                f"trace {trace_id} tool span {span.name!r} has unwrapped input "
+                f"({type(span.input).__name__}). Cardinal #5: wrap as Sensitive[str]."
+            )
+            assert span.output is None or isinstance(span.output, Sensitive), (
+                f"trace {trace_id} tool span {span.name!r} has unwrapped output "
+                f"({type(span.output).__name__}). Cardinal #5: wrap as Sensitive[str]."
+            )
+            for key, value in span.attributes.items():
+                if key not in PII_ATTRIBUTE_KEYS:
+                    continue
+                assert value is None or isinstance(value, Sensitive), (
+                    f"trace {trace_id} tool span {span.name!r} emits unwrapped value "
+                    f"at PII-registered attribute {key!r} ({type(value).__name__})."
+                )
+
 
 class ScorerConformance:
     """Conformance properties every `Scorer` must satisfy.

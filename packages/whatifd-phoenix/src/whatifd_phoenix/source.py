@@ -15,11 +15,12 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 
-from whatifd.adapters.pii import PII_ATTRIBUTE_KEYS, wrap_pii_attributes
+from whatifd.adapters.pii import wrap_pii_attributes
 from whatifd.adapters.protocols import (
     AdapterMetadata,
     RawTrace,
 )
+from whatifd.contract import ToolSpan
 from whatifd.serialization.canonical import canonical_json_bytes
 from whatifd.types.sensitive import Sensitive
 from whatifd.types.statistical import ClusterKeySupport
@@ -38,6 +39,7 @@ _ATTR_OUTPUT = "output.value"
 _ATTR_TRACE_ID = "context.trace_id"
 _ATTR_PARENT_ID = "parent_id"
 _ATTR_SPAN_KIND = "openinference.span.kind"
+_ATTR_TOOL_NAME = "tool.name"
 # Root-span kind fallback. CHAIN and AGENT are top-level orchestration
 # kinds; a span with no parent_id and one of these kinds is the trace
 # root by OpenInference convention.
@@ -110,46 +112,49 @@ def _wrap_user_content_in_span(span: dict[str, object]) -> dict[str, object]:
     return wrapped
 
 
-def _project_tool_span(span: dict[str, object]) -> dict[str, object]:
-    """Project a non-root OpenInference span into a `RawTrace.tool_spans` entry.
+def _project_tool_span(span: dict[str, object]) -> ToolSpan:
+    """Project a non-root OpenInference span into a typed `ToolSpan` (#108).
 
-    `RawTrace.tool_spans` is typed `list[dict[str, Any]]` and is NOT
-    subject to the `RawTrace.metadata` `model_validator` that enforces
-    `Sensitive[str]` wrapping at PII-registry keys. Cardinal #5 here
-    is preserved by **stripping** content and PII keys at the
-    projection boundary rather than wrapping them — wrapped
-    `Sensitive[T]` instances inside `tool_spans` dicts would be
-    caught by `assert_no_unredacted_sensitive` at serialization
-    time (the graph walk does not distinguish "wrapped" from
-    "leaked"; both surface as defects on the report path).
+    Strip → WRAP. Where the prior v0.2 stopgap *dropped* `input.value` /
+    `output.value` (because `RawTrace.tool_spans` was an untyped `dict` the
+    graph walk couldn't distinguish wrapped-from-leaked), the typed
+    `ToolSpan` carries them safely as `Sensitive[str]`. The report
+    projection omits span content from the wire unless `forensic`, so the
+    `Sensitive` content stays in-process for the runner/scorer.
 
-    Surfaces ONLY structural/tooling attributes — kind, parent_id,
-    tool.name, model.name, timing, etc. Content (`input.value`,
-    `output.value`) and PII-registered attribute keys are dropped.
-
-    A consumer reading the report sees tool-span structure (which
-    tools fired, in what order, at what latency) without seeing
-    content or identifiers. Issue #108 tracks the typed `ToolSpan`
-    upgrade that will surface content via proper `Sensitive[T]`
-    wrapping; until then, content stripping is the structural fix.
+    Content arrives pre-wrapped: `_wrap_user_content_in_span` (ingress) has
+    already turned `input.value` / `output.value` into `Sensitive[str]`, so
+    they pass straight through `ToolSpan`'s validator. Structural attributes
+    go through `wrap_pii_attributes` so any registered-PII key is wrapped,
+    satisfying `ToolSpan`'s attribute validator.
 
     ## Caller precondition (doctrine-review iter-1)
 
     The call site at `_project` uses `s is not root` (identity, not
-    equality) to exclude the root span. Callers MUST pass the same
-    span dict instance that was selected as `root` — defensively
-    copying or remapping the `spans` list before iteration would
-    break the identity match and silently include the root span in
-    `tool_spans`. The current `_project` body satisfies this by
-    iterating the same `spans` list it picked `root` from; any
-    refactor that materializes a fresh copy in between must restore
+    equality) to exclude the root span. Callers MUST pass the same span dict
+    instance that was selected as `root` — defensively copying or remapping
+    the `spans` list before iteration would break the identity match and
+    silently include the root span in `tool_spans`. The current `_project`
+    body satisfies this by iterating the same `spans` list it picked `root`
+    from; any refactor that materializes a fresh copy in between must restore
     root-exclusion by a different mechanism (e.g., parent_id absence).
     """
-    return {
-        k: v
-        for k, v in span.items()
-        if k not in (_ATTR_INPUT, _ATTR_OUTPUT) and k not in PII_ATTRIBUTE_KEYS
-    }
+    name = span.get(_ATTR_TOOL_NAME) or span.get(_ATTR_SPAN_KIND) or "tool"
+    kind = span.get(_ATTR_SPAN_KIND) or "tool"
+    # `attributes` is the structural span state minus the content slots
+    # (which become the typed input/output). `wrap_pii_attributes` wraps any
+    # registered-PII key so the ToolSpan attribute validator is satisfied.
+    attributes = {k: v for k, v in span.items() if k not in (_ATTR_INPUT, _ATTR_OUTPUT)}
+    return ToolSpan(
+        name=str(name),
+        kind=str(kind),
+        # input/output are already Sensitive[str] (or None) from
+        # _wrap_user_content_in_span; ToolSpan's before-validator passes
+        # Sensitive/None through unchanged.
+        input=span.get(_ATTR_INPUT),
+        output=span.get(_ATTR_OUTPUT),
+        attributes=wrap_pii_attributes(attributes),
+    )
 
 
 def _is_root_span(span: dict[str, object]) -> bool:

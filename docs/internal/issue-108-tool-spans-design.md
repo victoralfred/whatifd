@@ -241,19 +241,32 @@ longer needs Langfuse credentials to re-fetch.
 
 ---
 
-## 9. Open decisions (for the owner)
+## 9. Open decisions — RESOLVED (owner, 2026-05-30)
 
-1. **Report surfacing of tool-span content:** omit on the wire by default and
-   surface only under `forensic` profile (recommended, mirrors judge rationale),
-   or never surface? Affects the projection + a renderer decision.
-2. **Bump size:** does the runner-contract change (`ReplayOutput.tool_spans`
-   shape) make v0.3 a clean minor, or do we want a deprecation window where
-   `list[dict]` is still accepted and coerced for one release?
-3. **Langfuse span source:** project from `observations` of type `[TOOL]`
-   (cleanest, matches the live data) vs `[GENERATION]` `tool_results` — confirm
-   which the adapter standardizes on.
-4. **108a/108b split vs single PR:** the split keeps each PR reviewable; a single
-   PR lands the full payoff faster but is large. Recommend the split.
+1. **Report surfacing of tool-span content:** **omit by default, surface only
+   under `forensic`.** For 108a this is satisfied structurally — `ReportV01`
+   does not carry tool spans, so the `Sensitive[str]` content never reaches the
+   wire. The forensic-surfacing path is future work (no projection change needed
+   in 108a; the content stays in-process for runner/scorer).
+2. **Bump size / compat:** **coerce + accept dicts for one release.** `ToolSpan`'s
+   before-validator wraps plain-string `input`/`output`, so a runner returning
+   `list[dict]` still coerces to `list[ToolSpan]`; `extra="allow"` keeps unknown
+   tracer attrs. Ships in v0.3 (the runner contract changed). Malformed shapes
+   error; well-shaped dicts keep working.
+3. **Langfuse span source:** **project from `observations` of type `[TOOL]`**
+   (`name`←`obs.name`, `input`←command/args, `output`←tool result). This lands in
+   **108b** with the reference-threading work, not 108a.
+4. **PR split:** **108a then 108b.** This doc's 108a is shipped (see below).
+
+### 108a status — SHIPPED
+
+Typed `whatifd.contract.ToolSpan` (input/output `Sensitive[str]`, attributes via
+the `PII_ATTRIBUTE_KEYS` validator), adopted in `RawTrace`/`ReplayOutput`/
+`TraceOutput`; Phoenix `_project_tool_span` upgraded strip→wrap; conformance
+harness gains `test_emitted_traces_wrap_tool_span_user_content`. Suite green,
+mypy clean. **108b** (ToolCache population + `RawTrace.tool_spans` →
+`TraceOutput.tool_spans` threading + Langfuse `[TOOL]` projection + runner/scorer
+reference access) is the follow-up.
 
 ---
 

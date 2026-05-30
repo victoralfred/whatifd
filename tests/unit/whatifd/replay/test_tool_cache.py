@@ -24,14 +24,17 @@ Pin properties:
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
-from whatifd.contract import ToolCache
+from whatifd.contract import ToolCache, ToolSpan
 from whatifd.exceptions import InvariantViolationError
 from whatifd.replay.tool_cache import (
     CacheMissError,
     StrictToolCache,
+    build_tool_cache,
     make_strict_tool_cache,
 )
+from whatifd.types.sensitive import Sensitive
 
 # ---------------------------------------------------------------------------
 # Factory + Liskov substitutability
@@ -231,3 +234,90 @@ class TestCacheMissError:
                 f"details_for_failure() missing required-details key {key!r} "
                 "from FAILURE_CODE_REGISTRY['tool_cache_miss'] spec"
             )
+
+
+# ---------------------------------------------------------------------------
+# build_tool_cache — populate from ToolSpans (#108, 108b-2)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildToolCache:
+    def test_recorded_span_hits_on_matching_args(self) -> None:
+        # A span with structured args + output becomes a cache entry the
+        # runner's lookup(name, args) hits when args match.
+        spans = [
+            ToolSpan(
+                name="search",
+                args={"q": "weather"},
+                output=Sensitive("sunny", classification="user_content"),
+            )
+        ]
+        cache = build_tool_cache(spans, trace_id="t-1")
+        assert cache.lookup("search", {"q": "weather"}) == "sunny"
+
+    def test_miss_on_different_args_raises(self) -> None:
+        spans = [
+            ToolSpan(
+                name="search",
+                args={"q": "weather"},
+                output=Sensitive("sunny", classification="user_content"),
+            )
+        ]
+        cache = build_tool_cache(spans, trace_id="t-1")
+        with pytest.raises(CacheMissError):
+            cache.lookup("search", {"q": "stocks"})
+
+    def test_span_without_output_is_skipped(self) -> None:
+        # No recorded output → nothing to replay → not cached → miss.
+        spans = [ToolSpan(name="search", args={"q": "weather"})]
+        cache = build_tool_cache(spans, trace_id="t-1")
+        with pytest.raises(CacheMissError):
+            cache.lookup("search", {"q": "weather"})
+
+    def test_none_args_keys_by_empty_dict(self) -> None:
+        # A zero-arg tool: args=None keys by {} and hits a no-arg lookup.
+        spans = [ToolSpan(name="now", output=Sensitive("12:00", classification="user_content"))]
+        cache = build_tool_cache(spans, trace_id="t-1")
+        assert cache.lookup("now", {}) == "12:00"
+
+    def test_empty_spans_produces_empty_cache(self) -> None:
+        cache = build_tool_cache([], trace_id="t-1")
+        assert isinstance(cache, StrictToolCache)
+        with pytest.raises(CacheMissError):
+            cache.lookup("anything", {})
+
+    def test_non_dict_args_rejected_by_schema(self) -> None:
+        # ToolSpan.args is `dict[str, Any] | None`; a non-dict is rejected at
+        # construction (pydantic), not silently accepted — the schema is the
+        # first guard on the keyable args.
+        with pytest.raises(ValidationError):
+            ToolSpan(name="search", args="not-a-dict")  # type: ignore[arg-type]
+
+    def test_nested_dict_args_round_trip(self) -> None:
+        # Structured/nested args canonicalize deterministically through
+        # ToolCache._key, so the runner's matching nested args hit.
+        spans = [
+            ToolSpan(
+                name="search",
+                args={"filters": {"region": "eu"}, "limit": 10},
+                output=Sensitive("hit", classification="user_content"),
+            )
+        ]
+        cache = build_tool_cache(spans, trace_id="t-1")
+        assert cache.lookup("search", {"filters": {"region": "eu"}, "limit": 10}) == "hit"
+
+    def test_non_serializable_args_raises_structurally(self) -> None:
+        # `dict[str, Any]` accepts any value, but a non-JSON-serializable arg
+        # value surfaces as a typed encoder error when build_tool_cache keys
+        # it (canonical_json_bytes) — a loud failure, not a silently
+        # unmatchable key (cardinal #1). An adapter putting non-serializable
+        # data in `args` is a bug; this pins that it is not swallowed.
+        spans = [
+            ToolSpan(
+                name="search",
+                args={"obj": object()},
+                output=Sensitive("hit", classification="user_content"),
+            )
+        ]
+        with pytest.raises(TypeError):
+            build_tool_cache(spans, trace_id="t-1")

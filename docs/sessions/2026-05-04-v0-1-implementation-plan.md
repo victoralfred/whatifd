@@ -39,7 +39,7 @@ Rule #10 (statistical claims) is in the skill update queue (SKILL_UPDATE_PLAN.md
 ## Session end
 
 **Artifacts produced:**
-- `/home/voseghale/.claude/plans/golden-swimming-globe.md`: v0.1 implementation plan (approved by user; auto mode active afterwards)
+- `~/.claude/plans/golden-swimming-globe.md`: v0.1 implementation plan (approved by user; auto mode active afterwards)
 - `~/projects/self_dev/.claude/skills/whatifd-design/SKILL.md`, `doctrine.md`, `practices.md`, `contracts.md`, `type-model.md`, `statistical-defaults.md` (new): direct replacements per Phase A.1 of SKILL_UPDATE_PLAN.md
 - `~/projects/self_dev/.claude/skills/whatifd-design/type-model.md`: `methodology: MethodologyDisclosure` field manually added to `ReportV01` (the update author's known omission)
 - `~/projects/self_dev/.claude/skills/whatifd-design/references/cascade-catalog.md`: three-way merge — 28 open + 22 deferred + 1 template

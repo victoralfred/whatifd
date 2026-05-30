@@ -12,6 +12,10 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Changed — typed `ToolSpan` (#108, 108a)
+
+- **`tool_spans` is now a typed `whatifd.contract.ToolSpan`** (was loose `list[dict[str, Any]]`) on `ReplayOutput`, `TraceOutput`, and `RawTrace`. Tool `input`/`output` are wrapped as `Sensitive[str]` (cardinal #5); `attributes` enforce the `PII_ATTRIBUTE_KEYS` contract via a model validator (mirrors `RawTrace.metadata`). **Runner-contract change** (`ReplayOutput.tool_spans`): a runner returning a `list[dict]` with string `input`/`output` still works — `ToolSpan`'s before-validator wraps the strings and `extra="allow"` keeps unknown tracer attributes (one-release soft window). Malformed span shapes now raise at construction (cardinal #1). The Phoenix adapter's `_project_tool_span` upgraded from content-**stripping** (the F-2.2 stopgap) to content-**wrapping**. The conformance harness gains `test_emitted_traces_wrap_tool_span_user_content`. Tool-span content does NOT reach the wire report (`ReportV01` carries no tool spans), so cardinal #5 holds end to end. Design + resolved decisions: `docs/internal/issue-108-tool-spans-design.md`. **108b** (ToolCache population + `RawTrace.tool_spans` → `TraceOutput.tool_spans` threading + Langfuse `[TOOL]` projection + runner/scorer reference access) is the follow-up.
+
 ## [0.2.1] - 2026-05-30
 
 ### Changed (BREAKING for cache consumers)

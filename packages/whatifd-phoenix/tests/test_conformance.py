@@ -197,18 +197,24 @@ class TestSpanGrouping:
 
 
 class TestToolSpansProjection:
-    """Phoenix `_project` populates `RawTrace.tool_spans` with
-    non-root spans (content-stripped per cardinal #5; see F-2.2 in
-    `docs/sessions/2026-05-16-production-hardening-review-findings.md`
-    and the catalog entry "Phoenix tool_spans projection (partial;
-    content-stripped)").
+    """Phoenix `_project` populates `RawTrace.tool_spans` with typed
+    `whatifd.contract.ToolSpan`s (issue #108).
+
+    The v0.2 F-2.2 stopgap *stripped* content because the untyped
+    `dict[str, Any]` span couldn't safely carry `Sensitive[T]` past the
+    serialization graph walk. The typed `ToolSpan` carries it: tool
+    input/output become `Sensitive[str]` on `ToolSpan.input`/`output`, and
+    structural attributes (with any registered-PII key wrapped) land in
+    `ToolSpan.attributes`. The report projection omits span content from the
+    wire unless `forensic`, so cardinal #5 still holds end to end.
 
     The tests below pin:
-      1. Non-root spans appear in tool_spans
+      1. Non-root spans appear in tool_spans (as ToolSpan)
       2. Root span does NOT appear in tool_spans
-      3. Content keys (input.value, output.value) are stripped
-      4. PII-registered keys (user.id, session.id) are stripped
-      5. Structural keys (tool.name, span.kind, parent_id) pass through
+      3. Content (input.value/output.value) is WRAPPED (Sensitive[str]),
+         not stripped
+      4. PII-registered attribute keys are WRAPPED in `attributes`
+      5. Structural keys surface via `ToolSpan.name`/`kind`/`attributes`
       6. Empty when there are no non-root spans
     """
 
@@ -233,18 +239,18 @@ class TestToolSpansProjection:
         )
         [trace] = list(source.iter_traces())
         # The single tool_span entry must be the child, not the root.
-        # The root's `openinference.span.kind` is "CHAIN"; the child's
-        # is "TOOL". Distinguishing on kind avoids relying on dict
-        # identity which is harder to assert across the projection.
+        # The root's span kind is "CHAIN"; the child's is "TOOL".
         assert len(trace.tool_spans) == 1
-        assert trace.tool_spans[0].get("openinference.span.kind") == "TOOL"
+        assert trace.tool_spans[0].kind == "TOOL"
 
-    def test_tool_spans_strip_content_keys(self) -> None:
-        # A child span carrying its own input.value/output.value
-        # (e.g., a sub-agent's prompt) must NOT surface that content
-        # in tool_spans. The strip preserves cardinal #5 — issue #108
-        # tracks the typed-ToolSpan path that surfaces content via
-        # Sensitive[T] proper.
+    def test_tool_span_content_wrapped_not_stripped(self) -> None:
+        # A child span carrying input.value/output.value now surfaces that
+        # content as Sensitive[str] on the typed ToolSpan (issue #108 —
+        # replaces the F-2.2 strip stopgap). Cardinal #5 holds because the
+        # content is WRAPPED and the report projection omits it unless
+        # forensic.
+        from whatifd.types.sensitive import Sensitive
+
         child_with_content = {
             "context.trace_id": "t-1",
             "parent_id": "root-1",
@@ -259,10 +265,19 @@ class TestToolSpansProjection:
             cohort_classifier=_classify_baseline,
         )
         [trace] = list(source.iter_traces())
-        assert "input.value" not in trace.tool_spans[0]
-        assert "output.value" not in trace.tool_spans[0]
+        span = trace.tool_spans[0]
+        assert isinstance(span.input, Sensitive)
+        assert isinstance(span.output, Sensitive)
+        assert span.input.unwrap(reason="test") == "user's secret query"
+        assert span.output.unwrap(reason="test") == "tool's secret response"
 
-    def test_tool_spans_strip_pii_keys(self) -> None:
+    def test_tool_span_pii_attributes_wrapped(self) -> None:
+        # Registered-PII keys on a child span are WRAPPED as Sensitive[str]
+        # in ToolSpan.attributes (the ToolSpan attribute validator would
+        # reject them unwrapped; the Phoenix projection routes attributes
+        # through wrap_pii_attributes).
+        from whatifd.types.sensitive import Sensitive
+
         child_with_pii = {
             "context.trace_id": "t-1",
             "parent_id": "root-1",
@@ -278,25 +293,24 @@ class TestToolSpansProjection:
             cohort_classifier=_classify_baseline,
         )
         [trace] = list(source.iter_traces())
-        assert "user.id" not in trace.tool_spans[0]
-        assert "session.id" not in trace.tool_spans[0]
-        assert "user.email" not in trace.tool_spans[0]
+        attrs = trace.tool_spans[0].attributes
+        for key in ("user.id", "session.id", "user.email"):
+            assert isinstance(attrs[key], Sensitive), f"{key} not wrapped"
 
     def test_tool_spans_preserve_structural_keys(self) -> None:
-        # The fix surfaces tool-span structure (kind, parent, name,
-        # timing) — that's the WHOLE point of populating tool_spans.
-        # Confirm the structural keys pass through.
+        # Tool-span structure (kind, parent, name) surfaces via the typed
+        # ToolSpan fields + the attributes dict.
         spans = [_make_root_span("t-1"), _make_child_span("t-1", parent_id="root-1")]
         source = PhoenixTraceSource(
             spans_provider=lambda: spans,
             cohort_classifier=_classify_baseline,
         )
         [trace] = list(source.iter_traces())
-        child = trace.tool_spans[0]
-        assert child.get("openinference.span.kind") == "TOOL"
-        assert child.get("tool.name") == "search"
-        assert child.get("parent_id") == "root-1"
-        assert child.get("context.trace_id") == "t-1"
+        span = trace.tool_spans[0]
+        assert span.kind == "TOOL"
+        assert span.name == "search"
+        assert span.attributes.get("parent_id") == "root-1"
+        assert span.attributes.get("context.trace_id") == "t-1"
 
     def test_tool_spans_empty_when_no_children(self) -> None:
         spans = [_make_root_span("t-1")]

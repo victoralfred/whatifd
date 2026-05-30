@@ -1228,9 +1228,9 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 
 **Trigger for resolution:** the first of (a) a user report of unwrapped PII in tool spans from a real adapter run, or (b) the runner-contract `ToolSpan` typing work landing for an unrelated reason (deferred from v0.1, tracked as a separate cascade entry).
 
-**Status:** open. Not blocking on schema freeze because the metadata gap closed in PR #104 — `tool_spans` is the next-priority surface but cardinally-equivalent to a v0.3 concern.
+**Status:** in-progress (108a shipped 2026-05-30). The typed `whatifd.contract.ToolSpan` now exists (input/output `Sensitive[str]`; `attributes` enforce `PII_ATTRIBUTE_KEYS` via a model_validator) and is adopted in `RawTrace`/`ReplayOutput`/`TraceOutput`; a runner-returned `list[dict]` still coerces (before-validator wraps string content — the one-release compat window). Phoenix `_project_tool_span` upgraded strip→wrap; conformance harness gains `test_emitted_traces_wrap_tool_span_user_content`. Design + the resolved owner-decisions in `docs/internal/issue-108-tool-spans-design.md`. **Remaining (108b):** populate `ToolCache` from `RawTrace.tool_spans`, thread `RawTrace.tool_spans → TraceOutput.tool_spans` in `build_delta_fn`, Langfuse `[TOOL]`-observation projection, and runner/scorer reference access.
 
-**Tracking issue:** #106 — filed with cross-reference to this catalog entry and to PR #104.
+**Tracking issue:** #108 (108a) / #106 (original). Cross-referenced to PR #104 and `docs/internal/issue-108-tool-spans-design.md`.
 
 ### F-3.1 cache-lock inode-identity check after flock (incomplete-fix follow-up)
 
@@ -1275,9 +1275,9 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 - The Langfuse adapter is structurally different (`trace.tool_spans` doesn't exist on the Langfuse `Trace` shape — Langfuse models tool calls as separate generations, not nested spans). No Langfuse-side change needed for parity.
 - The Inspect AI adapter is a Scorer, not a TraceSource; `tool_spans` is not in its surface.
 
-**Trigger for upgrade:** Issue #108 (typed `ToolSpan`) lands. At that point, `_project_tool_span` upgrades from strip-content to wrap-content-as-Sensitive[T]; the structural fix above is the placeholder until the typed shape ships.
+**Trigger for upgrade:** ~~Issue #108 (typed `ToolSpan`) lands.~~ **FIRED 2026-05-30 (108a).** `_project_tool_span` now returns a typed `whatifd.contract.ToolSpan` and **wraps** `input.value`/`output.value` as `Sensitive[str]` instead of stripping them; structural attributes route through `wrap_pii_attributes`. The `TestToolSpansProjection` tests were rewritten from strip-assertions to wrap-assertions (content present + unwrappable; PII attrs wrapped). Cardinal #5 still holds end to end because `ReportV01` does not carry tool spans — the `Sensitive[str]` content stays in-process (the graph-walk concern that motivated stripping doesn't arise on the wire).
 
-**Status:** resolved (partial — full content surfacing tracks issue #108).
+**Status:** superseded by 108a (strip→wrap shipped). Full content *surfacing on the wire* (forensic profile) + ToolCache/reference threading track 108b.
 
 ### `PII_ATTRIBUTE_KEYS` registry — adapter-boundary cardinal-#5 enforcement (resolved 2026-05-14; issue #87, PR #109)
 

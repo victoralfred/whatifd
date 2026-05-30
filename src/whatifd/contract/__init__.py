@@ -33,7 +33,9 @@ from __future__ import annotations
 from collections.abc import Awaitable
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from whatifd.types.sensitive import Sensitive
 
 # ---------------------------------------------------------------------------
 # Inputs the runner receives
@@ -150,6 +152,88 @@ class ToolCache(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class ToolSpan(BaseModel):
+    """One tool invocation within a trace or replay (issue #108).
+
+    Typed replacement for the prior loose `dict[str, Any]` span. Tool
+    `input`/`output` ARE user content and are wrapped as `Sensitive[str]`
+    (cardinal #5); `attributes` carry structural tooling state, and any key
+    in `PII_ATTRIBUTE_KEYS` must itself be `Sensitive[str]` or `None`
+    (mirrors `RawTrace.metadata`).
+
+    **Compat (108a soft window).** A runner may still return a plain dict
+    with string `input`/`output`; the before-validator wraps those strings
+    as `Sensitive[str]`, so a returned `list[dict]` coerces to
+    `list[ToolSpan]`. Already-`Sensitive` or `None` values pass through.
+
+    **Wire surface.** Tool-span content is NOT serialized into the report by
+    default — the projection omits it unless `reporting.profile=forensic`
+    (mirrors judge-rationale handling). So the `Sensitive[str]` content lives
+    in-process for the runner/scorer; it does not reach `ReportV01`.
+    """
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+    name: str = Field(..., description="Tool name (structural, not user content).")
+    kind: str = Field(default="tool", description="Span kind: tool | retrieval | generation | ...")
+    tool_call_id: str | None = Field(
+        default=None,
+        description="Provider tool-call id; used for ToolCache keying (108b).",
+    )
+    input: Sensitive[str] | None = Field(
+        default=None, description="Tool input/args — user content, wrapped as Sensitive[str]."
+    )
+    output: Sensitive[str] | None = Field(
+        default=None, description="Tool output/result — user content, wrapped as Sensitive[str]."
+    )
+    attributes: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Structural span attributes (latency, status, tool version). "
+            "Values at keys in `whatifd.adapters.PII_ATTRIBUTE_KEYS` MUST be "
+            "`Sensitive[str]` or `None` (cardinal #5; mirrors RawTrace.metadata)."
+        ),
+    )
+
+    @field_validator("input", "output", mode="before")
+    @classmethod
+    def _wrap_plaintext_content(cls, value: Any) -> Any:
+        # Compat: accept a plain str (or stringify other scalars) and wrap as
+        # Sensitive[str] so a runner-returned dict coerces. Already-Sensitive
+        # or None pass through unchanged (idempotent).
+        if value is None or isinstance(value, Sensitive):
+            return value
+        text = value if isinstance(value, str) else str(value)
+        return Sensitive(text, classification="user_content")
+
+    @model_validator(mode="after")
+    def _enforce_pii_attribute_wrapping(self) -> ToolSpan:
+        # Lazy import breaks the cycle: `adapters` imports `contract`, so a
+        # module-level `from whatifd.adapters.pii import ...` here would loop.
+        from whatifd.adapters.pii import (
+            PII_ATTRIBUTE_KEYS,
+            PIIAttributeTypeError,
+            format_pii_violation,
+        )
+
+        for key, value in self.attributes.items():
+            if key not in PII_ATTRIBUTE_KEYS:
+                continue
+            if value is None or isinstance(value, Sensitive):
+                continue
+            raise PIIAttributeTypeError(
+                format_pii_violation(
+                    key,
+                    f"unwrapped ({type(value).__name__})",
+                    context=(
+                        "Cardinal #5: PII-bearing tool-span attributes must be "
+                        "wrapped as `Sensitive[str]`"
+                    ),
+                )
+            )
+        return self
+
+
 class ReplayOutput(BaseModel):
     """The output your runner produces for a single replay.
 
@@ -161,7 +245,7 @@ class ReplayOutput(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     text: str = Field(..., description="The agent's final response.")
-    tool_spans: list[dict[str, Any]] = Field(
+    tool_spans: list[ToolSpan] = Field(
         default_factory=list,
         description="Per-tool spans recorded during replay (optional but useful).",
     )
@@ -186,7 +270,7 @@ class TraceOutput(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     text: str
-    tool_spans: list[dict[str, Any]] = Field(default_factory=list)
+    tool_spans: list[ToolSpan] = Field(default_factory=list)
 
 
 class ScoreCase(BaseModel):
@@ -266,6 +350,7 @@ __all__ = [
     "Runner",
     "ScoreCase",
     "ToolCache",
+    "ToolSpan",
     "TraceInput",
     "TraceOutput",
 ]

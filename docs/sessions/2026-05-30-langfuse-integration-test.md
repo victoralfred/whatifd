@@ -42,7 +42,7 @@ started_at: 2026-05-30T00:00:00Z
 - Updated: noted the deferred Phase-7 renderer treatment of run-level vs per-cohort floor failures remains open as a separate concern.
 
 **Gaps surfaced:**
-- `whatifd-langfuse` ships only a `TraceSource`, no `Scorer`. Operators with an existing Langfuse LLM-judge cannot reuse it to score replayed outputs (whatifd re-scores both sides with one ruler per cardinal #10). A `LangfuseScorer` adapter that wraps the Langfuse evaluation config is a real feature gap — to be filed/implemented as its own branch after PR #110 merges (sequential-branch discipline).
+- `whatifd-langfuse` ships only a `TraceSource`, no `Scorer`. Operators with an existing Langfuse LLM-judge want to reuse it to score replayed outputs (whatifd re-scores both sides with one ruler per cardinal #10). **Investigated 2026-05-30 and resolved as NOT-a-gap (won't build):** a `LangfuseScorer` would reinvent `InspectAIScorer`, which already IS the judge integration. Langfuse's public API does not expose evaluator configs (only `score_configs` = the score schema, and `scores` = existing values); evaluator configs live only behind the **unstable** `api.unstable.evaluators` endpoint, too fragile to depend on in a shipped adapter. Per the project principle "whatifd is an integration, not a reinvention," the integration is: `LangfuseTraceSource` (source) + `InspectAIScorer` (scorer) configured with the rubric text + judge model **copied** from the Langfuse evaluator. No new adapter. Documented in `/home/voseghale/DEV/whatif/CORRECT_WIRING.md` §3.
 - Full suite after the fix: 1347 passed, 1 skipped.
 
 **Doctrine moments:**
@@ -51,5 +51,5 @@ started_at: 2026-05-30T00:00:00Z
 
 **Notes for the next session:**
 - PR #110 (`v0.2.1-hardening`) now carries this fix locally — not yet committed/pushed (awaiting owner go-ahead).
-- Second finding (LangfuseScorer reuse) is a feature, deferred to its own branch off updated main after #110 merges, per sequential-branch rule.
+- Second finding (LangfuseScorer reuse): investigated after #110/#111 merged and **closed as won't-build** — it would reinvent `InspectAIScorer`. The integration path (LangfuseTraceSource + InspectAIScorer + copied rubric) is documented in `CORRECT_WIRING.md` §3; no project-repo code needed.
 - The operator's data itself is degenerate (tautological evaluator inputs: response == reference byte-identical across 24/24; 1–5 rubric mis-extracted to score=1). Upstream evaluator fixes (reference ≠ response; correct scale extraction) are in `projects/trading`, not whatifd — captured in `/home/voseghale/DEV/whatif/CORRECT_WIRING.md`.

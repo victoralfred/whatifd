@@ -218,6 +218,13 @@ class StubScorer:
             # with prior cached results. v1 omitted these and silently
             # returned stale JudgeResults; v2 adds them as required
             # fields (CacheKeyComponents.__post_init__ enforces hex).
+            #
+            # Cardinal #5 (audit trail legible at the call site): `.text` is
+            # a plain `str`, NOT `Sensitive[str]` — see
+            # `whatifd.contract.ReplayOutput.text: str` (contract/__init__.py:163)
+            # and `TraceOutput.text: str` (:188). There is no `Sensitive`
+            # wrapper to unwrap here; `_hash16` is hashing a primitive
+            # string, so no `.unwrap(reason=...)` call is required.
             original_output_hash=_hash16("output", "original", case.original_output.text),
             replayed_output_hash=_hash16("output", "replayed", case.replayed_output.text),
         )

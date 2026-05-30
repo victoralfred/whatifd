@@ -8,7 +8,7 @@ import pytest
 
 from whatifd.adapters.protocols import AdapterMetadata, JudgeResult, RawTrace, Scorer
 from whatifd.adapters.stub import StubScorer
-from whatifd.cache.keying.v1 import CacheKeyComponents
+from whatifd.cache.keying import CacheKeyComponents
 from whatifd.cli_pipeline import build_delta_fn
 from whatifd.config import ChangeConfig
 from whatifd.contract import ReplayConfig, ReplayOutput, ScoreCase, ToolCache, TraceInput
@@ -84,6 +84,8 @@ class _ScoringScorer:
             scoring_parameters_hash="0" * 16,
             score_case_serialization_version="v1",
             score_case_hash="0" * 16,
+            original_output_hash="0" * 16,
+            replayed_output_hash="0" * 16,
         )
 
     def adapter_metadata(self) -> AdapterMetadata:

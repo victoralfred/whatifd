@@ -63,6 +63,8 @@ def _components() -> CacheKeyComponents:
         scoring_parameters_hash="cc" * 32,
         score_case_serialization_version="v1",
         score_case_hash="dd" * 32,
+        original_output_hash="ee" * 32,
+        replayed_output_hash="ff" * 32,
     )
 
 
@@ -244,13 +246,15 @@ class TestVersionMismatch:
         with pytest.raises(InvariantViolationError, match="v0"):
             write_entry(tmp_path, build_cache_key(_components()), bad)
 
-    def test_lookup_rejects_v2_key_as_bug(self, tmp_path: Path) -> None:
+    def test_lookup_rejects_mismatched_version_key_as_bug(self, tmp_path: Path) -> None:
         # Caller passed a key with the wrong version prefix. Programmer
         # bug — they should have built the key with this version's
-        # build_cache_key.
+        # build_cache_key. v0.2.0 used "v1"; v0.2.1 bumped to "v2" per
+        # F-2.1; use "v3" here as a forward-version not produced by the
+        # active keying module.
         init_cache(tmp_path)
-        with pytest.raises(InvariantViolationError, match="v2"):
-            read_entry(tmp_path, "v2:" + "a" * 64)
+        with pytest.raises(InvariantViolationError, match="v3"):
+            read_entry(tmp_path, "v3:" + "a" * 64)
 
     def test_lookup_rejects_bare_digest_as_bug(self, tmp_path: Path) -> None:
         # No version prefix on the key. The bare-digest path was
@@ -267,20 +271,20 @@ class TestVersionMismatch:
         # Pin: digest length+shape is validated.
         init_cache(tmp_path)
         with pytest.raises(InvariantViolationError, match="64 lowercase hex chars"):
-            read_entry(tmp_path, "v1:")
+            read_entry(tmp_path, "v2:")
 
     def test_lookup_rejects_short_digest_as_bug(self, tmp_path: Path) -> None:
         # Truncated digest: correct prefix but not 64 chars.
         init_cache(tmp_path)
         with pytest.raises(InvariantViolationError, match="64 lowercase hex chars"):
-            read_entry(tmp_path, "v1:" + "a" * 32)
+            read_entry(tmp_path, "v2:" + "a" * 32)
 
     def test_lookup_rejects_uppercase_hex_as_bug(self, tmp_path: Path) -> None:
         # Uppercase hex: case sensitivity matters; canonical form is
         # lowercase per Phase 3.1's hashlib hexdigest output.
         init_cache(tmp_path)
         with pytest.raises(InvariantViolationError, match="64 lowercase hex chars"):
-            read_entry(tmp_path, "v1:" + "A" * 64)
+            read_entry(tmp_path, "v2:" + "A" * 64)
 
     # ----- Data-condition paths (CacheSchemaMismatchError) -----
 

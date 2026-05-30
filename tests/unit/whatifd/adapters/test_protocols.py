@@ -31,7 +31,7 @@ from whatifd.adapters import (
     Scorer,
     TraceSource,
 )
-from whatifd.cache.keying.v1 import CacheKeyComponents
+from whatifd.cache.keying import CacheKeyComponents
 from whatifd.contract import ScoreCase
 from whatifd.types.sensitive import Sensitive
 from whatifd.types.statistical import ClusterKeySupport

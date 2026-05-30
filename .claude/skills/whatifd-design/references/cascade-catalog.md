@@ -1232,6 +1232,22 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 
 **Tracking issue:** #106 — filed with cross-reference to this catalog entry and to PR #104.
 
+### F-3.1 cache-lock inode-identity check after flock (incomplete-fix follow-up)
+
+**Source decision:** PR #110 shipped F-3.1, reordering `acquire_cache_lock`'s cleanup to `unlink → LOCK_UN → close` to close the fcntl/unlink race where a contender could acquire flock on a soon-to-be-unlinked inode while a third opener created a different inode at the same path (two "holders" on different inodes → single-writer guarantee defeated). The CHANGELOG entry for F-3.1 explicitly states *"A complete fix pairs this with an inode-identity check"* — i.e., the shipped reorder is the cleanup half; the acquisition half is unaddressed. PR #110's doctrine review (non-blocking suggestion) flagged that this incompleteness was left implicit in prose and should be a named follow-up finding, not a buried CHANGELOG aside.
+
+**The gap:** after `flock` acquires on the opened fd, the code does not verify the fd's inode still matches the inode currently at the lock path. A racing `unlink` + `O_CREAT` recreation between `open` and `flock` can leave the acquirer holding a lock on an orphaned inode while a second process holds the live one. The cleanup reorder narrows the window but does not eliminate the acquisition-side ambiguity.
+
+**Rippled to:**
+- `acquire_cache_lock` (and `_try_takeover_if_stale`) in `cache/lock.py`: after `flock` succeeds, `fstat` the held fd and `stat` the path; if `st_ino` / `st_dev` differ, release and retry (bounded) rather than proceeding.
+- Tests: a fresh-interpreter / subprocess race test that recreates the lock-path inode between open and flock and asserts the acquirer detects the mismatch.
+
+**Status:** open. Severity: low — the residual window is small and requires concurrent `whatifd` invocations contending on the same cache root at sub-millisecond timing; the shipped reorder covers the common cleanup race.
+
+**Resolution:** v0.2.2+ cache-hardening. Pairs with F-3.9 (`cache_key_version` validation in `storage/v1.py::init_cache`), also open — both are cache-subsystem correctness follow-ups deferred out of the #110 P1 batch.
+
+**Trigger for resolution:** the next cache-subsystem hardening pass, OR a real report of cross-process cache corruption under concurrent runs.
+
 ## Resolved cascades
 
 > **Ordering convention:** entries are reverse-chronological — newest at the top, oldest at the bottom. New resolved cascades are PREPENDED to this section, not appended. Reasoning: a contributor scanning for "what shipped recently" or "what's the latest doctrine on X" gets the answer in the first few entries instead of paging to the end. The original v0.1 entries (PRs #26, #31, etc.) sit at the bottom because they were resolved earliest; the most recent v0.2 phases sit at the top.

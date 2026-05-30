@@ -303,17 +303,22 @@ def _build_phoenix_source(cfg: SourceConfig) -> TraceSource:
             "`pip install whatifd-phoenix` (or `uv pip install whatifd-phoenix`)."
         ) from exc
 
-    # Default cohort classifier mirrors the langfuse default's inline-
-    # closure pattern (`_build_langfuse_source` above): a `failure`
-    # marker in span attributes selects the failure cohort. The
-    # closure lives inline in the factory because v0.2 has no
-    # registry layer for cohort classifiers — the langfuse default
-    # set the precedent and this phoenix path mirrors it for
-    # consistency. v0.3 introduces config-driven classifier selection
-    # (see cascade-catalog "cohort_classifier configurable"), at
-    # which point both inline closures lift to a shared registry.
-    # Until then, this duplication is intentional and the langfuse-
-    # mirror shape is the lower-blast-radius default.
+    # Default cohort classifier. Mirrors the SHAPE of the langfuse
+    # default (`_build_langfuse_source` above) — both return the two
+    # cohort labels — but NOT its implementation: the langfuse closure
+    # takes a Langfuse `Trace` object and tests `trace.tags` for the
+    # string "failure"; this one takes a `list[dict]` of OpenInference
+    # spans and tests span attribute keys (`tag.failed`). Different
+    # input types AND different failure signals — only the failure/
+    # baseline return is shared. A shared `_tag_based_cohort_classifier`
+    # helper (PR #110 doctrine-review suggestion) was declined for this
+    # reason: it would be a forced abstraction over two genuinely
+    # different per-adapter defaults, parameterized down to a predicate
+    # that each caller still writes. The real consolidation is the v0.3
+    # config-driven classifier registry (cascade-catalog
+    # "cohort_classifier configurable"), where both defaults become
+    # registry entries keyed by adapter. Until then the inline closures
+    # are the lower-blast-radius default.
     def _default_classifier(spans: list[dict[str, object]]) -> str:
         for span in spans:
             for key in ("attributes.tag.failed", "tag.failed"):

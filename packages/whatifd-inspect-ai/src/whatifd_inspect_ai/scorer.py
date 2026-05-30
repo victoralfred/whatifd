@@ -168,6 +168,13 @@ class InspectAIScorer:
             # collide with the prior cached JudgeResult. v1 omitted
             # these and produced silent wrong deltas when the cache
             # was enabled; v2 keying makes them required.
+            #
+            # Cardinal #5 (audit trail legible at the call site): `.text` is
+            # a plain `str`, NOT `Sensitive[str]` — see
+            # `whatifd.contract.ReplayOutput.text: str` (contract/__init__.py:163)
+            # and `TraceOutput.text: str` (:188). No `Sensitive` wrapper to
+            # unwrap; `_hash16` hashes a primitive string, so no
+            # `.unwrap(reason=...)` call is required at this boundary.
             original_output_hash=_hash16("output", "original", case.original_output.text),
             replayed_output_hash=_hash16("output", "replayed", case.replayed_output.text),
         )

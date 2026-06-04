@@ -140,6 +140,96 @@ def test_whatif_fork_e2e_filesystem_write_failure_no_stack_trace(
     assert "PermissionError" in combined
 
 
+def test_whatif_fork_e2e_output_flags_write_exact_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#93: --output-json / --output-md write to the EXACT paths given
+    (parents created), not the dated ./reports/ default — so CI never has
+    to discover the path."""
+    monkeypatch.chdir(tmp_path)
+    cfg_path = _write_config(tmp_path)
+    out_json = tmp_path / "ci" / "verdict.json"
+    out_md = tmp_path / "ci" / "verdict.md"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "fork",
+            "--config",
+            str(cfg_path),
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(out_md),
+        ],
+    )
+    assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+    assert out_json.is_file(), result.output
+    assert out_md.is_file(), result.output
+    # The dated default location must NOT be used when flags are given.
+    assert not (tmp_path / "reports").exists()
+
+
+def test_whatif_fork_e2e_print_paths_emits_json_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#93: --print-paths emits a single JSON object {report_json,
+    report_md, verdict} to stdout (no human 'report written' line), and the
+    paths reflect any --output-* overrides."""
+    import json
+
+    monkeypatch.chdir(tmp_path)
+    cfg_path = _write_config(tmp_path)
+    out_json = tmp_path / "ci" / "r.json"
+    out_md = tmp_path / "ci" / "r.md"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "fork",
+            "--config",
+            str(cfg_path),
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(out_md),
+            "--print-paths",
+        ],
+    )
+    assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+    combined = (result.stdout or "") + (result.output or "")
+    assert "report written to" not in combined, combined
+    # The last non-empty stdout line is the JSON object.
+    line = [ln for ln in combined.splitlines() if ln.strip()][-1]
+    payload = json.loads(line)
+    assert payload == {
+        "report_json": str(out_json),
+        "report_md": str(out_md),
+        "verdict": "inconclusive",
+    }
+
+
+def test_whatif_fork_e2e_print_paths_default_locations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--print-paths works with the dated defaults too (no --output-* flags):
+    the emitted paths point at ./reports/whatifd-fork-<date>.{json,md}."""
+    import json
+
+    monkeypatch.chdir(tmp_path)
+    cfg_path = _write_config(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(app, ["fork", "--config", str(cfg_path), "--print-paths"])
+    combined = (result.stdout or "") + (result.output or "")
+    line = [ln for ln in combined.splitlines() if ln.strip()][-1]
+    payload = json.loads(line)
+    assert payload["report_json"].endswith(".json")
+    assert payload["report_md"].endswith(".md")
+    assert "reports/whatifd-fork-" in payload["report_json"]
+    # And the file the JSON names actually exists.
+    assert Path(payload["report_json"]).is_file()
+
+
 def test_whatif_fork_e2e_experiment_shape_threaded_to_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

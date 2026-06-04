@@ -1402,6 +1402,22 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 
 
 
+### `whatifd fork` emits its own report paths — #93 (resolved 2026-06-04)
+
+**Source decision:** CI wrappers (the GitHub Action; the upcoming GitLab/Travis ones, integrations-plan P3–P5) re-discover the written report files with a fragile Python `glob`+mtime scan (`.github/actions/whatifd-fork/action.yml:117-136`) because `whatifd fork` only returned an exit code. Issue #93 tracks closing that. The integrations plan made #93 a prerequisite (P2) so all three wrappers share one mechanism instead of triplicating the scan.
+
+**Surface (owner-picked):** `whatifd fork` gains `--output-json PATH` / `--output-md PATH` (write to exact paths; each overrides its dated default independently; parents created) AND `--print-paths` (emit only `{report_json, report_md, verdict}` JSON to stdout after writing; verdict still drives the exit code).
+
+**Rippled to / refactor protection:**
+- `_run_fork_pipeline` gains keyword params `output_json` / `output_md` / `print_paths` (defaults preserve v0.2 behavior — dated paths, human summary line). The `fork` typer command threads them.
+- The `--print-paths` JSON is built via `whatifd.serialization.canonical_json_bytes`, NOT `json.dumps` (banned-import discipline; also gives sorted+ASCII determinism).
+- Both output parents are `mkdir`-ed (json and md may live in different dirs now).
+- Tests: `test_cli_fork_e2e.py` gains exact-path, print-paths-json-only, and print-paths-default-locations cases.
+- **Follow-up (not this PR):** `action.yml` adopts `--print-paths` and deletes its `glob`+mtime discovery; that change also updates `test_phase_i_github_action.py`. Bundled with the marketplace-wrapper work (P3) + #94 (marker comments).
+
+**Resolved by:** P2 PR on branch `feat/cli-emit-report-paths`.
+
+
 ### aiohttp 3.14 vs vcrpy aiohttp stub — test-infra incompatibility (open, 2026-06-04)
 
 **Problem:** `aiohttp` 3.14.0 (2026-06) removed `aiohttp.streams.AsyncStreamReaderMixin`, which `vcrpy` ≤ 8.1.1 (the latest release) imports at module load in `vcr/stubs/aiohttp_stubs.py`. vcr patches every detected HTTP library on each `@pytest.mark.vcr` setup, so the stub-import `AttributeError` aborts the langfuse recorded-smoke test even though the Langfuse SDK uses httpx, not aiohttp. `aiohttp` is pulled transitively by `inspect-ai` (a real dep, via `aiobotocore`/`s3fs`), so it can't be uninstalled.

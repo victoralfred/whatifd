@@ -143,6 +143,40 @@ def fork(
             ),
         ),
     ] = None,
+    output_json: Annotated[
+        Path | None,
+        typer.Option(
+            "--output-json",
+            help=(
+                "Write the ReportV01 JSON to this exact path instead of the "
+                "dated default (./reports/whatifd-fork-<date>.json). Parent "
+                "dirs are created. Lets CI control the destination so it never "
+                "has to discover the path (#93)."
+            ),
+        ),
+    ] = None,
+    output_md: Annotated[
+        Path | None,
+        typer.Option(
+            "--output-md",
+            help=(
+                "Write the Markdown report to this exact path instead of the "
+                "dated default (./reports/whatifd-fork-<date>.md)."
+            ),
+        ),
+    ] = None,
+    print_paths: Annotated[
+        bool,
+        typer.Option(
+            "--print-paths",
+            help=(
+                "After writing, emit ONLY a JSON object "
+                "{report_json, report_md, verdict} to stdout (the verdict "
+                "still drives the exit code). Lets CI capture the written "
+                "paths + verdict without parsing the human summary."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Fork production traces, replay with the proposed change, emit
     a verdict. Exit code 0 = Ship, 1 = Don't Ship, 2 = Inconclusive
@@ -172,7 +206,13 @@ def fork(
     # TwoAffirmationProof. The compiler now rejects any future
     # refactor that bypasses the witness — the threading is
     # structural, not by comment convention.
-    exit_code = _run_fork_pipeline(cfg, proof)
+    exit_code = _run_fork_pipeline(
+        cfg,
+        proof,
+        output_json=output_json,
+        output_md=output_md,
+        print_paths=print_paths,
+    )
     raise typer.Exit(code=exit_code)
 
 
@@ -198,7 +238,14 @@ def _compute_config_hash(cfg: WhatifConfig) -> str:
     return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
 
 
-def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
+def _run_fork_pipeline(
+    cfg: WhatifConfig,
+    proof: TwoAffirmationProof,
+    *,
+    output_json: Path | None = None,
+    output_md: Path | None = None,
+    print_paths: bool = False,
+) -> int:
     """Execute the fork pipeline (replay → score → decision →
     render) and return the appropriate exit code.
 
@@ -488,21 +535,44 @@ def _run_fork_pipeline(cfg: WhatifConfig, proof: TwoAffirmationProof) -> int:
     # operator-readable message + setup-failure exit code. Without
     # this catch, a read-only ./reports directory crashes the CLI
     # with a Python traceback past the cardinal-#1 boundary.
-    report_md_path = Path(f"./reports/whatifd-fork-{started_at.strftime('%Y-%m-%d')}.md")
-    report_json_path = report_md_path.with_suffix(".json")
+    # Destinations: each of --output-json / --output-md independently
+    # overrides its dated default (#93), so CI can pin exact paths and skip
+    # discovery. Parents of BOTH are created (they may differ).
+    _date = started_at.strftime("%Y-%m-%d")
+    report_json_path = output_json or Path(f"./reports/whatifd-fork-{_date}.json")
+    report_md_path = output_md or Path(f"./reports/whatifd-fork-{_date}.md")
     try:
+        report_json_path.parent.mkdir(parents=True, exist_ok=True)
         report_md_path.parent.mkdir(parents=True, exist_ok=True)
         report_json_path.write_bytes(encode_report_v01(report))
         report_md_path.write_text(render_full_report(report), encoding="utf-8")
     except OSError as exc:
         typer.echo(
-            f"whatifd: failed to write report artifacts to "
-            f"{report_md_path.parent}: {type(exc).__name__}: {exc}. Check "
-            "directory permissions and available disk space.",
+            f"whatifd: failed to write report artifacts "
+            f"(json={report_json_path}, md={report_md_path}): "
+            f"{type(exc).__name__}: {exc}. Check directory permissions and "
+            "available disk space.",
             err=True,
         )
         return EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
-    typer.echo(f"whatifd: report written to {report_md_path} (+ .json)")
+
+    if print_paths:
+        # Machine-readable surface (#93): ONLY this JSON object on stdout, so
+        # CI can `jq` it without parsing the human summary. Built via the
+        # canonical encoder (not json.dumps — banned outside serialization);
+        # keys are sorted + ASCII, so the line is deterministic. The verdict
+        # still drives the exit code below; it's mirrored here for callers
+        # that branch on a captured value rather than `$?`.
+        from whatifd.serialization import canonical_json_bytes
+
+        paths_payload = {
+            "report_json": str(report_json_path),
+            "report_md": str(report_md_path),
+            "verdict": report.verdict_state,
+        }
+        typer.echo(canonical_json_bytes(paths_payload).decode("ascii"))
+    else:
+        typer.echo(f"whatifd: report written to {report_md_path} (+ {report_json_path})")
 
     # Exit code from verdict_state.
     if report.verdict_state == "ship":

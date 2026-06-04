@@ -12,6 +12,10 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — GitLab CI/CD Catalog component for whatifd (P4)
+
+- **`integrations/gitlab/templates/whatifd-fork.yml`** — the GitLab analog of the `whatifd-fork` GitHub action: a CI/CD Catalog component that runs `whatifd fork --print-paths`, gates the pipeline on the verdict exit code, uploads `reports/` as an artifact, and posts the verdict as a **merge-request note** deduped by the shared `<!-- whatifd-fork -->` marker (#94 parity) via the GitLab Notes API. Uses Python stdlib `urllib` (no `curl`/`jq`, so the default `python:3.12-slim` works) and the **CI_JOB_TOKEN-default / GITLAB_TOKEN-fallback** token model. Inputs: `stage`/`image`/`config`/`pip-install`/`fail-on-dont-ship`/`comment-on-mr`. Canonical source is staged in the monorepo; publishing to the GitLab Catalog is an owner-only step (dedicated GitLab project + catalog resource + release) documented in `integrations/gitlab/README.md`. Structural + python-compile pins in `tests/integration/test_gitlab_component.py`.
+
 ### Added — GitHub Marketplace release-sync scaffold for the `whatifd-fork` action (P3)
 
 - **`.github/workflows/sync-action.yml`** keeps a dedicated public repo (`victoralfred/whatifd-action`, required because Marketplace needs a root-level `action.yml`) in sync with the monorepo's canonical composite action: on each `v*.*.*` tag it copies `action.yml` + a marketplace README into the action repo, tags the exact version, and moves the major tag (`v1`) for `@v1` consumers. **Inert until provisioned** — guarded on the `ACTION_SYNC_TOKEN` secret, so it no-ops with a `::notice` (never breaks releases) until the owner creates the repo + token. The owner-only steps (create repo, accept the Marketplace Developer Agreement, create a Release, publish the listing) are documented in `docs/internal/marketplace-publish-runbook.md`. Structural pins in `tests/integration/test_sync_action_workflow.py`.

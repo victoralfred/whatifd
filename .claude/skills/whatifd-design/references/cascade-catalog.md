@@ -1418,6 +1418,18 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 **Resolved by:** P2 PR on branch `feat/cli-emit-report-paths`.
 
 
+### GitHub Marketplace release-sync — scaffold (P3, partial 2026-06-04)
+
+**Source decision:** integrations-plan P3. Marketplace requires a root-level `action.yml`, so publication uses a dedicated public repo (`victoralfred/whatifd-action`) synced from the monorepo's canonical composite action. Most of P3 is owner-only (create repo, accept the Marketplace Developer Agreement, publish the listing) — those can't be automated; this entry covers the automatable scaffold.
+
+**Shipped (automatable):**
+- `.github/workflows/sync-action.yml`: on `v*.*.*` (or manual dispatch), copies `action.yml` + a `sed`-rewritten marketplace README into `whatifd-action`, tags the exact version, moves the major tag. **Guarded on `ACTION_SYNC_TOKEN`** → no-op `::notice` until provisioned (cannot break releases). `${{ github.token }}` can't push cross-repo, hence the dedicated PAT/App token.
+- `docs/internal/marketplace-publish-runbook.md`: the owner-only steps.
+- `tests/integration/test_sync_action_workflow.py`: pins the guard, target repo, version+major tagging, README rewrite.
+
+**Owner-only remaining (NOT automatable):** create `whatifd-action` (public), add `ACTION_SYNC_TOKEN` (fine-grained PAT, Contents:write on that repo), seed via one tag/dispatch, create a GitHub Release, accept the Marketplace agreement, publish the listing. **Generalizes to P4:** the marker + `gh api` comment pattern (#94) maps onto GitLab MR notes.
+
+
 ### whatifd-fork Action — print-paths discovery + marker-based comments — #94 + #93-adoption (resolved 2026-06-04)
 
 **Source decision:** P2b. Modernize the composite Action's two fragile shell surfaces in one pass (avoids editing `action.yml` + its test twice): (a) path discovery, (b) PR-comment dedup. Both block clean GitLab/Travis wrappers (P4/P5) and a clean marketplace listing (P3).

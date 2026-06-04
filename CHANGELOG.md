@@ -12,6 +12,10 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added — GitHub Marketplace release-sync scaffold for the `whatifd-fork` action (P3)
+
+- **`.github/workflows/sync-action.yml`** keeps a dedicated public repo (`victoralfred/whatifd-action`, required because Marketplace needs a root-level `action.yml`) in sync with the monorepo's canonical composite action: on each `v*.*.*` tag it copies `action.yml` + a marketplace README into the action repo, tags the exact version, and moves the major tag (`v1`) for `@v1` consumers. **Inert until provisioned** — guarded on the `ACTION_SYNC_TOKEN` secret, so it no-ops with a `::notice` (never breaks releases) until the owner creates the repo + token. The owner-only steps (create repo, accept the Marketplace Developer Agreement, create a Release, publish the listing) are documented in `docs/internal/marketplace-publish-runbook.md`. Structural pins in `tests/integration/test_sync_action_workflow.py`.
+
 ### Changed — `whatifd-fork` GitHub Action: print-paths discovery + marker-based comments (#93, #94)
 
 - **The composite Action no longer guesses report paths or relies on `gh pr comment --edit-last`.** Path discovery now reads `whatifd fork --print-paths` (the JSON `{report_json, report_md, verdict}` on stdout, parsed with `jq`), replacing the fragile `glob`+mtime scan. PR-comment dedup now uses a hidden HTML marker `<!-- whatifd-fork -->` found via `gh api` comment search + PATCH-or-create (#94), replacing the locale-fragile `--edit-last` stderr-grep heuristic. The marker approach is both **locale-independent** and **author-independent** — swapping `github-token` between runs no longer produces a two-comment stack. Inputs/outputs are unchanged; the Action now requires `jq` + `gh` on the runner (preinstalled on GitHub-hosted runners). `test_phase_i_github_action.py` updated to pin the new behavior.

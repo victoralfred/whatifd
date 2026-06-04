@@ -12,6 +12,10 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Changed — `whatifd-fork` GitHub Action: print-paths discovery + marker-based comments (#93, #94)
+
+- **The composite Action no longer guesses report paths or relies on `gh pr comment --edit-last`.** Path discovery now reads `whatifd fork --print-paths` (the JSON `{report_json, report_md, verdict}` on stdout, parsed with `jq`), replacing the fragile `glob`+mtime scan. PR-comment dedup now uses a hidden HTML marker `<!-- whatifd-fork -->` found via `gh api` comment search + PATCH-or-create (#94), replacing the locale-fragile `--edit-last` stderr-grep heuristic. The marker approach is both **locale-independent** and **author-independent** — swapping `github-token` between runs no longer produces a two-comment stack. Inputs/outputs are unchanged; the Action now requires `jq` + `gh` on the runner (preinstalled on GitHub-hosted runners). `test_phase_i_github_action.py` updated to pin the new behavior.
+
 ### Added — `whatifd fork` reports its own output paths (#93)
 
 - **`whatifd fork` gains `--output-json` / `--output-md` and `--print-paths`.** `--output-json PATH` / `--output-md PATH` write the report artifacts to exact caller-chosen paths (parents created) instead of the dated `./reports/whatifd-fork-<date>.{json,md}` default — each flag overrides its own default independently. `--print-paths` emits, after writing, a single JSON object `{report_json, report_md, verdict}` to stdout (built via the canonical encoder, so keys are sorted + ASCII and the line is deterministic; the verdict still drives the exit code). Together these let CI capture the written paths + verdict directly instead of re-discovering them with a fragile `glob`+mtime scan (the pattern in `.github/actions/whatifd-fork/action.yml`). Defaults are unchanged when no flag is given; the human "report written to …" summary still prints unless `--print-paths` is set. **Next:** the GitHub Action (and the upcoming GitLab/Travis wrappers) adopt `--print-paths` to drop their path-discovery code.

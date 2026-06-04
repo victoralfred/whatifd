@@ -106,22 +106,20 @@ the whatifd repo uses `@v7` tag pins. For security-hardened
 production forks, follow GitHub's recommendation and switch each
 `uses: ...@v7` to `uses: ...@<sha>  # v7.x.y` before checking in.
 
-## Edge cases
+## How path discovery + comment dedup work
 
-### `--edit-last` and token-author identity
-
-The PR-comment step uses `gh pr comment --edit-last`, which updates
-the most-recent comment **authored by the supplied token**. If the
-`github-token` input changes between workflow runs on the same PR
-(e.g., a workflow swaps from the default `${{ github.token }}` to a
-custom PAT, or vice versa), `--edit-last` searches only for comments
-authored by the new token. The previous comment authored by the old
-token stays put, and a fresh comment from the new token gets added —
-producing a two-comment stack instead of one rolling comment.
-
-If you need consistent identity across runs, pin the token (PAT or
-default) and don't switch between them mid-PR. Or, accept the
-two-comment outcome as the cost of changing comment authorship.
+- **Report paths** come from `whatifd fork --print-paths` (#93): the CLI emits
+  a JSON object `{report_json, report_md, verdict}` on stdout, and the action
+  reads the exact written paths with `jq` — no glob+mtime guessing. On a setup
+  failure the CLI exits before writing a report and emits no JSON, so
+  `report_json`/`report_md` stay empty and the comment step is skipped.
+- **Comment dedup** uses a hidden HTML marker `<!-- whatifd-fork -->` (#94):
+  the action lists the PR's comments via `gh api`, finds the one whose body
+  contains the marker, and PATCHes it in place (else creates a fresh one).
+  This is exact and **locale-independent**, and is also **author-independent** —
+  unlike the old `--edit-last` heuristic, swapping the `github-token` between
+  runs no longer produces a two-comment stack, because the marker (not the
+  comment author) identifies the prior comment.
 
 ## What this Action does NOT do
 
@@ -152,12 +150,14 @@ two-comment outcome as the cost of changing comment authorship.
 | Surface | v0.2 |
 |---|---|
 | Composite action wrapping `whatifd fork` | ✅ |
-| PR comment with rendered verdict (with `--edit-last` rolling-update) | ✅ |
+| PR comment with rendered verdict (marker-based rolling-update) | ✅ |
+| Marker-based PR-comment dedup (locale- & author-independent) | ✅ — #94 (`<!-- whatifd-fork -->` + `gh api` search) |
+| Report-path discovery via `whatifd fork --print-paths` | ✅ — #93 (no glob+mtime scan) |
 | Status annotation (notice / error) | ✅ |
 | Exit-code mapping → `verdict` output | ✅ |
 | Linux runners (`ubuntu-latest`) | ✅ |
-| macOS runners (`macos-latest`) | ✅ — path discovery is portable Python |
+| macOS runners (`macos-latest`) | ✅ |
 | Windows runners (`windows-latest`) | ⚠️ — works because every step declares `shell: bash` (Git Bash is preinstalled). PowerShell-only runners are unsupported. |
-| Marketplace publication (separate repo) | ❌ — v0.3+ |
-| `whatifd diff` regression workflow | ❌ — v0.3+ |
-| Marker-based PR-comment dedup (locale-independent) | ❌ — issue #94 (current `--edit-last` + grep heuristic works on English-locale runners) |
+| Requires `jq` + `gh` on the runner | ✅ on GitHub-hosted runners (preinstalled); self-hosted runners must provide both. |
+| Marketplace publication (separate repo) | ❌ — integrations-plan P3 |
+| `whatifd diff` regression workflow | ❌ — later |

@@ -1413,9 +1413,23 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 - The `--print-paths` JSON is built via `whatifd.serialization.canonical_json_bytes`, NOT `json.dumps` (banned-import discipline; also gives sorted+ASCII determinism).
 - Both output parents are `mkdir`-ed (json and md may live in different dirs now).
 - Tests: `test_cli_fork_e2e.py` gains exact-path, print-paths-json-only, and print-paths-default-locations cases.
-- **Follow-up (not this PR):** `action.yml` adopts `--print-paths` and deletes its `glob`+mtime discovery; that change also updates `test_phase_i_github_action.py`. Bundled with the marketplace-wrapper work (P3) + #94 (marker comments).
+- **Action adoption DONE (2026-06-04):** `action.yml` now consumes `--print-paths` (jq-parsed) and dropped its `glob`+mtime discovery, bundled with #94 below (P2b).
 
 **Resolved by:** P2 PR on branch `feat/cli-emit-report-paths`.
+
+
+### whatifd-fork Action — print-paths discovery + marker-based comments — #94 + #93-adoption (resolved 2026-06-04)
+
+**Source decision:** P2b. Modernize the composite Action's two fragile shell surfaces in one pass (avoids editing `action.yml` + its test twice): (a) path discovery, (b) PR-comment dedup. Both block clean GitLab/Travis wrappers (P4/P5) and a clean marketplace listing (P3).
+
+**Rippled to / refactor protection:**
+- **Path discovery → `--print-paths`** (the #93 adoption deferred from the P2 PR): the fork step parses the `{report_json, report_md, verdict}` JSON with `jq` (last `^{` line) and exports to `$GITHUB_OUTPUT`. The old `glob.glob('reports/*')` + mtime + `os.access` pre-flight Python one-liner is gone.
+- **Comment dedup → HTML marker** (#94): embed `<!-- whatifd-fork -->`; find the prior comment via `gh api .../issues/<pr>/comments --paginate --jq 'map(select(.body|contains(MARKER)))|last|.id'`; PATCH it (`gh api --method PATCH .../issues/comments/<id> -F body=@file`) else `gh pr comment` create. Replaces `--edit-last` + the locale-fragile `grep -qiE` stderr heuristic. **Marker dedup is locale- AND author-independent** — the prior `--edit-last` two-comment-stack-on-token-swap caveat is eliminated (README "Edge cases" section deleted).
+- **New runner deps:** `jq` + `gh` (preinstalled on GitHub-hosted runners; self-hosted must provide both — documented in the Action README status table).
+- **Tests:** `test_phase_i_github_action.py` substantially rewritten — deleted the glob/`--edit-last`/grep-locale/standalone-shell test classes (dead behavior), added `TestPrintPathsPathDiscovery` + `TestMarkerBasedComment`; kept structure/inputs/outputs/guards/exit-mapping/marketplace/example/shell-bash classes. Validated with `bash -n` on each run block + a functional jq/marker smoke.
+- **Cardinal #1 preserved:** `gh api` failures propagate (`set -euo pipefail` in the comment step) — a real auth/network error fails loudly instead of silently creating a duplicate.
+
+**Resolved by:** P2b PR on branch `feat/action-modernize-comments-paths`. **Generalizes to P4:** the marker + API-search pattern maps directly onto GitLab MR notes.
 
 
 ### aiohttp 3.14 vs vcrpy aiohttp stub — test-infra incompatibility (open, 2026-06-04)

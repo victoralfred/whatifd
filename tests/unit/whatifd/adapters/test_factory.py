@@ -275,6 +275,60 @@ def test_build_trace_source_phoenix_bad_reference_raises() -> None:
         )
 
 
+def test_build_trace_source_datadog_dispatches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`source.adapter='datadog'` reaches `DatadogTraceSource` via the
+    factory. Credentials come from env (DD_API_KEY / DD_APP_KEY); building
+    the source does not hit the network (the provider is lazy)."""
+    pytest.importorskip("whatifd_datadog")
+    monkeypatch.setenv("DD_API_KEY", "test-api-key")
+    monkeypatch.setenv("DD_APP_KEY", "test-app-key")
+    src = build_trace_source(
+        SourceConfig(adapter="datadog", dd_from="now-24h", dd_ml_app="my-agent")
+    )
+    from whatifd_datadog import DatadogTraceSource
+
+    assert isinstance(src, DatadogTraceSource)
+
+
+def test_build_trace_source_datadog_missing_credentials_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DD_API_KEY", raising=False)
+    monkeypatch.delenv("DD_APP_KEY", raising=False)
+    with pytest.raises(AdapterFactoryError, match="DD_API_KEY"):
+        build_trace_source(SourceConfig(adapter="datadog", dd_from="now-24h"))
+
+
+def test_build_trace_source_datadog_missing_app_key_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Export API requires BOTH keys. With DD_API_KEY present but
+    DD_APP_KEY absent, the error must name the *Application* key
+    specifically (and not DD_API_KEY) — the dual-credential requirement."""
+    monkeypatch.setenv("DD_API_KEY", "present-api-key")
+    monkeypatch.delenv("DD_APP_KEY", raising=False)
+    with pytest.raises(AdapterFactoryError, match=r"DD_APP_KEY.*Application key") as exc:
+        build_trace_source(SourceConfig(adapter="datadog", dd_from="now-24h"))
+    # The present key must NOT appear in the missing-list.
+    assert "DD_API_KEY," not in str(exc.value)
+
+
+def test_build_trace_source_datadog_missing_window_raises() -> None:
+    """Cardinal #1: the Export API's 15-min default must not silently
+    apply. SourceConfig's validator requires dd_from; the factory's
+    belt-and-suspenders check fires only via model_construct bypass."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="dd_from"):
+        SourceConfig(adapter="datadog")
+
+    bypass = SourceConfig.model_construct(adapter="datadog", dd_from=None)
+    with pytest.raises(AdapterFactoryError, match="dd_from"):
+        build_trace_source(bypass)
+
+
 def test_factory_re_exports_from_adapters_package() -> None:
     """`AdapterFactoryError`, `build_trace_source`, `build_scorer` are
     importable from `whatifd.adapters` directly so callers don't need
@@ -511,7 +565,8 @@ def test_factory_does_not_import_real_adapter_packages() -> None:
                 "import sys; "
                 "leaked = [m for m in sys.modules "
                 "if m == 'whatifd_langfuse' or m.startswith('whatifd_langfuse.') "
-                "or m == 'whatifd_inspect_ai' or m.startswith('whatifd_inspect_ai.')]; "
+                "or m == 'whatifd_inspect_ai' or m.startswith('whatifd_inspect_ai.') "
+                "or m == 'whatifd_datadog' or m.startswith('whatifd_datadog.')]; "
                 "print(','.join(sorted(leaked)))"
             ),
         ],

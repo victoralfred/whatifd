@@ -68,6 +68,13 @@ class AdapterFactoryError(Exception):
 _LANGFUSE_HOST_ENV_KEYS = ("LANGFUSE_HOST", "LANGFUSE_BASE_URL")
 _LANGFUSE_CRED_ENV_KEYS = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY")
 
+# Datadog Export API credentials. BOTH the API key and the Application key
+# are required (the Export API rejects API-key-only auth). DD_SITE selects
+# the region; defaults to datadoghq.com when unset.
+_DATADOG_API_KEY_ENV = "DD_API_KEY"
+_DATADOG_APP_KEY_ENV = "DD_APP_KEY"
+_DATADOG_SITE_ENV = "DD_SITE"
+
 
 def build_trace_source(cfg: SourceConfig) -> TraceSource:
     """Construct a `TraceSource` from `cfg.source`.
@@ -90,8 +97,11 @@ def build_trace_source(cfg: SourceConfig) -> TraceSource:
         return _build_langfuse_source()
     if name == "phoenix":
         return _build_phoenix_source(cfg)
+    if name == "datadog":
+        return _build_datadog_source(cfg)
     raise AdapterFactoryError(
-        f"Unknown trace-source adapter {name!r}. v0.2 supports 'stub', 'langfuse', and 'phoenix'."
+        f"Unknown trace-source adapter {name!r}. v0.2 supports 'stub', 'langfuse', "
+        "'phoenix', and 'datadog'."
     )
 
 
@@ -330,6 +340,98 @@ def _build_phoenix_source(cfg: SourceConfig) -> TraceSource:
         spans_provider=provider,
         cohort_classifier=_default_classifier,
     )
+    return source
+
+
+def _build_datadog_source(cfg: SourceConfig) -> TraceSource:
+    # Config validity first: the time-window start is validated by
+    # SourceConfig (cardinal #1: the Export API's 15-min default must not
+    # silently apply). Belt-and-suspenders here for a model_construct
+    # bypass — checked before credentials so a config error surfaces as a
+    # config error, not a missing-creds error.
+    if not cfg.dd_from:
+        raise AdapterFactoryError(
+            "source.adapter='datadog' requires source.dd_from (an explicit "
+            "time-window start, e.g. 'now-24h'). The config-validation layer "
+            "normally catches this before factory dispatch."
+        )
+
+    # Credentials from env (secrets discipline, mirrors langfuse). BOTH
+    # keys required. Cardinal #1: missing creds surface as a typed
+    # AdapterFactoryError naming each missing var, not a raw KeyError.
+    api_key = os.environ.get(_DATADOG_API_KEY_ENV)
+    app_key = os.environ.get(_DATADOG_APP_KEY_ENV)
+    site = os.environ.get(_DATADOG_SITE_ENV, "datadoghq.com")
+    if not api_key or not app_key:
+        missing = []
+        if not api_key:
+            missing.append(_DATADOG_API_KEY_ENV)
+        if not app_key:
+            missing.append(
+                f"{_DATADOG_APP_KEY_ENV} (the Application key, required by the Export API)"
+            )
+        raise AdapterFactoryError(
+            "datadog adapter requires environment credentials; missing: "
+            + ", ".join(missing)
+            + ". Set these env vars before running `whatifd fork`, or switch "
+            "source.adapter to 'stub' for a credentialless smoke."
+        )
+
+    # Lazy import — cardinal-enforced lazy-load contract. A missing optional
+    # `whatifd-datadog` package or its `[live]` httpx extra surfaces as a
+    # typed AdapterFactoryError with an install hint.
+    try:
+        from whatifd_datadog import (  # type: ignore[import-not-found,unused-ignore]
+            DatadogTraceSource,
+        )
+        from whatifd_datadog.client import (  # type: ignore[import-not-found,unused-ignore]
+            DatadogExportClient,
+            make_spans_provider,
+        )
+    except ImportError as exc:
+        raise AdapterFactoryError(
+            "source.adapter='datadog' requires the optional `whatifd-datadog` "
+            "package with its Export API client. Install with: "
+            "`pip install whatifd-datadog[live]`."
+        ) from exc
+
+    # Default cohort classifier: tag-based. Datadog tags arrive as a list of
+    # `key:value` strings; a span tagged `whatifd:failure` (or a bare
+    # `failure` tag) marks the failure cohort. Mirrors the SHAPE of the
+    # langfuse/phoenix defaults; the v0.3 config-driven classifier registry
+    # (cascade-catalog) will replace these inline closures.
+    def _datadog_default_classifier(spans: list[dict[str, object]]) -> str:
+        for span in spans:
+            tags = span.get("tags")
+            if isinstance(tags, list) and ("whatifd:failure" in tags or "failure" in tags):
+                return "failure"
+        return "baseline"
+
+    # Broad construction-time catch, MIRRORING `_build_langfuse_source`
+    # (cardinal #1): a malformed DD_SITE, a bad credential, or any other
+    # constructor-time exception from the client/provider MUST surface as a
+    # typed `AdapterFactoryError` for the CLI to convert to the setup-failure
+    # exit code — never a leaked stack trace. `AdapterFactoryError` itself is
+    # re-raised unwrapped.
+    try:
+        client = DatadogExportClient(api_key=api_key, app_key=app_key, site=site)
+        source: TraceSource = DatadogTraceSource(
+            spans_provider=make_spans_provider(
+                client,
+                from_ts=cfg.dd_from,
+                to_ts=cfg.dd_to or "now",
+                ml_app=cfg.dd_ml_app,
+                query=cfg.dd_query,
+            ),
+            cohort_classifier=_datadog_default_classifier,
+        )
+    except AdapterFactoryError:
+        raise
+    except Exception as exc:
+        raise AdapterFactoryError(
+            f"datadog adapter construction failed: {type(exc).__name__}: {exc}. "
+            "Check DD_SITE and credential validity."
+        ) from exc
     return source
 
 

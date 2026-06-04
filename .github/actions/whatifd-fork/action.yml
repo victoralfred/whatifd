@@ -1,9 +1,9 @@
 name: whatifd fork
 description: |
   Run a whatifd experiment and surface the verdict as a PR comment + status
-  annotation. Thin wrapper over `whatifd fork --config <path>` per Phase I of
-  the v0.2 roadmap. The CLI is already CI-ready; this Action saves the
-  boilerplate of capturing the report files and posting the comment.
+  annotation. Thin wrapper over `whatifd fork --config <path>`. The CLI is
+  already CI-ready; this Action saves the boilerplate of capturing the report
+  files and posting the comment.
 
 inputs:
   config:
@@ -57,10 +57,16 @@ outputs:
 runs:
   using: composite
   steps:
-    # Phase I keeps the wrapper thin: the heavy lifting (config validation,
-    # adapter wiring, replay, scoring, decision) is the CLI's job. The
-    # Action's job is to capture the artifacts and surface the verdict
-    # through the GitHub PR/status surface.
+    # The heavy lifting (config validation, adapter wiring, replay, scoring,
+    # decision) is the CLI's job. The Action captures the artifacts and
+    # surfaces the verdict through the GitHub PR/status surface.
+    #
+    # Path discovery is no longer a fragile glob+mtime scan: `whatifd fork
+    # --print-paths` (#93) emits a single JSON object
+    # {report_json, report_md, verdict} on stdout, so the Action reads the
+    # exact written paths directly. On a setup failure the CLI exits before
+    # writing a report and emits no JSON — report_json/report_md stay empty,
+    # which the comment step's guard handles.
     - name: Run whatifd fork
       id: fork
       shell: bash
@@ -70,69 +76,38 @@ runs:
       run: |
         set +e
 
-        cmd=(whatifd fork --config "$WHATIFD_CONFIG")
+        cmd=(whatifd fork --config "$WHATIFD_CONFIG" --print-paths)
         if [[ -n "$WHATIFD_PROFILE" ]]; then
           cmd+=(--profile "$WHATIFD_PROFILE")
         fi
 
         echo "::group::whatifd fork"
-        "${cmd[@]}"
+        fork_stdout="$("${cmd[@]}")"
         exit_code=$?
+        printf '%s\n' "$fork_stdout"
         echo "::endgroup::"
 
         # Map CLI exit code → verdict string. 0=ship, 1=dont_ship,
         # 2=inconclusive (covers setup failures and floor-blocked
-        # Inconclusives — both are "not Ship and not a clean reject").
+        # Inconclusives — both "not Ship and not a clean reject"). The exit
+        # code is authoritative; the --print-paths JSON mirrors it.
         case "$exit_code" in
           0) verdict="ship" ;;
           1) verdict="dont_ship" ;;
           *) verdict="inconclusive" ;;
         esac
 
-        # Locate the latest report files. The CLI writes to ./reports/
-        # by convention (see whatifd.cli._run_fork_pipeline).
-        #
-        # Uses Python for portability: GNU find's printf-format
-        # extension is not available on macOS (BSD find), and
-        # `stat`'s format spec also diverges between GNU and BSD.
-        # Every GitHub runner ships with Python 3, so a one-liner
-        # is the cross-platform way to get an mtime-sorted newest
-        # match. Issue #93 tracks the cleaner CLI-emits-its-own-
-        # paths follow-up; this discovery is the v0.2 fallback.
-        # Path discovery distinguishes three cases (cardinal #1):
-        #   (a) `reports/` does not exist → legitimate "no artifact"
-        #       outcome (CLI exited before writing). Empty paths.
-        #   (b) `reports/` exists but the glob is empty → same.
-        #   (c) `reports/` exists but is unreadable / Python helper
-        #       crashes → REAL bug; surface ::error + non-zero exit.
-        #
-        # Pre-flight: verify reports/ is readable. `glob.glob` on
-        # Linux/macOS silently returns [] when the directory is
-        # unreadable (os.scandir swallows PermissionError), making
-        # case (c) — "reports/ exists but unreadable" —
-        # indistinguishable from case (b) — "glob is empty" —
-        # WITHOUT this explicit check. The pre-flight closes that
-        # ambiguity (cardinal #1: failure-as-data, never silent
-        # masking).
+        # Parse the --print-paths JSON for the exact report paths. The JSON
+        # is the last stdout line beginning with `{`; `jq` (preinstalled on
+        # GitHub-hosted runners) reads it. Empty when no JSON was emitted
+        # (setup failure — CLI exited before writing a report), which the
+        # comment step's guard handles. `// empty` yields "" for absent keys.
+        paths_line="$(printf '%s\n' "$fork_stdout" | grep -E '^[[:space:]]*\{' | tail -n 1)"
         report_json=""
         report_md=""
-        if [[ -d reports ]]; then
-          if ! python3 -c "import os, sys; sys.exit(0 if os.access('reports', os.R_OK | os.X_OK) else 1)"; then
-            echo "::error title=whatifd path discovery::./reports/ exists but is not readable. Check directory permissions."
-            exit 75
-          fi
-          report_json=$(python3 -c "import glob,os,sys; m=glob.glob('reports/*.json'); m and sys.stdout.write(max(m, key=os.path.getmtime))")
-          json_exit=$?
-          if [[ $json_exit -ne 0 ]]; then
-            echo "::error title=whatifd path discovery::Python helper failed for *.json (exit $json_exit); check ./reports/ permissions"
-            exit "$json_exit"
-          fi
-          report_md=$(python3 -c "import glob,os,sys; m=glob.glob('reports/*.md'); m and sys.stdout.write(max(m, key=os.path.getmtime))")
-          md_exit=$?
-          if [[ $md_exit -ne 0 ]]; then
-            echo "::error title=whatifd path discovery::Python helper failed for *.md (exit $md_exit); check ./reports/ permissions"
-            exit "$md_exit"
-          fi
+        if [[ -n "$paths_line" ]]; then
+          report_json="$(printf '%s' "$paths_line" | jq -r '.report_json // empty')"
+          report_md="$(printf '%s' "$paths_line" | jq -r '.report_md // empty')"
         fi
 
         echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
@@ -140,32 +115,14 @@ runs:
         echo "report_json=$report_json" >> "$GITHUB_OUTPUT"
         echo "report_md=$report_md" >> "$GITHUB_OUTPUT"
 
-        # Status annotation. The line shows up in the GitHub
-        # Actions UI as a notice/warning/error depending on the
-        # verdict. Cardinal #1: structured signal, not a stack
-        # trace.
-        # Annotation level mirrors the fail-step's blocking behavior:
-        # Ship => notice (informational), Don't Ship + Inconclusive
-        # both block the workflow under fail-on-dont-ship=true, so
-        # both surface as ::error for visual consistency. Cardinal
-        # #8 (every blocking finding must be actionable): the
-        # message points the operator at the rendered Markdown
-        # verdict, which the CLI emits with the fix-suggestion
-        # templates the trust floor + decision policy registered.
-        # The annotation itself can't render the templates (it's a
-        # one-line GitHub UI element); the PR comment OR the
-        # uploaded report-md artifact is where actionable detail
-        # lives.
-        # When report_md is empty (CLI exit-before-write — typical
-        # setup-failure path), the bare `./reports/` path is
-        # actionably useless. Emit the actual setup-failure
-        # guidance instead so cardinal #8 (every blocking finding
-        # actionable) holds even when the rendered Markdown
-        # report doesn't exist.
+        # Status annotation. Ship => notice; Don't Ship + Inconclusive both
+        # block the workflow under fail-on-dont-ship=true, so both surface as
+        # ::error. Cardinal #8: point the operator at the rendered Markdown
+        # verdict (or the setup-failure runbook when no report exists).
         if [[ -n "$report_md" ]]; then
           report_pointer="see $report_md for full findings + fix suggestions"
         else
-          report_pointer="setup failure (CLI exited before writing a report). Re-run with -v / check the workflow log above; common causes: bad config (run \`whatifd config check\`), missing adapter package, missing credentials. Cardinal #8 fix: see https://github.com/victoralfred/whatifd/blob/main/CONTRIBUTING.md for the setup-failure runbook."
+          report_pointer="setup failure (CLI exited before writing a report). Re-run with -v / check the workflow log above; common causes: bad config (run \`whatifd config check\`), missing adapter package, missing credentials. See https://github.com/victoralfred/whatifd/blob/main/CONTRIBUTING.md for the setup-failure runbook."
         fi
         case "$verdict" in
           ship)
@@ -180,33 +137,36 @@ runs:
         esac
 
     # Post the rendered Markdown verdict as a PR comment when running on a
-    # pull_request event. `gh pr comment` requires GH_TOKEN; the Action
-    # accepts an explicit token input so callers can override the default
-    # (e.g., to author the comment from a bot account).
+    # pull_request event. Marker-based dedup (#94): the comment carries a
+    # hidden HTML marker; we find a prior whatifd comment by that marker via
+    # the API and PATCH it, else create a fresh one. This replaces the old
+    # `gh pr comment --edit-last` + locale-fragile stderr-grep heuristic —
+    # the marker is exact and locale-independent, and generalizes to GitLab
+    # MR notes later.
     - name: Post PR comment
-      # Wrapped in `${{ }}` per GitHub's safe-form recommendation
-      # for multi-line `if:` expressions with `&&` operators —
-      # bare expressions auto-evaluate in single-line form, but
-      # multi-line block scalars are safer with explicit
-      # interpolation.
       if: ${{ inputs.comment-on-pr == 'true' && github.event_name == 'pull_request' && steps.fork.outputs.report_md != '' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
         REPORT_MD: ${{ steps.fork.outputs.report_md }}
         VERDICT: ${{ steps.fork.outputs.verdict }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
-        # Use $RUNNER_TEMP (per-job temp dir) instead of a hardcoded
-        # /tmp path — concurrent matrix jobs on the same runner
-        # share /tmp and would collide on a fixed filename. Fall
-        # back to `mktemp` if RUNNER_TEMP is unset (e.g., a self-
-        # hosted runner that doesn't export it).
+        set -euo pipefail
+
+        # Hidden marker identifying this Action's comment. Exact-match search
+        # via the API — no reliance on `gh`'s human-readable stderr (which is
+        # locale-translatable). Bump the marker only with a migration plan.
+        MARKER="<!-- whatifd-fork -->"
+
+        # Use $RUNNER_TEMP (per-job temp dir) so concurrent matrix jobs don't
+        # collide on a fixed filename; fall back to mktemp on self-hosted
+        # runners that don't export it.
         comment_file="${RUNNER_TEMP:-$(mktemp -d)}/whatifd-pr-comment-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}.md"
 
-        # Prepend a verdict header so PR-list scanners see the
-        # outcome without expanding the comment.
         {
+          echo "$MARKER"
           case "$VERDICT" in
             ship) echo "## ✅ whatifd: Ship" ;;
             dont_ship) echo "## ❌ whatifd: Don't Ship" ;;
@@ -216,61 +176,24 @@ runs:
           cat "$REPORT_MD"
         } > "$comment_file"
 
-        # `--edit-last` updates the PR's most recent comment authored
-        # by this token instead of appending a new one. Repeated
-        # pushes to the same PR end up with one rolling whatifd
-        # comment, not a stack.
-        #
-        # Failure handling: capture stderr to distinguish "no prior
-        # comment to edit" (the legitimate first-run case → fall
-        # back to a fresh create) from any other failure (403 on
-        # the edit, network, malformed body — surface non-zero so
-        # the workflow fails loudly). A blanket `|| gh pr comment
-        # ...` would silently create a duplicate on a 403, which
-        # is exactly the failure-masking class cardinal #1
-        # prohibits.
-        #
-        # KNOWN LIMITATION: the "no prior comment" detection greps
-        # `gh`'s stderr for known phrases. Locale changes
-        # (non-English LANG) or future gh CLI version changes that
-        # rephrase the error message can break the discrimination —
-        # falling through the `elif` to the else-branch surfaces
-        # the failure as a real error (correctly), but treats a
-        # legitimate first-run as a real error too. Issue #94 tracks
-        # the marker-based replacement: post our comments with an
-        # HTML marker (`<!-- whatifd-fork -->`), find them via
-        # `gh api` instead of relying on `--edit-last`.
-        # Capture pattern: `2>&1 1>/dev/null` swaps the streams —
-        # stderr → captured pipe, stdout → /dev/null. The DISCARD
-        # of stdout is INTENTIONAL: on success `gh pr comment`
-        # prints the comment URL to stdout, but we don't echo it
-        # to the workflow log (the URL is already accessible via
-        # the PR's comments tab + the GitHub Actions UI surfaces
-        # the rendered comment inline). Capturing stdout would
-        # bloat the workflow log without operator value; we want
-        # ONLY stderr (used by the failure-class discrimination
-        # below). Verified by test_stderr_capture_redirect_order.
-        edit_stderr=$(gh pr comment "$PR_NUMBER" --body-file "$comment_file" --edit-last 2>&1 1>/dev/null) \
-          && edit_status=0 \
-          || edit_status=$?
+        # Find an existing whatifd comment by the marker. `--paginate` walks
+        # all pages; the jq selects comments whose body contains the marker
+        # and takes the last one's id (empty if none). gh-api failures
+        # propagate (set -e) — a real auth/network error fails the step
+        # loudly rather than silently creating a duplicate (cardinal #1).
+        existing_id="$(gh api --paginate \
+          "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+          --jq "map(select(.body | contains(\"${MARKER}\"))) | last | .id // empty")"
 
-        if [[ $edit_status -eq 0 ]]; then
-          : # success
-        elif echo "$edit_stderr" | grep -qiE "^(no comments|not found|no prior comment)"; then
-          # First run on this PR — no prior whatifd comment to edit.
-          # Create a fresh one. Capture the create's exit code so a
-          # failure here doesn't get swallowed (cardinal #1: no
-          # silent failures, even on the recovery path).
-          if ! gh pr comment "$PR_NUMBER" --body-file "$comment_file"; then
-            create_status=$?
-            echo "::error title=whatifd PR comment::fresh-create fallback failed (exit $create_status); both --edit-last and create paths exhausted"
-            exit "$create_status"
-          fi
+        if [[ -n "$existing_id" ]]; then
+          # Edit the existing comment in place — one rolling whatifd comment
+          # per PR, not a stack.
+          gh api --method PATCH \
+            "repos/${GH_REPO}/issues/comments/${existing_id}" \
+            -F body=@"$comment_file" >/dev/null
+          echo "whatifd: updated PR comment ${existing_id}"
         else
-          # Real failure (auth, network, validation). Surface
-          # everything we know and exit non-zero.
-          echo "::error title=whatifd PR comment::edit-last failed (exit $edit_status): $edit_stderr"
-          exit "$edit_status"
+          gh pr comment "$PR_NUMBER" --body-file "$comment_file"
         fi
 
     - name: Fail on Don't Ship / Inconclusive
@@ -278,23 +201,12 @@ runs:
       shell: bash
       env:
         EXIT_CODE: ${{ steps.fork.outputs.exit_code }}
-      # GitHub Actions outputs are always strings; bash's `exit`
-      # coerces a numeric-string argument to its integer form via
-      # POSIX strtol. The CLI's contract is "exit code is one of
-      # '0' / '1' / '2'" — verified by whatifd.cli's exit-code
-      # tests — so EXIT_CODE is always one of those three numeric
-      # strings and the implicit coercion is safe. We deliberately
-      # do NOT use `exit $((EXIT_CODE + 0))` for arithmetic
-      # coercion: that form silently maps non-numeric values to 0,
-      # which would mask a real bug (a future CLI change that
-      # emits a non-numeric token, or a tampered output) as a
-      # successful run. Cardinal #1 — let bash's "numeric argument
-      # required" message surface a real anomaly instead of
-      # silently treating it as Ship.
-      #
-      # No second `::error` emit — the fork step already emitted one
-      # for dont_ship/inconclusive verdicts, and a duplicate would
-      # show up twice in the Actions UI annotation list.
+      # GitHub Actions outputs are always strings; bash's `exit` coerces a
+      # numeric-string argument to its integer form. The CLI's contract is
+      # "exit code is one of '0'/'1'/'2'" so EXIT_CODE is always one of those.
+      # We deliberately do NOT use arithmetic coercion (`exit $((EXIT_CODE+0))`)
+      # — that silently maps a non-numeric token to 0, masking a real bug.
+      # No second ::error emit — the fork step already emitted one.
       run: exit "$EXIT_CODE"
 
 branding:

@@ -1402,6 +1402,65 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 
 
 
+### `whatifd fork` emits its own report paths — #93 (resolved 2026-06-04)
+
+**Source decision:** CI wrappers (the GitHub Action; the upcoming GitLab/Travis ones, integrations-plan P3–P5) re-discover the written report files with a fragile Python `glob`+mtime scan (`.github/actions/whatifd-fork/action.yml:117-136`) because `whatifd fork` only returned an exit code. Issue #93 tracks closing that. The integrations plan made #93 a prerequisite (P2) so all three wrappers share one mechanism instead of triplicating the scan.
+
+**Surface (owner-picked):** `whatifd fork` gains `--output-json PATH` / `--output-md PATH` (write to exact paths; each overrides its dated default independently; parents created) AND `--print-paths` (emit only `{report_json, report_md, verdict}` JSON to stdout after writing; verdict still drives the exit code).
+
+**Rippled to / refactor protection:**
+- `_run_fork_pipeline` gains keyword params `output_json` / `output_md` / `print_paths` (defaults preserve v0.2 behavior — dated paths, human summary line). The `fork` typer command threads them.
+- The `--print-paths` JSON is built via `whatifd.serialization.canonical_json_bytes`, NOT `json.dumps` (banned-import discipline; also gives sorted+ASCII determinism).
+- Both output parents are `mkdir`-ed (json and md may live in different dirs now).
+- Tests: `test_cli_fork_e2e.py` gains exact-path, print-paths-json-only, and print-paths-default-locations cases.
+- **Action adoption DONE (2026-06-04):** `action.yml` now consumes `--print-paths` (jq-parsed) and dropped its `glob`+mtime discovery, bundled with #94 below (P2b).
+
+**Resolved by:** P2 PR on branch `feat/cli-emit-report-paths`.
+
+
+### whatifd-fork Action — print-paths discovery + marker-based comments — #94 + #93-adoption (resolved 2026-06-04)
+
+**Source decision:** P2b. Modernize the composite Action's two fragile shell surfaces in one pass (avoids editing `action.yml` + its test twice): (a) path discovery, (b) PR-comment dedup. Both block clean GitLab/Travis wrappers (P4/P5) and a clean marketplace listing (P3).
+
+**Rippled to / refactor protection:**
+- **Path discovery → `--print-paths`** (the #93 adoption deferred from the P2 PR): the fork step parses the `{report_json, report_md, verdict}` JSON with `jq` (last `^{` line) and exports to `$GITHUB_OUTPUT`. The old `glob.glob('reports/*')` + mtime + `os.access` pre-flight Python one-liner is gone.
+- **Comment dedup → HTML marker** (#94): embed `<!-- whatifd-fork -->`; find the prior comment via `gh api .../issues/<pr>/comments --paginate --jq 'map(select(.body|contains(MARKER)))|last|.id'`; PATCH it (`gh api --method PATCH .../issues/comments/<id> -F body=@file`) else `gh pr comment` create. Replaces `--edit-last` + the locale-fragile `grep -qiE` stderr heuristic. **Marker dedup is locale- AND author-independent** — the prior `--edit-last` two-comment-stack-on-token-swap caveat is eliminated (README "Edge cases" section deleted).
+- **New runner deps:** `jq` + `gh` (preinstalled on GitHub-hosted runners; self-hosted must provide both — documented in the Action README status table).
+- **Tests:** `test_phase_i_github_action.py` substantially rewritten — deleted the glob/`--edit-last`/grep-locale/standalone-shell test classes (dead behavior), added `TestPrintPathsPathDiscovery` + `TestMarkerBasedComment`; kept structure/inputs/outputs/guards/exit-mapping/marketplace/example/shell-bash classes. Validated with `bash -n` on each run block + a functional jq/marker smoke.
+- **Cardinal #1 preserved:** `gh api` failures propagate (`set -euo pipefail` in the comment step) — a real auth/network error fails loudly instead of silently creating a duplicate.
+
+**Resolved by:** P2b PR on branch `feat/action-modernize-comments-paths`. **Generalizes to P4:** the marker + API-search pattern maps directly onto GitLab MR notes.
+
+
+### aiohttp 3.14 vs vcrpy aiohttp stub — test-infra incompatibility (open, 2026-06-04)
+
+**Problem:** `aiohttp` 3.14.0 (2026-06) removed `aiohttp.streams.AsyncStreamReaderMixin`, which `vcrpy` ≤ 8.1.1 (the latest release) imports at module load in `vcr/stubs/aiohttp_stubs.py`. vcr patches every detected HTTP library on each `@pytest.mark.vcr` setup, so the stub-import `AttributeError` aborts the langfuse recorded-smoke test even though the Langfuse SDK uses httpx, not aiohttp. `aiohttp` is pulled transitively by `inspect-ai` (a real dep, via `aiobotocore`/`s3fs`), so it can't be uninstalled.
+
+**Constraint conflict:** `aiohttp < 3.14` fixes the vcr stub but reintroduces CVE-2026-34993 + CVE-2026-47265 (both fixed in 3.14.0) — pip-audit (`security.yml`) fails. No `aiohttp` pin satisfies both the vcr stub and the CVE scan simultaneously, and no released vcrpy supports aiohttp 3.14 yet.
+
+**Resolution (interim):** keep `aiohttp` at the CVE-fixed 3.14+, and **conditionally skip** the single langfuse recorded-smoke test via a `pytest.mark.skipif` that detects the missing `AsyncStreamReaderMixin` (`test_recorded_smoke.py::_vcr_aiohttp_stub_broken`). Prioritizes real security over one cassette-replay test's coverage; nothing permanent sacrificed. **Lift when** vcrpy ships an aiohttp-3.14-compatible stub (drop the skipif). Surfaced during the Datadog P1 PR (#121) CI run.
+
+
+### Datadog LLM Observability TraceSource adapter — third read-only source (resolved 2026-06-04)
+
+**Source decision:** the integrations plan (`self_dev/whatifd-integrations-plan.md`, P1) adds `whatifd-datadog` as the third trace-source adapter, mirroring the Phoenix span-iterator shape. R-1 (recorded in that plan) established the read surface: the **LLM Observability Export API** (`GET/POST /api/v2/llm-obs/v1/spans/events[/search]`), NOT the official `datadog-api-client` SDK (which exposes only LLM-Obs ingestion/experiments/eval-metric, not a spans-read path). Read confirmed: `input`/`output` content IS retrievable post-ingestion as `SearchedIO` (`{value, messages}`).
+
+**Rippled to / refactor protection:**
+- New package `packages/whatifd-datadog/` (v0.2.1) follows the Phoenix template: `src/whatifd_datadog/source.py` (span-iterator `DatadogTraceSource`), `client.py` (thin httpx Export-API client, `[live]` extra), `tests/test_conformance.py` harness subclass. Hard dep = `whatifd` only; `httpx` is the `[live]` extra, lazily imported (R-1 chose httpx over the SDK).
+- **Span-iterator-shaped, not SDK-client-shaped** (same rationale as Phoenix). `spans_provider: Callable[[], Iterable[dict]]`; the HTTP transport lives in `client.make_spans_provider`, so the adapter core is offline-testable.
+- Datadog LLM-Obs attribute keys pinned at the top of `source.py`: `trace_id`, `parent_id`, `span_kind`, `name`, `input`, `output`. SearchedIO `{value, messages}` projected via `_io_to_str` (prefer `value`, fall back to concatenated message `content`, then canonical-JSON — cardinal #1 no-silent-drop). Root-kind fallback `{agent, workflow}` excludes `llm` (mirrors Phoenix's anti-misidentification rule).
+- **Cardinal #1 / Export-API 15-min default:** the API returns only the last 15 minutes when no window is set. `make_spans_provider` REQUIRES `from_ts`, and `SourceConfig` requires `dd_from` when `adapter='datadog'` (validator + factory belt-and-suspenders). A forgotten window errors loudly instead of yielding a near-empty cohort.
+- Config: `SourceConfig` gains `dd_from` / `dd_to` / `dd_ml_app` / `dd_query` (non-secret). Credentials (`DD_API_KEY` + `DD_APP_KEY` — BOTH required by the Export API — and `DD_SITE`) read from env in `factory._build_datadog_source`, never config (secrets discipline, mirrors langfuse).
+- Factory dispatch: `build_trace_source` gains a `datadog` branch; "Unknown adapter" messages updated to list `datadog`. Lazy-load contract test extended to assert `import whatifd.adapters.factory` does not pull `whatifd_datadog`.
+- `cluster_key_support()` returns empty `available_keys` (cardinal #10 — no mining `session_id`/`trace_id`).
+- mypy override `[[tool.mypy.overrides]]` extended with `whatifd_datadog[.*]`; workspace registration in `[tool.uv.workspace] members`, `[tool.uv.sources]`, and the `[dependency-groups] workspace` list.
+- **Real-shape validation DONE (2026-06-04):** sampled a live Datadog org (`ml_app=whatifd-faithfulness`) via `DEV/whatif/probes/probe_datadog.py` after adding `LLMObs.tool()` emission to the harness (`evaluator/observability.py::tool_span` + `faithfulness.iter_tool_observations`). Confirmed: `span_kind` ∈ {workflow, llm, tool} (lowercase); root kind = `workflow`; `input`/`output` are `SearchedIO` (`{value}` on tool spans, `{value, messages:[{content, role}]}` on llm); `tags` is a `list[str]`; `tool_definitions` is NOT on tool-call spans (the adapter never reads it). **The projection required no code changes**; `TestRealExportApiShape` pins the contract. **Known limitation:** DD tool spans carry `input` as a rendered string, not structured args → `ToolSpan.args` unpopulated → use-original tool cache (108b-2) does not fill from DD traces (same as the other adapters).
+- **P1b verdict sink DONE (2026-06-04):** `whatifd_datadog.emit` + the `whatifd-datadog-emit` console script read the written `ReportV01` JSON and push `whatifd.verdict.code` / per-cohort gauges / `whatifd.findings.blocking` to Datadog's v1 metrics API. Kept OUT of core (it only reads the report; the "more defensible verdict?" test fails for a sink). Soft-fails by default so it can't redden a green verdict in CI (`--strict` to flip). `httpx` via the `[live]` extra.
+- **Still deferred:** an HTTP-level recorded cassette for `DatadogExportClient` + the metrics client (needs a content-scrubbed real response body), per the integrations plan.
+
+**Resolved by:** P1 PR on branch `feat/datadog-source-adapter`.
+
+
 ### Phase D — Phoenix / OpenInference TraceSource adapter; tracer-neutrality proof (resolved 2026-05-10)
 
 **Source decision:** v0.1 shipped a single trace-source adapter (`whatifd-langfuse`). The v0.2 roadmap declared Phoenix as the second adapter — not because Phoenix is the strongest competitor to Langfuse, but because shipping a second adapter proves the `TraceSource` Protocol isn't shape-coupled to Langfuse. The risk was that v0.1's Protocol absorbed Langfuse-specific assumptions silently; landing Phoenix surfaces any such coupling as a real refactor cost.

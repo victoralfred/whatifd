@@ -1402,6 +1402,24 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 
 
 
+### Datadog LLM Observability TraceSource adapter — third read-only source (resolved 2026-06-04)
+
+**Source decision:** the integrations plan (`self_dev/whatifd-integrations-plan.md`, P1) adds `whatifd-datadog` as the third trace-source adapter, mirroring the Phoenix span-iterator shape. R-1 (recorded in that plan) established the read surface: the **LLM Observability Export API** (`GET/POST /api/v2/llm-obs/v1/spans/events[/search]`), NOT the official `datadog-api-client` SDK (which exposes only LLM-Obs ingestion/experiments/eval-metric, not a spans-read path). Read confirmed: `input`/`output` content IS retrievable post-ingestion as `SearchedIO` (`{value, messages}`).
+
+**Rippled to / refactor protection:**
+- New package `packages/whatifd-datadog/` (v0.2.1) follows the Phoenix template: `src/whatifd_datadog/source.py` (span-iterator `DatadogTraceSource`), `client.py` (thin httpx Export-API client, `[live]` extra), `tests/test_conformance.py` harness subclass. Hard dep = `whatifd` only; `httpx` is the `[live]` extra, lazily imported (R-1 chose httpx over the SDK).
+- **Span-iterator-shaped, not SDK-client-shaped** (same rationale as Phoenix). `spans_provider: Callable[[], Iterable[dict]]`; the HTTP transport lives in `client.make_spans_provider`, so the adapter core is offline-testable.
+- Datadog LLM-Obs attribute keys pinned at the top of `source.py`: `trace_id`, `parent_id`, `span_kind`, `name`, `input`, `output`. SearchedIO `{value, messages}` projected via `_io_to_str` (prefer `value`, fall back to concatenated message `content`, then canonical-JSON — cardinal #1 no-silent-drop). Root-kind fallback `{agent, workflow}` excludes `llm` (mirrors Phoenix's anti-misidentification rule).
+- **Cardinal #1 / Export-API 15-min default:** the API returns only the last 15 minutes when no window is set. `make_spans_provider` REQUIRES `from_ts`, and `SourceConfig` requires `dd_from` when `adapter='datadog'` (validator + factory belt-and-suspenders). A forgotten window errors loudly instead of yielding a near-empty cohort.
+- Config: `SourceConfig` gains `dd_from` / `dd_to` / `dd_ml_app` / `dd_query` (non-secret). Credentials (`DD_API_KEY` + `DD_APP_KEY` — BOTH required by the Export API — and `DD_SITE`) read from env in `factory._build_datadog_source`, never config (secrets discipline, mirrors langfuse).
+- Factory dispatch: `build_trace_source` gains a `datadog` branch; "Unknown adapter" messages updated to list `datadog`. Lazy-load contract test extended to assert `import whatifd.adapters.factory` does not pull `whatifd_datadog`.
+- `cluster_key_support()` returns empty `available_keys` (cardinal #10 — no mining `session_id`/`trace_id`).
+- mypy override `[[tool.mypy.overrides]]` extended with `whatifd_datadog[.*]`; workspace registration in `[tool.uv.workspace] members`, `[tool.uv.sources]`, and the `[dependency-groups] workspace` list.
+- **Deferred:** recorded-cassette live smoke against a real Datadog org (the R-1 residual) — confirm the exact `span_kind` tool value + `tool_definitions` shape and record a content-scrubbed cassette. Also deferred: P1b Datadog verdict sink (CI-side emitter), per the integrations plan.
+
+**Resolved by:** P1 PR on branch `feat/datadog-source-adapter`.
+
+
 ### Phase D — Phoenix / OpenInference TraceSource adapter; tracer-neutrality proof (resolved 2026-05-10)
 
 **Source decision:** v0.1 shipped a single trace-source adapter (`whatifd-langfuse`). The v0.2 roadmap declared Phoenix as the second adapter — not because Phoenix is the strongest competitor to Langfuse, but because shipping a second adapter proves the `TraceSource` Protocol isn't shape-coupled to Langfuse. The risk was that v0.1's Protocol absorbed Langfuse-specific assumptions silently; landing Phoenix surfaces any such coupling as a real refactor cost.

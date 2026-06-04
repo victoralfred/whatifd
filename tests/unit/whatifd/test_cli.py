@@ -235,12 +235,19 @@ class TestWitnessThreading:
 
         sig = inspect.signature(_run_fork_pipeline)
         params = list(sig.parameters.values())
-        assert len(params) == 2
+        # cfg + proof remain the required positional contract surface. #93
+        # added keyword-only output_json/output_md/print_paths (with defaults),
+        # which is additive and must not weaken the witness requirement.
         assert params[0].name == "cfg"
         assert params[1].name == "proof"
         # Both parameters required (no defaults).
         assert params[0].default is inspect.Parameter.empty
         assert params[1].default is inspect.Parameter.empty
+        # Any further params are keyword-only with defaults (non-breaking).
+        extra = params[2:]
+        assert {p.name for p in extra} == {"output_json", "output_md", "print_paths"}
+        assert all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in extra)
+        assert all(p.default is not inspect.Parameter.empty for p in extra)
         # Resolved annotations match the declared types.
         hints = typing.get_type_hints(_run_fork_pipeline)
         assert hints["cfg"] is WhatifConfig

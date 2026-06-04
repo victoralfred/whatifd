@@ -339,6 +339,112 @@ class TestClusterKeySupport:
         assert source.cluster_key_support().available_keys == ()
 
 
+class TestRealExportApiShape:
+    """Projection against the EXACT span shape confirmed from a live Datadog
+    org (ml_app `whatifd-faithfulness`, 2026-06-04, via `probe_datadog.py`):
+    `span_kind` ∈ {workflow, llm, tool}; `input`/`output` are `SearchedIO`
+    (`{value}` on tool spans, `{value, messages:[{content, role}]}` on llm);
+    real attribute keys `duration/metrics/model_name/model_provider/start_ns/
+    status/ml_app/tags`; `tags` is a `list[str]`; `tool_definitions` is NOT
+    present on tool-call spans. The adapter required no code changes — this
+    pins the contract so a future projection refactor stays faithful to the
+    real API.
+    """
+
+    @staticmethod
+    def _real_trace() -> list[dict[str, object]]:
+        tid = "abc123"
+        return [
+            {  # root: workflow (confirmed real root kind)
+                "trace_id": tid,
+                "span_id": "wf-1",
+                "parent_id": None,
+                "span_kind": "workflow",
+                "name": "cohort-score",
+                "input": {
+                    "value": "score this turn",
+                    "messages": [{"content": "score this turn", "role": "user"}],
+                },
+                "output": {
+                    "value": "scored",
+                    "messages": [{"content": "scored", "role": "assistant"}],
+                },
+                "ml_app": "whatifd-faithfulness",
+                "tags": ["env:prod", "service:judge"],
+                "duration": 1234,
+                "start_ns": 1,
+                "status": "ok",
+            },
+            {  # llm child (auto-instrumented Anthropic call)
+                "trace_id": tid,
+                "span_id": "llm-1",
+                "parent_id": "wf-1",
+                "span_kind": "llm",
+                "name": "anthropic.messages.create",
+                "input": {
+                    "value": "judge prompt",
+                    "messages": [{"content": "judge prompt", "role": "user"}],
+                },
+                "output": {"value": "5", "messages": [{"content": "5", "role": "assistant"}]},
+                "model_name": "claude-haiku-4-5",
+                "model_provider": "anthropic",
+                "metrics": {"input_tokens": 10, "output_tokens": 1},
+                "tags": ["env:prod"],
+            },
+            {  # tool child — input/output are SearchedIO {value} only (no messages)
+                "trace_id": tid,
+                "span_id": "tool-1",
+                "parent_id": "wf-1",
+                "span_kind": "tool",
+                "name": "Bash",
+                "input": {"value": "ls -la"},
+                "output": {"value": "file1\nfile2"},
+                "tags": ["env:prod", "tool:bash"],
+            },
+        ]
+
+    def test_root_workflow_provides_user_content(self) -> None:
+        source = DatadogTraceSource(
+            spans_provider=self._real_trace, cohort_classifier=_classify_baseline
+        )
+        [trace] = list(source.iter_traces())
+        assert trace.user_message.unwrap(reason="test") == "score this turn"
+        assert trace.original_response.unwrap(reason="test") == "scored"
+
+    def test_tool_span_projected_from_value_only_searchedio(self) -> None:
+        source = DatadogTraceSource(
+            spans_provider=self._real_trace, cohort_classifier=_classify_baseline
+        )
+        [trace] = list(source.iter_traces())
+        tool = next(s for s in trace.tool_spans if s.kind == "tool")
+        assert tool.name == "Bash"
+        assert tool.input is not None and tool.input.unwrap(reason="test") == "ls -la"
+        assert tool.output is not None and tool.output.unwrap(reason="test") == "file1\nfile2"
+
+    def test_all_non_root_children_captured(self) -> None:
+        # Confirmed behavior: every non-root span (llm + tool) is captured in
+        # tool_spans with its kind preserved (mirrors whatifd-phoenix).
+        source = DatadogTraceSource(
+            spans_provider=self._real_trace, cohort_classifier=_classify_baseline
+        )
+        [trace] = list(source.iter_traces())
+        kinds = sorted(s.kind for s in trace.tool_spans)
+        assert kinds == ["llm", "tool"]
+
+    def test_list_tags_drive_cohort_classifier(self) -> None:
+        # `tags` is a list[str] (confirmed) — a tag-based classifier works.
+        def _by_tag(spans: list[dict[str, object]]) -> str:
+            for s in spans:
+                tags = s.get("tags")
+                if isinstance(tags, list) and "tool:bash" in tags:
+                    return "failure"
+            return "baseline"
+
+        source = DatadogTraceSource(spans_provider=self._real_trace, cohort_classifier=_by_tag)
+        [trace] = list(source.iter_traces())
+        assert trace.cohort == "failure"
+
+
 class TestClientGuards:
     """`make_spans_provider` enforces the explicit-time-window rule
     (cardinal #1: the 15-min default must not silently apply)."""

@@ -12,6 +12,11 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Fixed — `whatifd fork` can load a runner from your own project (#runner-loader)
+
+- **A `python:<module>:<attr>` runner / scorer / spans-provider in your project root now imports.** The runner/scorer loaders resolved references with `importlib.import_module` but never put the invocation directory on `sys.path` — and an installed `whatifd` console script doesn't add it (unlike `python -m`). So a developer's own `target.runner: python:my_agent.replay:run` failed with `No module named 'my_agent'`, making the tool unusable for custom projects. New `whatifd._dynamic_import.ensure_cwd_importable()` puts the cwd on `sys.path` before import (the runner is user-supplied code whatifd loads by contract, so resolving it from the project root is the expected behavior); wired into both `runner_loader` and `scorer_loader`.
+- **The bundled example is now actually usable.** `examples/minimal-agent/` (a hyphen — not a valid Python module name, and no `__init__.py`) is renamed to `examples/minimal_agent/` with `__init__.py`, so the *documented* `python:examples.minimal_agent.replay:run` reference resolves (it never could before; the example test had to side-load the file directly). Metadata/README/doc references updated to match. The example test now loads via the documented reference and there's an end-to-end test that a runner module in a fresh project root resolves.
+
 ### Fixed / Changed — eliminate `Any` leaks in the adapter packages + gate them in CI
 
 - **Phoenix latent bug fixed:** `whatifd_phoenix._project_tool_span` leaked `span.get(...)` (`object`) straight into `ToolSpan.input`/`output` (typed `Sensitive[str] | None`) — the same masked bug `whatifd-datadog` had. Now narrowed via `isinstance` (no blind cast). Masked previously because `whatifd` was untyped; surfaced once `py.typed` shipped.

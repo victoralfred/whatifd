@@ -122,7 +122,7 @@ Real Langfuse traces require `LANGFUSE_HOST` (or `LANGFUSE_BASE_URL`) + `LANGFUS
 - **[`docs/runner-contract.md`](./docs/runner-contract.md)** — the user-facing extension point reference
 - **[`docs/schema/v0.1.md`](./docs/schema/v0.1.md)** — `ReportV01` consumer compatibility guide
 - **[`docs/walkthroughs/`](./docs/walkthroughs/)** — six rendered scenarios as reference (Ship, Don't Ship, Inconclusive)
-- **[`examples/minimal-agent/`](./examples/minimal-agent/)** — copy-paste reference Runner
+- **[`examples/minimal_agent/`](./examples/minimal_agent/)** — copy-paste reference Runner
 
 ## Design
 

@@ -37,6 +37,7 @@ import inspect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+from whatifd._dynamic_import import ensure_cwd_importable
 from whatifd.contract import AsyncRunner, Runner
 
 if TYPE_CHECKING:
@@ -120,13 +121,18 @@ def load_runner(reference: str) -> LoadedRunner:
             "Format: `python:<module.path>:<attr>`."
         )
 
+    # Resolve modules from the user's project root, not just installed
+    # packages: an installed console script doesn't put the invocation dir on
+    # sys.path, so a developer's own `python:my_agent.replay:run` would
+    # otherwise fail to import. See `whatifd._dynamic_import`.
+    ensure_cwd_importable()
     try:
         module = importlib.import_module(module_path)
     except ImportError as exc:
         raise RunnerLoadError(
             f"target.runner {reference!r}: module {module_path!r} could not be "
-            f"imported ({exc}). Check the module path and that the package is "
-            "installed in the current environment."
+            f"imported ({exc}). Check the module path and that the module is "
+            "importable from the current environment or your project root."
         ) from exc
 
     if not hasattr(module, attr):

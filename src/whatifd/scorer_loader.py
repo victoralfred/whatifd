@@ -29,6 +29,8 @@ from __future__ import annotations
 import importlib
 from collections.abc import Callable
 
+from whatifd._dynamic_import import ensure_cwd_importable
+
 # `Callable` is imported unconditionally (not under TYPE_CHECKING) so
 # the runtime annotation surface is unambiguous: `from __future__ import
 # annotations` defers evaluation, but a future linter or runtime
@@ -110,13 +112,17 @@ def load_python_callable(reference: str, *, field_name: str) -> Callable[..., ob
             "Format: `python:<module.path>:<attr>`."
         )
 
+    # Resolve from the user's project root too (see whatifd._dynamic_import):
+    # an installed console script doesn't put the invocation dir on sys.path,
+    # so a developer's own scorer / spans-provider module would otherwise fail.
+    ensure_cwd_importable()
     try:
         module = importlib.import_module(module_path)
     except ImportError as exc:
         raise ScorerLoadError(
             f"{field_name} {reference!r}: module {module_path!r} could not be "
-            f"imported ({exc}). Check the module path and that the package is "
-            "installed in the current environment."
+            f"imported ({exc}). Check the module path and that the module is "
+            "importable from the current environment or your project root."
         ) from exc
 
     if not hasattr(module, attr):

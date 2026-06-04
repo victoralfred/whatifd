@@ -1418,6 +1418,19 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 **Resolved by:** P2 PR on branch `feat/cli-emit-report-paths`.
 
 
+### Runner/scorer loader resolves from the project root + example made importable (resolved 2026-06-04)
+
+**Source decision:** a user reported the tool was unusable "for customized projects." Root cause (two compounding bugs): (1) `runner_loader`/`scorer_loader` use `importlib.import_module` but never add the invocation dir to `sys.path`; an installed console script doesn't include cwd (unlike `python -m`), so a developer's own `python:my_agent.replay:run` fails with `No module named 'my_agent'`. (2) the bundled example was `examples/minimal-agent/` — a hyphen (invalid module name) with no `__init__.py` — so the *documented* `python:examples.minimal_agent.replay:run` was impossible to import (the example test side-loaded the file via `spec_from_file_location`, masking it).
+
+**Rippled to / refactor protection:**
+- New `whatifd._dynamic_import.ensure_cwd_importable()` (idempotent cwd-on-`sys.path`), called in both loaders before `import_module`. Justified by the runner contract: the runner IS user code whatifd loads and calls, so resolving it from the project root is expected (matches `python -m` / pytest / plugin loaders). Error messages updated to "...importable from the current environment or your project root."
+- Example renamed `examples/minimal-agent/` → `examples/minimal_agent/` + `examples/__init__.py` + `examples/minimal_agent/__init__.py`; `replay.py` metadata `examples.minimal-agent` → `examples.minimal_agent`; README/getting-started/runner-contract doc links updated.
+- `tests/unit/test_minimal_agent_example.py` rewritten to load via the DOCUMENTED reference (`load_runner("python:examples.minimal_agent.replay:run")`) + an end-to-end test that a runner in a fresh project root resolves. **Test-isolation note:** the cwd-resolution test uses a unique module name and restores `sys.path`/`sys.modules` — loading a cwd-local module leaks into `sys.modules` otherwise (a first cut named the probe `my_agent`, colliding with the CLI tests' guaranteed-unimportable fake and breaking their setup-failure assertions).
+- `ensure_cwd_importable` is a deliberate process-lasting side effect (cwd stays on `sys.path`); fine in production, but tests that load cwd-local modules must clean up.
+
+**Resolved by:** PR on branch `fix/runner-loader-cwd-and-example`.
+
+
 ### Adapter `Any`-elimination + per-package mypy CI gate (resolved 2026-06-04)
 
 **Source decision:** follow-up to the `py.typed` work. The owner hardened `whatifd-datadog`'s `Any` boundaries (typed JSON/httpx with `object`/TypedDict/Protocol/TypeGuard); the task was to extend that discipline to the other adapters and **enforce** it. Owner decisions: scope = adapters first (core later); enforcement = tighten mypy (not add Pyright).

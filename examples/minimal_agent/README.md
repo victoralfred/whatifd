@@ -1,6 +1,6 @@
-# minimal-agent
+# minimal_agent
 
-Reference `Runner` for the whatifd v0.1 contract. The smallest legal implementation that satisfies `whatifd.contract.Runner` (the `Protocol` that whatifd calls during replay).
+Reference `Runner` for the whatifd contract. The smallest legal implementation that satisfies `whatifd.contract.Runner` (the `Protocol` that whatifd calls during replay).
 
 **This is a shape, not a working agent.** The body returns a deterministic echo so the example is testable without an LLM provider; replace the body with your real replay logic.
 

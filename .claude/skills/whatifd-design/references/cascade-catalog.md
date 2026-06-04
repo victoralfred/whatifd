@@ -1404,7 +1404,7 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 
 ### `whatifd fork` emits its own report paths — #93 (resolved 2026-06-04)
 
-**Source decision:** CI wrappers (the GitHub Action; the upcoming GitLab/Travis ones, integrations-plan P3–P5) re-discover the written report files with a fragile Python `glob`+mtime scan (`.github/actions/whatifd-fork/action.yml:117-136`) because `whatifd fork` only returned an exit code. Issue #93 tracks closing that. The integrations plan made #93 a prerequisite (P2) so all three wrappers share one mechanism instead of triplicating the scan.
+**Source decision:** CI wrappers (the GitHub Action; the upcoming GitLab one, integrations-plan P3–P4) re-discover the written report files with a fragile Python `glob`+mtime scan (`.github/actions/whatifd-fork/action.yml:117-136`) because `whatifd fork` only returned an exit code. Issue #93 tracks closing that. The integrations plan made #93 a prerequisite (P2) so both wrappers share one mechanism instead of duplicating the scan.
 
 **Surface (owner-picked):** `whatifd fork` gains `--output-json PATH` / `--output-md PATH` (write to exact paths; each overrides its dated default independently; parents created) AND `--print-paths` (emit only `{report_json, report_md, verdict}` JSON to stdout after writing; verdict still drives the exit code).
 
@@ -1447,7 +1447,7 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 
 ### whatifd-fork Action — print-paths discovery + marker-based comments — #94 + #93-adoption (resolved 2026-06-04)
 
-**Source decision:** P2b. Modernize the composite Action's two fragile shell surfaces in one pass (avoids editing `action.yml` + its test twice): (a) path discovery, (b) PR-comment dedup. Both block clean GitLab/Travis wrappers (P4/P5) and a clean marketplace listing (P3).
+**Source decision:** P2b. Modernize the composite Action's two fragile shell surfaces in one pass (avoids editing `action.yml` + its test twice): (a) path discovery, (b) PR-comment dedup. Both block the clean GitLab wrapper (P4) and a clean marketplace listing (P3).
 
 **Rippled to / refactor protection:**
 - **Path discovery → `--print-paths`** (the #93 adoption deferred from the P2 PR): the fork step parses the `{report_json, report_md, verdict}` JSON with `jq` (last `^{` line) and exports to `$GITHUB_OUTPUT`. The old `glob.glob('reports/*')` + mtime + `os.access` pre-flight Python one-liner is gone.

@@ -1418,6 +1418,21 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 **Resolved by:** P2 PR on branch `feat/cli-emit-report-paths`.
 
 
+### GitLab CI/CD Catalog component — scaffold (P4, partial 2026-06-04)
+
+**Source decision:** integrations-plan P4. GitLab analog of the `whatifd-fork` action, as a CI/CD Catalog component. Like P3, the component code is buildable but Catalog publication is owner-only (a dedicated GitLab project marked a catalog resource).
+
+**Shipped (buildable):**
+- `integrations/gitlab/templates/whatifd-fork.yml`: `spec.inputs` (stage/image/config/pip-install/fail-on-dont-ship/comment-on-mr) + the `whatifd-fork` job. Runs `whatifd fork --print-paths` (reuses #93), gates on the exit code, `artifacts: reports/ when: always`, and posts a marker-deduped MR note via the **GitLab Notes API**.
+- **No curl/jq:** the slim image lacks both, so JSON parse + note posting use Python stdlib (`json`/`urllib`). Two Python fragments live inside YAML block scalars (one `python3 -c`, one `<<'PYEOF'` heredoc) — the indentation hazard from the GitHub-action work; a test compiles both.
+- **Token model:** PAT (`GITLAB_TOKEN`, `PRIVATE-TOKEN` header) takes precedence; else `CI_JOB_TOKEN` (`JOB-TOKEN` header), with a fallback-to-PAT on auth error. Matches the owner-chosen "job-token first, PAT fallback."
+- `integrations/gitlab/README.md` (usage + publish runbook), `tests/integration/test_gitlab_component.py` (structure + gate + marker + token + python-compile + functional path-parse).
+
+**Owner-only remaining:** create `<group>/whatifd-gitlab`, enable CI/CD Catalog resource, copy the template + README, publish a release (`v1.0.0` + `@1`). Keep in sync with the monorepo source per release.
+
+**Reuse:** the marker + API-search note pattern is the #94 GitHub design translated to GitLab's Notes API.
+
+
 ### GitHub Marketplace release-sync — scaffold (P3, partial 2026-06-04)
 
 **Source decision:** integrations-plan P3. Marketplace requires a root-level `action.yml`, so publication uses a dedicated public repo (`victoralfred/whatifd-action`) synced from the monorepo's canonical composite action. Most of P3 is owner-only (create repo, accept the Marketplace Developer Agreement, publish the listing) — those can't be automated; this entry covers the automatable scaffold.

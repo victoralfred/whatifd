@@ -1,0 +1,192 @@
+# whatifd-fork — GitLab CI/CD Catalog component (integrations-plan P4).
+#
+# The GitLab analog of the GitHub `whatifd-fork` action. Runs
+# `whatifd fork --print-paths`, gates the pipeline on the verdict exit code
+# (0=ship / 1=dont_ship / 2=inconclusive), uploads the report artifacts, and
+# posts the rendered verdict as a merge-request note — deduped by the same
+# `<!-- whatifd-fork -->` HTML marker used by the GitHub action (#94), found
+# via the GitLab Notes API.
+#
+# Catalog publication lives in a dedicated GitLab project (a catalog
+# resource); see integrations/gitlab/README.md for the publish runbook. This
+# file is the canonical source, staged in the whatifd monorepo.
+#
+# Usage (consumer .gitlab-ci.yml):
+#   include:
+#     - component: $CI_SERVER_FQDN/<group>/whatifd-gitlab/whatifd-fork@1
+#       inputs:
+#         config: whatifd.config.yaml
+#         pip-install: "whatifd whatifd-langfuse"   # + the adapter you use
+
+spec:
+  inputs:
+    stage:
+      default: test
+      description: Pipeline stage to run in.
+    image:
+      default: "python:3.12-slim"
+      description: Image to run whatifd in (must have Python 3.11+).
+    config:
+      default: whatifd.config.yaml
+      description: Path to the whatifd config file.
+    pip-install:
+      default: "whatifd"
+      description: >-
+        Space-separated pip install spec. Add the adapter you use, e.g.
+        "whatifd whatifd-langfuse" or "whatifd whatifd-datadog[live]".
+    fail-on-dont-ship:
+      default: "true"
+      description: >-
+        If "true", fail the job on a Don't-Ship (exit 1) or Inconclusive /
+        setup-failure (exit 2) verdict. If "false", always succeed and expose
+        the verdict via the job log / artifacts.
+    comment-on-mr:
+      default: "true"
+      description: >-
+        Post the rendered verdict as a merge-request note (only on MR
+        pipelines). Deduped via an HTML marker. Needs a token with notes
+        scope — CI_JOB_TOKEN where allowed, else set GITLAB_TOKEN.
+---
+"whatifd-fork":
+  stage: $[[ inputs.stage ]]
+  image: $[[ inputs.image ]]
+  variables:
+    WHATIFD_CONFIG: "$[[ inputs.config ]]"
+    WHATIFD_PIP_INSTALL: "$[[ inputs.pip-install ]]"
+    WHATIFD_FAIL_ON_DONT_SHIP: "$[[ inputs.fail-on-dont-ship ]]"
+    WHATIFD_COMMENT_ON_MR: "$[[ inputs.comment-on-mr ]]"
+  artifacts:
+    when: always
+    paths:
+      - reports/
+  script:
+    - pip install $WHATIFD_PIP_INSTALL
+    - |
+      # Run the experiment. --print-paths emits {report_json, report_md,
+      # verdict} JSON on stdout; the exit code is authoritative.
+      set +e
+      fork_stdout="$(whatifd fork --config "$WHATIFD_CONFIG" --print-paths)"
+      exit_code=$?
+      printf '%s\n' "$fork_stdout"
+
+      case "$exit_code" in
+        0) verdict="ship" ;;
+        1) verdict="dont_ship" ;;
+        *) verdict="inconclusive" ;;
+      esac
+
+      # Parse the report paths from the last JSON line (stdlib only — the
+      # slim image has no jq). Empty on setup failure (no JSON emitted).
+      report_md="$(printf '%s\n' "$fork_stdout" | python3 -c '
+      import sys, json
+      out = ""
+      for line in reversed(sys.stdin.read().splitlines()):
+          line = line.strip()
+          if not line.startswith("{"):
+              continue
+          try:
+              out = json.loads(line).get("report_md", "") or ""
+          except json.JSONDecodeError:
+              continue
+          break
+      print(out)
+      ')"
+
+      export WHATIFD_VERDICT="$verdict"
+      export WHATIFD_REPORT_MD="$report_md"
+    - |
+      # Post / update the MR note (marker-deduped) on MR pipelines only.
+      if [ "$WHATIFD_COMMENT_ON_MR" = "true" ] && [ -n "${CI_MERGE_REQUEST_IID:-}" ] && [ -n "$WHATIFD_REPORT_MD" ]; then
+        python3 - <<'PYEOF'
+      import json
+      import os
+      import sys
+      import urllib.error
+      import urllib.request
+
+      MARKER = "<!-- whatifd-fork -->"
+      HEADERS_BY_VERDICT = {
+          "ship": "## ✅ whatifd: Ship",
+          "dont_ship": "## ❌ whatifd: Don't Ship",
+          "inconclusive": "## ⚠️ whatifd: Inconclusive",
+      }
+
+      api = os.environ["CI_API_V4_URL"]
+      project = os.environ["CI_PROJECT_ID"]
+      mr_iid = os.environ["CI_MERGE_REQUEST_IID"]
+      verdict = os.environ.get("WHATIFD_VERDICT", "inconclusive")
+      report_md = os.environ.get("WHATIFD_REPORT_MD", "")
+
+      # Token model: PAT (GITLAB_TOKEN) takes precedence where provided; else
+      # the job token. Notes-posting with CI_JOB_TOKEN works on many GitLab
+      # setups; instances where it doesn't must provide GITLAB_TOKEN.
+      pat = os.environ.get("GITLAB_TOKEN")
+      job_token = os.environ.get("CI_JOB_TOKEN")
+
+      with open(report_md, encoding="utf-8") as fh:
+          rendered = fh.read()
+      header = HEADERS_BY_VERDICT.get(verdict, HEADERS_BY_VERDICT["inconclusive"])
+      body = f"{MARKER}\n{header}\n\n{rendered}"
+
+      notes_url = f"{api}/projects/{project}/merge_requests/{mr_iid}/notes"
+
+      def _auth_headers(use_pat):
+          if use_pat:
+              return {"PRIVATE-TOKEN": pat}
+          return {"JOB-TOKEN": job_token}
+
+      def _request(method, url, headers, payload=None):
+          data = json.dumps(payload).encode() if payload is not None else None
+          req = urllib.request.Request(url, data=data, method=method, headers=dict(headers))
+          if data is not None:
+              req.add_header("Content-Type", "application/json")
+          with urllib.request.urlopen(req) as resp:
+              return json.loads(resp.read() or "null")
+
+      def _find_existing(headers):
+          # Paginate MR notes; return the id of the last note carrying MARKER.
+          page = 1
+          found = None
+          while True:
+              url = f"{notes_url}?per_page=100&page={page}"
+              notes = _request("GET", url, headers)
+              if not notes:
+                  break
+              for note in notes:
+                  if MARKER in (note.get("body") or ""):
+                      found = note["id"]
+              if len(notes) < 100:
+                  break
+              page += 1
+          return found
+
+      def _post_or_update(use_pat):
+          headers = _auth_headers(use_pat)
+          existing = _find_existing(headers)
+          if existing is not None:
+              _request("PUT", f"{notes_url}/{existing}", headers, {"body": body})
+              print(f"whatifd: updated MR note {existing}")
+          else:
+              _request("POST", notes_url, headers, {"body": body})
+              print("whatifd: created MR note")
+
+      # Prefer PAT when set; else job token, falling back to PAT on an auth
+      # error if one is available.
+      try:
+          _post_or_update(use_pat=bool(pat))
+      except urllib.error.HTTPError as exc:
+          if exc.code in (401, 403) and pat and not job_token:
+              raise
+          if exc.code in (401, 403) and pat:
+              _post_or_update(use_pat=True)
+          else:
+              print(f"whatifd: MR note failed (HTTP {exc.code}): {exc.reason}", file=sys.stderr)
+              raise
+      PYEOF
+      fi
+    - |
+      # Gate the pipeline on the verdict (cardinal: the exit code IS the gate).
+      if [ "$WHATIFD_FAIL_ON_DONT_SHIP" = "true" ] && [ "$exit_code" != "0" ]; then
+        echo "whatifd: verdict=$WHATIFD_VERDICT (exit $exit_code) — failing the job."
+        exit "$exit_code"
+      fi

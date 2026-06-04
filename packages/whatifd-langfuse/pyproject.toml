@@ -45,6 +45,12 @@ dev = [
   # MUST get the same cap; that's why the constraint is repeated
   # here, not just in the root.
   "vcrpy>=8.0,<9.0",
+  # Cap `aiohttp` below 3.14: aiohttp 3.14.0 removed
+  # `aiohttp.streams.AsyncStreamReaderMixin`, which vcrpy 8's aiohttp
+  # stub imports at module load — an ImportError at recorded-smoke test
+  # setup. Mirrors the root pyproject cap (same dual-pin discipline as
+  # vcrpy). Lift once vcrpy ships an aiohttp-3.14-compatible stub.
+  "aiohttp>=3.13,<3.14",
   # `pytest-asyncio` is intentionally NOT listed here. v0.1.0 of
   # this adapter is purely synchronous. The Langfuse SDK exposes
   # async client surfaces (`AsyncLangfuseAPI`) that v0.2+ may add

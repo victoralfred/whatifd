@@ -99,7 +99,7 @@ Detection happens at runner-target import time when the CLI loads `python:<modul
 
 ## Reference Runner
 
-[`examples/minimal-agent/replay.py`](../examples/minimal-agent/replay.py) — copy-paste starting point. The body is a deterministic stub so the example is testable without an LLM provider; replace it with your real replay logic.
+[`examples/minimal_agent/replay.py`](../examples/minimal_agent/replay.py) — copy-paste starting point. The body is a deterministic stub so the example is testable without an LLM provider; replace it with your real replay logic.
 
 ## Wire-up patterns
 

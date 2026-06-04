@@ -69,5 +69,5 @@ def run(
     return ReplayOutput(
         text=response_text,
         tool_spans=[],
-        metadata={"runner": "examples.minimal-agent"},
+        metadata={"runner": "examples.minimal_agent"},
     )

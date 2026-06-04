@@ -1,0 +1,102 @@
+name: sync whatifd-action
+
+# Marketplace publication (integrations-plan P3) lives in a DEDICATED public
+# repo (`victoralfred/whatifd-action`) because GitHub Marketplace requires a
+# root-level `action.yml`. This workflow keeps that repo in sync with the
+# monorepo's canonical composite action: on each release tag it copies
+# `action.yml` + a marketplace README into the action repo and tags it with
+# the matching version + a moving major tag (`v1`).
+#
+# INERT UNTIL PROVISIONED: the job is guarded on the `ACTION_SYNC_TOKEN`
+# secret. Until the owner creates the action repo + adds that token (see
+# docs/internal/marketplace-publish-runbook.md), this workflow no-ops with a
+# notice — so merging it cannot break the release pipeline.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag to sync (e.g. v0.2.2). Defaults to the triggering tag on push."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: sync composite action to whatifd-action
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Guard — require ACTION_SYNC_TOKEN
+        id: guard
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.ACTION_SYNC_TOKEN }}
+        run: |
+          if [[ -z "${TOKEN}" ]]; then
+            echo "::notice title=sync-action::ACTION_SYNC_TOKEN not set — skipping marketplace sync (P3 not yet provisioned; see docs/internal/marketplace-publish-runbook.md)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout whatifd (source of truth)
+        if: steps.guard.outputs.skip == 'false'
+        uses: actions/checkout@v6
+
+      - name: Checkout whatifd-action (publish target)
+        if: steps.guard.outputs.skip == 'false'
+        uses: actions/checkout@v6
+        with:
+          repository: victoralfred/whatifd-action
+          token: ${{ secrets.ACTION_SYNC_TOKEN }}
+          path: action-repo
+
+      - name: Sync action.yml + marketplace README, tag, push
+        if: steps.guard.outputs.skip == 'false'
+        shell: bash
+        env:
+          PUSH_REF: ${{ github.ref_name }}
+          INPUT_REF: ${{ github.event.inputs.ref }}
+        run: |
+          set -euo pipefail
+
+          # Resolve the version from the dispatch input or the triggering tag.
+          raw_ref="${INPUT_REF:-$PUSH_REF}"
+          ver="${raw_ref#v}"
+          if [[ -z "$ver" ]]; then
+            echo "::error title=sync-action::could not resolve a version to sync (no tag / input)."
+            exit 1
+          fi
+          major="v${ver%%.*}"
+
+          src=".github/actions/whatifd-fork"
+          cp "$src/action.yml" action-repo/action.yml
+          # Marketplace README = the action README with the local-path usage
+          # rewritten to the published reference. One sed; the canonical doc
+          # stays in the monorepo.
+          sed "s#uses: ./.github/actions/whatifd-fork#uses: victoralfred/whatifd-action@${major}#g" \
+            "$src/README.md" > action-repo/README.md
+          # Carry the license if present so the published repo is licensed.
+          [[ -f LICENSE ]] && cp LICENSE action-repo/LICENSE || true
+
+          cd action-repo
+          git config user.name "whatifd release bot"
+          git config user.email "release-bot@whatif.codes"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice title=sync-action::no changes to sync for v${ver}."
+            exit 0
+          fi
+          git commit -m "sync whatifd-fork action @ v${ver}"
+          # Exact version tag (immutable) + moving major tag (consumers pin @v1).
+          git tag -f "v${ver}"
+          git tag -f "${major}"
+          git push origin "HEAD:${GITHUB_REF_NAME:-main}" || git push origin HEAD:main
+          git push -f origin "v${ver}"
+          git push -f origin "${major}"
+          echo "::notice title=sync-action::synced v${ver} (+ ${major}) to victoralfred/whatifd-action."

@@ -168,6 +168,31 @@ class SourceConfig(BaseModel):
             "retargeted without deleting the field)."
         ),
     )
+    # Datadog LLM Observability Export API options. Credentials
+    # (`DD_API_KEY` / `DD_APP_KEY` / `DD_SITE`) read from the environment,
+    # never config (secrets discipline, mirrors langfuse). Only the
+    # non-secret query window/filters live here.
+    dd_from: str | None = Field(
+        default=None,
+        description=(
+            "Datadog Export API start of window (e.g., 'now-24h' or an "
+            "ISO/epoch timestamp). REQUIRED when `adapter='datadog'`: the "
+            "Export API defaults to the last 15 minutes, which would "
+            "silently yield a near-empty cohort (cardinal #1)."
+        ),
+    )
+    dd_to: str | None = Field(
+        default=None,
+        description="Datadog Export API end of window. Defaults to 'now' when omitted.",
+    )
+    dd_ml_app: str | None = Field(
+        default=None,
+        description="Datadog `ml_app` filter (the LLM-Obs application name).",
+    )
+    dd_query: str | None = Field(
+        default=None,
+        description="Optional Datadog span search query (`filter[query]`).",
+    )
 
     @model_validator(mode="after")
     def _check_adapter_required_fields(self) -> SourceConfig:
@@ -176,6 +201,13 @@ class SourceConfig(BaseModel):
                 "source.adapter='phoenix' requires source.spans_provider "
                 "(a `python:<module.path>:<attr>` reference to a "
                 "zero-arg callable yielding OpenInference span dicts)."
+            )
+        if self.adapter == "datadog" and not self.dd_from:
+            raise ValueError(
+                "source.adapter='datadog' requires source.dd_from (an explicit "
+                "time-window start, e.g. 'now-24h'). The Datadog Export API "
+                "defaults to the last 15 minutes, which would silently yield a "
+                "near-empty cohort."
             )
         return self
 

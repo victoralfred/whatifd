@@ -107,6 +107,51 @@ def test_null_numerics_skipped_not_zeroed() -> None:
     assert floor.value == 0.0
 
 
+def test_zero_scored_skips_ratios() -> None:
+    # scored=0 → no divide; ratios must be absent (not 0/0 or a crash).
+    report = {
+        "verdict_state": "inconclusive",
+        "cohort_results": [
+            {
+                "name": "failure",
+                "scored": 0,
+                "improved_count": 0,
+                "regressed_count": 0,
+                "floor_passed": False,
+            },
+        ],
+    }
+    metrics = report_to_metrics(report)
+    assert _by_name(metrics, "whatifd.cohort.regression_ratio") == []
+    assert _by_name(metrics, "whatifd.cohort.improvement_ratio") == []
+
+
+def test_non_numeric_scored_skips_ratios() -> None:
+    # A non-numeric `scored` (None) must also skip ratios, not coerce to 0
+    # and silently pass the guard with a wrong denominator.
+    report = {
+        "verdict_state": "inconclusive",
+        "cohort_results": [
+            {"name": "failure", "scored": None, "improved_count": 5, "floor_passed": True},
+        ],
+    }
+    metrics = report_to_metrics(report)
+    assert _by_name(metrics, "whatifd.cohort.regression_ratio") == []
+    # scored itself is null → its count metric is skipped too.
+    assert _by_name(metrics, "whatifd.cohort.scored") == []
+
+
+def test_absent_floor_passed_skipped_not_ghost_zero() -> None:
+    # When a cohort dict omits `floor_passed` entirely, the metric must be
+    # SKIPPED — not emitted as a ghost 0.0 (null-skip guarantee, cardinal #1).
+    report = {
+        "verdict_state": "ship",
+        "cohort_results": [{"name": "failure", "scored": 3, "improved_count": 3}],
+    }
+    metrics = report_to_metrics(report)
+    assert _by_name(metrics, "whatifd.cohort.floor_passed") == []
+
+
 def test_blocking_findings_counted() -> None:
     [blocking] = _by_name(report_to_metrics(_report()), "whatifd.findings.blocking")
     # blocks_ship + blocks_all = 2; the info finding is excluded.

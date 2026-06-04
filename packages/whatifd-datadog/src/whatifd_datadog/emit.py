@@ -103,9 +103,18 @@ def report_to_metrics(report: dict[str, Any], *, extra_tags: Sequence[str] = ())
             if v is not None:
                 metrics.append(Metric(f"whatifd.cohort.{src_key}", v, ctags))
 
-        metrics.append(
-            Metric("whatifd.cohort.floor_passed", 1.0 if cohort.get("floor_passed") else 0.0, ctags)
-        )
+        # Only emit when the key is present: an ABSENT `floor_passed` means the
+        # cohort never ran floor evaluation, and emitting 0.0 would be a ghost
+        # metric (null-skip guarantee, cardinal #1). An explicit `False` still
+        # emits 0.0 — that's a real signal.
+        if "floor_passed" in cohort:
+            metrics.append(
+                Metric(
+                    "whatifd.cohort.floor_passed",
+                    1.0 if cohort["floor_passed"] else 0.0,
+                    ctags,
+                )
+            )
 
         scored = _num(cohort.get("scored")) or 0.0
         if scored > 0:
@@ -152,10 +161,13 @@ class DatadogMetricsClient:
                 for m in metrics
             ]
         }
+        # Use httpx's `json=` kwarg (it serializes and sets Content-Type)
+        # rather than `json.dumps` — keeps `json.dumps` confined to
+        # `whatifd/serialization/` per the project's banned-import discipline.
         resp = httpx.post(
             f"https://api.{self.site}{_SERIES_PATH}",
-            headers={"DD-API-KEY": self.api_key, "Content-Type": "application/json"},
-            content=json.dumps(body),
+            headers={"DD-API-KEY": self.api_key},
+            json=body,
             timeout=self.timeout_seconds,
         )
         resp.raise_for_status()
@@ -235,6 +247,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             timestamp=int(time.time()),
             dry_run=args.dry_run,
         )
+    # The soft-fail boundary (deliberate, not a generic swallow): ANY emission
+    # problem — a missing report, a transport error, an unexpected HTTP status —
+    # must not block the verdict, which is the `whatifd fork` exit code, not
+    # this reporter's. `except Exception` catches emission errors while letting
+    # `BaseException` (KeyboardInterrupt / SystemExit) propagate. `--strict`
+    # turns this into a non-zero exit for callers that want emission to gate.
     except Exception as exc:
         msg = f"whatifd-datadog-emit: {type(exc).__name__}: {exc}"
         if args.strict:

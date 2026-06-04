@@ -116,12 +116,20 @@ def report_to_metrics(report: dict[str, Any], *, extra_tags: Sequence[str] = ())
                 )
             )
 
-        scored = _num(cohort.get("scored")) or 0.0
-        if scored > 0:
-            regressed = _num(cohort.get("regressed_count")) or 0.0
-            improved = _num(cohort.get("improved_count")) or 0.0
-            metrics.append(Metric("whatifd.cohort.regression_ratio", regressed / scored, ctags))
-            metrics.append(Metric("whatifd.cohort.improvement_ratio", improved / scored, ctags))
+        # Explicit None check (not `_num(...) or 0.0`) so the null-skip intent
+        # is unambiguous: a null/non-numeric `scored` skips the ratios rather
+        # than coercing to a 0.0 denominator. Numerators default to 0 only when
+        # `scored > 0` is already established.
+        scored = _num(cohort.get("scored"))
+        if scored is not None and scored > 0:
+            regressed = _num(cohort.get("regressed_count"))
+            improved = _num(cohort.get("improved_count"))
+            metrics.append(
+                Metric("whatifd.cohort.regression_ratio", (regressed or 0.0) / scored, ctags)
+            )
+            metrics.append(
+                Metric("whatifd.cohort.improvement_ratio", (improved or 0.0) / scored, ctags)
+            )
 
     findings = report.get("decision_findings") or []
     blocking = sum(1 for f in findings if str(f.get("severity", "")).startswith("blocks"))
@@ -223,7 +231,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--tag",
         action="append",
-        default=[],
+        default=None,
         metavar="KEY:VALUE",
         help="Extra tag to attach to every metric (repeatable), e.g. --tag service:my-agent.",
     )
@@ -243,7 +251,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.report,
             api_key=os.environ.get("DD_API_KEY"),
             site=args.site,
-            extra_tags=tuple(args.tag),
+            extra_tags=tuple(args.tag or ()),
             timestamp=int(time.time()),
             dry_run=args.dry_run,
         )

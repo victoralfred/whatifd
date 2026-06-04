@@ -73,8 +73,10 @@ whatifd-datadog-emit reports/whatifd-fork-2026-06-04.json --tag service:my-agent
 
 Emits gauges: `whatifd.verdict.code` (0=ship / 1=dont_ship / 2=inconclusive,
 matching the CLI exit code), `whatifd.cohort.{selected,replayed,scored,
-improved,regressed,unchanged,median_delta,floor_passed,regression_ratio,
-improvement_ratio}` (tagged `cohort:<name>`), and `whatifd.findings.blocking`.
+improved,regressed,unchanged,median_delta,ci_lower,ci_upper,floor_passed,
+regression_ratio,improvement_ratio}` (tagged `cohort:<name>`; null-valued
+fields like an unavailable CI bound are skipped, not zeroed), and
+`whatifd.findings.blocking`.
 
 - **Out of whatifd core by design** — it reads the already-written report and
   only reports; it never touches the verdict path.

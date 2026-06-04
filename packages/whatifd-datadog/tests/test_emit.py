@@ -210,3 +210,49 @@ def test_cli_soft_fails_on_missing_file(capsys: pytest.CaptureFixture[str]) -> N
 def test_cli_strict_fails_on_missing_file() -> None:
     rc = main(["/nonexistent/report.json", "--strict"])
     assert rc == 1
+
+
+def test_submit_builds_v1_series_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Exercise the LIVE submission path (no network): assert the URL, auth
+    # header, and v1-series body the client constructs. This is the structural
+    # guarantee that the dry-run and live paths don't silently diverge — both
+    # project via report_to_metrics; this pins how submit() ships them.
+    httpx = pytest.importorskip("httpx")
+    from whatifd_datadog.emit import DatadogMetricsClient
+
+    captured: dict[str, Any] = {}
+
+    class _FakeResp:
+        def raise_for_status(self) -> None:
+            captured["raised_for_status"] = True
+
+    def _fake_post(
+        url: str, *, headers: dict[str, str], json: dict[str, Any], timeout: float
+    ) -> Any:
+        captured.update(url=url, headers=headers, json=json, timeout=timeout)
+        return _FakeResp()
+
+    monkeypatch.setattr(httpx, "post", _fake_post)
+
+    client = DatadogMetricsClient(api_key="secret-key", site="datadoghq.eu")
+    client.submit([Metric("whatifd.verdict.code", 1.0, ("verdict:dont_ship",))], timestamp=42)
+
+    assert captured["url"] == "https://api.datadoghq.eu/api/v1/series"
+    assert captured["headers"]["DD-API-KEY"] == "secret-key"
+    [series] = captured["json"]["series"]
+    assert series["metric"] == "whatifd.verdict.code"
+    assert series["type"] == "gauge"
+    assert series["points"] == [[42, 1.0]]
+    assert series["tags"] == ["verdict:dont_ship"]
+    assert captured["raised_for_status"] is True
+
+
+def test_submit_empty_metrics_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    httpx = pytest.importorskip("httpx")
+    from whatifd_datadog.emit import DatadogMetricsClient
+
+    def _boom(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("submit must not POST for an empty metric list")
+
+    monkeypatch.setattr(httpx, "post", _boom)
+    DatadogMetricsClient(api_key="k").submit([], timestamp=1)  # no exception = pass

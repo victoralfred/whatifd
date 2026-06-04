@@ -71,6 +71,12 @@ python_version = "3.11"
 strict = true
 warn_unused_ignores = true
 warn_return_any = true
+# `disallow_any_explicit` is intentionally NOT enabled here (unlike the
+# phoenix/datadog adapters): this package wraps the Inspect AI SDK, whose
+# `Score.value` / `Score.explanation` are typed `Any`, and the user-supplied
+# `score_fn` returns `Any` (an Inspect Score or a float). Those are honest
+# external-boundary `Any`s, not bug-hiding leaks. Internal helpers use
+# `object` + narrowing; the boundary `Any` stays.
 
 # Mirror the root `addopts` so `pytest` from inside this package
 # directory (without root config inheritance) still resolves the

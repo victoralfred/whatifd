@@ -1418,6 +1418,20 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 **Resolved by:** P2 PR on branch `feat/cli-emit-report-paths`.
 
 
+### Adapter `Any`-elimination + per-package mypy CI gate (resolved 2026-06-04)
+
+**Source decision:** follow-up to the `py.typed` work. The owner hardened `whatifd-datadog`'s `Any` boundaries (typed JSON/httpx with `object`/TypedDict/Protocol/TypeGuard); the task was to extend that discipline to the other adapters and **enforce** it. Owner decisions: scope = adapters first (core later); enforcement = tighten mypy (not add Pyright).
+
+**Rippled to / refactor protection:**
+- **Phoenix `_project_tool_span`** had the same latent `object`→`ToolSpan.input/output` leak datadog did (masked until `py.typed`); fixed with `isinstance` narrowing.
+- **`dict[str, Any]` → `dict[str, object]`** for raw-JSON span dicts in datadog `client.py` (aligns with `source.py`); `_normalize_event` narrows via `isinstance`. Internal helpers de-`Any`'d (langfuse `_stringify`, inspect-ai `_hash16_mapping`). **SDK/user-boundary `Any` preserved** (langfuse `_TraceLike`, inspect-ai `Score`/`score_fn`) — honest external markers, documented in those packages' mypy comments.
+- **Enforcement (the load-bearing discovery):** the adapter packages' `[tool.mypy]` configs were **never run by any gate** — CI ran `mypy src` (core only, root config) and pre-commit's mypy is `files: ^src/`. So a per-package `disallow_any_explicit` is dormant unless mypy runs with `--config-file <pkg>/pyproject.toml`. Added `disallow_any_explicit` to phoenix + datadog (verified: a reintroduced `: Any` → `error: Explicit "Any" is not allowed`), and **added a CI step** that runs `mypy --config-file` per adapter package. This is the first time the adapter packages are mypy-gated in CI.
+- `disallow_any_expr` deliberately NOT used (too aggressive for json `.get()`); the discipline is "type boundaries with `object`/TypedDict + narrow", not "ban every Any-typed expression".
+- **Deferred:** core's ~60 `Any` sites (the "adapters + core boundaries" scope option not taken) — tightening core's `mypy src` gate waits on that sweep.
+
+**Resolved by:** PR on branch `refactor/adapter-any-elimination`.
+
+
 ### `py.typed` markers shipped (PEP 561) — consumer typing (resolved 2026-06-04)
 
 **Source decision:** a user reported `Stub file not found for "whatifd_inspect_ai"` in their IDE when importing the packages into their own project (e.g. `DEV/whatif`). Root cause: none of the five packages shipped a `py.typed` marker, so PEP-561 tools (Pyright/Pylance, mypy) couldn't read the inline types — every import was flagged.

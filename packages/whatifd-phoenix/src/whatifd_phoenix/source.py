@@ -145,14 +145,17 @@ def _project_tool_span(span: dict[str, object]) -> ToolSpan:
     # (which become the typed input/output). `wrap_pii_attributes` wraps any
     # registered-PII key so the ToolSpan attribute validator is satisfied.
     attributes = {k: v for k, v in span.items() if k not in (_ATTR_INPUT, _ATTR_OUTPUT)}
+    # input/output are already Sensitive[str] (or None) from
+    # _wrap_user_content_in_span. The span dict is `dict[str, object]`, so
+    # narrow back to `Sensitive[str] | None` with an isinstance check rather
+    # than leaking `object` into ToolSpan's typed field (no blind cast).
+    raw_input = span.get(_ATTR_INPUT)
+    raw_output = span.get(_ATTR_OUTPUT)
     return ToolSpan(
         name=str(name),
         kind=str(kind),
-        # input/output are already Sensitive[str] (or None) from
-        # _wrap_user_content_in_span; ToolSpan's before-validator passes
-        # Sensitive/None through unchanged.
-        input=span.get(_ATTR_INPUT),
-        output=span.get(_ATTR_OUTPUT),
+        input=raw_input if isinstance(raw_input, Sensitive) else None,
+        output=raw_output if isinstance(raw_output, Sensitive) else None,
         attributes=wrap_pii_attributes(attributes),
     )
 

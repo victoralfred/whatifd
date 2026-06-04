@@ -149,8 +149,19 @@ jobs:
           enable-cache: true
       - name: Install
         run: uv sync --all-extras --dev --group workspace
-      - name: Mypy
+      - name: Mypy (core)
         run: uv run mypy src
+      - name: Mypy (adapter packages, own configs)
+        # Type-check each adapter package with its OWN [tool.mypy] config so
+        # per-package strictness actually gates (e.g. phoenix/datadog enforce
+        # `disallow_any_explicit` — no reintroduced `Any` leaks). Without
+        # `--config-file`, mypy would pick up the repo-root config instead.
+        run: |
+          for pkg in whatifd-langfuse whatifd-phoenix whatifd-inspect-ai whatifd-datadog; do
+            echo "::group::mypy $pkg"
+            uv run mypy --config-file "packages/$pkg/pyproject.toml" "packages/$pkg/src"
+            echo "::endgroup::"
+          done
 
   test:
     name: test (py${{ matrix.python-version }})

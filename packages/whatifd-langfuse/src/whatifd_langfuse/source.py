@@ -72,7 +72,7 @@ class _LangfuseAPILike(Protocol):
     trace: _TraceClientLike
 
 
-def _stringify(value: Any) -> str:
+def _stringify(value: object) -> str:
     """Project a Langfuse `input` / `output` field (typed Any —
     str | dict | list | None per the SDK) into a canonical string.
 

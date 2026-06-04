@@ -70,3 +70,10 @@ python_version = "3.11"
 strict = true
 warn_unused_ignores = true
 warn_return_any = true
+# This adapter handles raw OpenInference span dicts (`dict[str, object]`), not
+# a typed SDK — so it carries NO explicit `Any`. Enforce that: a reintroduced
+# `: Any` annotation (the class of leak that hides "unknown type" bugs) fails
+# the package's own mypy. `disallow_any_expr` is intentionally NOT set (too
+# aggressive for json `.get()` access); the discipline is "type boundaries
+# with `object` + narrow", not "ban every Any-typed expression".
+disallow_any_explicit = true

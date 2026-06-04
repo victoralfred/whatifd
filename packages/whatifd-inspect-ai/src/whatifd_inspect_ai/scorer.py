@@ -67,7 +67,7 @@ def _hash16(*parts: str) -> str:
     return h[:16]
 
 
-def _hash16_mapping(m: Mapping[str, Any]) -> str:
+def _hash16_mapping(m: Mapping[str, object]) -> str:
     """Deterministic 16-hex-char digest of a small parameter
     mapping. Sorted keys + repr-of-value so dict-insertion-order
     doesn't change the hash."""

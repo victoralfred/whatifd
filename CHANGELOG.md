@@ -12,6 +12,12 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Fixed / Changed — eliminate `Any` leaks in the adapter packages + gate them in CI
+
+- **Phoenix latent bug fixed:** `whatifd_phoenix._project_tool_span` leaked `span.get(...)` (`object`) straight into `ToolSpan.input`/`output` (typed `Sensitive[str] | None`) — the same masked bug `whatifd-datadog` had. Now narrowed via `isinstance` (no blind cast). Masked previously because `whatifd` was untyped; surfaced once `py.typed` shipped.
+- **`Any` removed at internal boundaries:** `whatifd-datadog` `client.py` span/event dicts moved `dict[str, Any]` → `dict[str, object]` (matching what `source.py` already consumes; `_normalize_event` narrows attributes with `isinstance`). Internal helpers de-`Any`'d: langfuse `_stringify(value: object)`, inspect-ai `_hash16_mapping(Mapping[str, object])`. Genuine **SDK/user-boundary `Any`** is preserved on purpose (langfuse `_TraceLike` mirrors the Langfuse `Trace` model; inspect-ai `Score.value`/`explanation` + the user `score_fn` return) — those are honest "external, untyped" markers, not bug-hiding leaks.
+- **Enforced:** `whatifd-phoenix` + `whatifd-datadog` set `disallow_any_explicit` in their `[tool.mypy]` (a reintroduced `: Any` now fails — `error: Explicit "Any" is not allowed`); langfuse + inspect-ai are documented exemptions (SDK boundary). **CI now type-checks every adapter package with its own config** (`mypy --config-file packages/*/pyproject.toml ...`) — previously only `mypy src` (core) ran, so the package configs were dormant. This is the first time the adapter packages are mypy-gated in CI.
+
 ### Fixed — ship `py.typed` markers (PEP 561) so consumers get inline types
 
 - **All five packages now ship a `py.typed` marker** (`whatifd` core + `whatifd-langfuse` / `whatifd-phoenix` / `whatifd-inspect-ai` / `whatifd-datadog`). Without it, a developer importing the libraries into their own project saw `Stub file not found for "whatifd_inspect_ai"` (and the like) from their type checker / IDE (Pyright/Pylance, mypy) on every import. The marker tells PEP-561-aware tools to read the packages' inline annotations. Hatchling includes the marker in the built wheels automatically (verified); no build-config change needed. Confirmed: a module importing the adapters now type-checks clean (previously every import was flagged). The root pyproject's adapter mypy-override comment is updated — it no longer claims "no py.typed marker"; it now only scopes core's own mypy run (which doesn't deep-type-check foreign-package internals).

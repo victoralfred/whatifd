@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
 
 class PageMeta(TypedDict, total=False):
@@ -38,7 +38,7 @@ class Meta(TypedDict, total=False):
 
 
 class ExportResponse(TypedDict, total=False):
-    data: list[dict[str, Any]]
+    data: list[dict[str, object]]
     meta: Meta
 
 
@@ -82,7 +82,7 @@ class DatadogExportClient:
         ml_app: str | None = None,
         query: str | None = None,
         page_limit: int = _DEFAULT_PAGE_LIMIT,
-    ) -> Iterator[list[dict[str, Any]]]:
+    ) -> Iterator[list[dict[str, object]]]:
         """Yield successive pages of raw span-event objects (JSON:API `data`).
 
         Each yielded item is one page: a list of `{id, type, attributes}`
@@ -126,14 +126,16 @@ class DatadogExportClient:
                     return
 
 
-def _normalize_event(event: dict[str, Any]) -> dict[str, Any]:
+def _normalize_event(event: dict[str, object]) -> dict[str, object]:
     """Flatten one JSON:API span event (`{id, type, attributes}`) into the
     flat span dict `DatadogTraceSource` consumes. The `attributes` object
     holds the span fields (`trace_id`, `parent_id`, `span_kind`, `input`,
     `output`, ...); `span_id` is the top-level `id`."""
-    attrs = dict(event.get("attributes") or {})
-    if "span_id" not in attrs and event.get("id"):
-        attrs["span_id"] = event["id"]
+    attributes = event.get("attributes")
+    attrs: dict[str, object] = dict(attributes) if isinstance(attributes, dict) else {}
+    span_id = event.get("id")
+    if "span_id" not in attrs and span_id:
+        attrs["span_id"] = span_id
     return attrs
 
 
@@ -145,7 +147,7 @@ def make_spans_provider(
     ml_app: str | None = None,
     query: str | None = None,
     page_limit: int = _DEFAULT_PAGE_LIMIT,
-) -> Callable[[], Iterator[dict[str, Any]]]:
+) -> Callable[[], Iterator[dict[str, object]]]:
     """Build a zero-arg `spans_provider` for `DatadogTraceSource`.
 
     REQUIRES an explicit `from_ts` (e.g. `"now-24h"` or an ISO/epoch
@@ -160,7 +162,7 @@ def make_spans_provider(
             "silently yield a near-empty cohort."
         )
 
-    def _provider() -> Iterator[dict[str, Any]]:
+    def _provider() -> Iterator[dict[str, object]]:
         for page in client.iter_span_pages(
             from_ts=from_ts,
             to_ts=to_ts,

@@ -79,3 +79,10 @@ python_version = "3.11"
 strict = true
 warn_unused_ignores = true
 warn_return_any = true
+# This adapter reads raw JSON (Export API span dicts as `dict[str, object]`,
+# response envelopes via TypedDict + cast) — no typed SDK, so NO explicit
+# `Any`. Enforce it: a reintroduced `: Any` (the leak class that hides
+# "unknown type" bugs) fails the package's own mypy. `disallow_any_expr` is
+# deliberately NOT set (too aggressive for json `.get()`); the discipline is
+# "type boundaries with `object`/TypedDict + narrow", not "ban every Any expr".
+disallow_any_explicit = true

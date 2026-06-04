@@ -90,3 +90,9 @@ python_version = "3.11"
 strict = true
 warn_unused_ignores = true
 warn_return_any = true
+# `disallow_any_explicit` is intentionally NOT enabled here (unlike the
+# phoenix/datadog adapters): the `_TraceLike` Protocol mirrors the Langfuse
+# v4 `Trace` model, whose `input`/`output`/`metadata`/`tags` fields are typed
+# `Any` by the SDK, and the SDK passthrough `**kwargs`/`list_kwargs` are `Any`.
+# Those are honest external-boundary `Any`s, not bug-hiding leaks. Internal
+# helpers (`_stringify`) use `object`; the SDK-boundary `Any` stays.

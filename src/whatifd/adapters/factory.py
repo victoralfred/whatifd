@@ -400,13 +400,19 @@ def _build_datadog_source(cfg: SourceConfig) -> TraceSource:
     # `failure` tag) marks the failure cohort. Mirrors the SHAPE of the
     # langfuse/phoenix defaults; the v0.3 config-driven classifier registry
     # (cascade-catalog) will replace these inline closures.
-    def _default_classifier(spans: list[dict[str, object]]) -> str:
+    def _datadog_default_classifier(spans: list[dict[str, object]]) -> str:
         for span in spans:
             tags = span.get("tags")
             if isinstance(tags, list) and ("whatifd:failure" in tags or "failure" in tags):
                 return "failure"
         return "baseline"
 
+    # Broad construction-time catch, MIRRORING `_build_langfuse_source`
+    # (cardinal #1): a malformed DD_SITE, a bad credential, or any other
+    # constructor-time exception from the client/provider MUST surface as a
+    # typed `AdapterFactoryError` for the CLI to convert to the setup-failure
+    # exit code — never a leaked stack trace. `AdapterFactoryError` itself is
+    # re-raised unwrapped.
     try:
         client = DatadogExportClient(api_key=api_key, app_key=app_key, site=site)
         source: TraceSource = DatadogTraceSource(
@@ -417,7 +423,7 @@ def _build_datadog_source(cfg: SourceConfig) -> TraceSource:
                 ml_app=cfg.dd_ml_app,
                 query=cfg.dd_query,
             ),
-            cohort_classifier=_default_classifier,
+            cohort_classifier=_datadog_default_classifier,
         )
     except AdapterFactoryError:
         raise

@@ -43,6 +43,37 @@ from pathlib import Path
 
 import pytest
 
+
+def _vcr_aiohttp_stub_broken() -> bool:
+    """True when vcrpy cannot load its aiohttp stub against the installed
+    aiohttp — i.e., aiohttp >= 3.14 removed `AsyncStreamReaderMixin`, which
+    vcrpy <= 8.1.1's `vcr/stubs/aiohttp_stubs.py` imports at module load.
+
+    vcr patches ALL detected HTTP libraries on every `@pytest.mark.vcr`
+    setup, so this stub-import error aborts the test even though the
+    Langfuse SDK uses httpx, not aiohttp. aiohttp is pulled transitively by
+    `inspect-ai` (a real dep), so it can't simply be uninstalled, and no
+    released vcrpy supports aiohttp 3.14 yet. We keep aiohttp at its
+    CVE-fixed 3.14+ (CVE-2026-34993 / CVE-2026-47265) and skip this one
+    cassette-replay test until vcrpy ships an aiohttp-3.14 stub. Tracked in
+    the cascade catalog ("aiohttp 3.14 vs vcrpy aiohttp stub").
+    """
+    try:
+        import aiohttp.streams
+    except ImportError:
+        return False  # aiohttp absent → vcr won't try to patch it
+    return not hasattr(aiohttp.streams, "AsyncStreamReaderMixin")
+
+
+pytestmark = pytest.mark.skipif(
+    _vcr_aiohttp_stub_broken(),
+    reason=(
+        "vcrpy aiohttp stub incompatible with aiohttp>=3.14 "
+        "(AsyncStreamReaderMixin removed); aiohttp kept at the CVE-fixed "
+        "3.14+. Re-enable when vcrpy ships an aiohttp-3.14-compatible stub."
+    ),
+)
+
 _MODULE_NAME = Path(__file__).stem
 # pytest-recording lays cassettes out as
 # `cassettes/<module-stem>/<test-name>.yaml`. Track the per-module

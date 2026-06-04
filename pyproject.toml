@@ -57,13 +57,6 @@ dev = [
   # of a serialization-format library: pin the format-defining
   # dependency directly even when it's pulled transitively.
   "vcrpy>=8.0,<9.0",
-  # Cap `aiohttp` below 3.14: aiohttp 3.14.0 (2026-06) removed
-  # `aiohttp.streams.AsyncStreamReaderMixin`, which vcrpy 8's aiohttp
-  # stub (`vcr/stubs/aiohttp_stubs.py`) imports at module load — an
-  # ImportError at test *setup* for the recorded-smoke tests. aiohttp
-  # is transitive (vcrpy/langfuse pull it), so the cap lives with the
-  # vcrpy pin. Lift once vcrpy ships an aiohttp-3.14-compatible stub.
-  "aiohttp>=3.13,<3.14",
   "ruff>=0.15.12",
   "mypy>=1.20.2",
   "hypothesis>=6.152.4",

@@ -1402,6 +1402,15 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 
 
 
+### aiohttp 3.14 vs vcrpy aiohttp stub — test-infra incompatibility (open, 2026-06-04)
+
+**Problem:** `aiohttp` 3.14.0 (2026-06) removed `aiohttp.streams.AsyncStreamReaderMixin`, which `vcrpy` ≤ 8.1.1 (the latest release) imports at module load in `vcr/stubs/aiohttp_stubs.py`. vcr patches every detected HTTP library on each `@pytest.mark.vcr` setup, so the stub-import `AttributeError` aborts the langfuse recorded-smoke test even though the Langfuse SDK uses httpx, not aiohttp. `aiohttp` is pulled transitively by `inspect-ai` (a real dep, via `aiobotocore`/`s3fs`), so it can't be uninstalled.
+
+**Constraint conflict:** `aiohttp < 3.14` fixes the vcr stub but reintroduces CVE-2026-34993 + CVE-2026-47265 (both fixed in 3.14.0) — pip-audit (`security.yml`) fails. No `aiohttp` pin satisfies both the vcr stub and the CVE scan simultaneously, and no released vcrpy supports aiohttp 3.14 yet.
+
+**Resolution (interim):** keep `aiohttp` at the CVE-fixed 3.14+, and **conditionally skip** the single langfuse recorded-smoke test via a `pytest.mark.skipif` that detects the missing `AsyncStreamReaderMixin` (`test_recorded_smoke.py::_vcr_aiohttp_stub_broken`). Prioritizes real security over one cassette-replay test's coverage; nothing permanent sacrificed. **Lift when** vcrpy ships an aiohttp-3.14-compatible stub (drop the skipif). Surfaced during the Datadog P1 PR (#121) CI run.
+
+
 ### Datadog LLM Observability TraceSource adapter — third read-only source (resolved 2026-06-04)
 
 **Source decision:** the integrations plan (`self_dev/whatifd-integrations-plan.md`, P1) adds `whatifd-datadog` as the third trace-source adapter, mirroring the Phoenix span-iterator shape. R-1 (recorded in that plan) established the read surface: the **LLM Observability Export API** (`GET/POST /api/v2/llm-obs/v1/spans/events[/search]`), NOT the official `datadog-api-client` SDK (which exposes only LLM-Obs ingestion/experiments/eval-metric, not a spans-read path). Read confirmed: `input`/`output` content IS retrievable post-ingestion as `SearchedIO` (`{value, messages}`).

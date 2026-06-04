@@ -1,6 +1,6 @@
 [project]
 name = "whatifd-phoenix"
-version = "0.2.1"
+version = "0.3.0"
 description = "Arize Phoenix / OpenInference `TraceSource` adapter for whatifd. Phase D of the v0.2 plan."
 readme = "README.md"
 license = { text = "Apache-2.0" }

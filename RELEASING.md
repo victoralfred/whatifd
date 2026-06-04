@@ -6,14 +6,16 @@ Runbook for cutting a release. The release workflow is fully automated via PyPI 
 
 ### 1. Register Trusted Publishers on PyPI
 
-For each of the four packages (`whatifd`, `whatifd-langfuse`, `whatifd-inspect-ai`, `whatifd-phoenix`), add a Trusted Publisher on PyPI. For an unpublished package, use the "Pending Publisher" form at https://pypi.org/manage/account/publishing/. For an already-published package, go to that project's `Settings → Publishing`.
+For each of the five packages (`whatifd`, `whatifd-langfuse`, `whatifd-inspect-ai`, `whatifd-phoenix`, `whatifd-datadog`), add a Trusted Publisher on PyPI. For an unpublished package, use the "Pending Publisher" form at https://pypi.org/manage/account/publishing/. For an already-published package, go to that project's `Settings → Publishing`.
+
+> **New in v0.3.0:** `whatifd-datadog` is a brand-new package — it has no PyPI project yet, so register its Trusted Publisher via the **Pending Publisher** form BEFORE tagging, or the `publish-whatifd-datadog` job fails the release.
 
 | Field | Value |
 |---|---|
 | Owner | `victoralfred` |
 | Repository | `whatifd` |
 | Workflow filename | `release.yml` |
-| Environment | `pypi-whatifd` / `pypi-whatifd-langfuse` / `pypi-whatifd-inspect-ai` / `pypi-whatifd-phoenix` (match the per-job `environment.name` in `release.yml`) |
+| Environment | `pypi-whatifd` / `pypi-whatifd-langfuse` / `pypi-whatifd-inspect-ai` / `pypi-whatifd-phoenix` / `pypi-whatifd-datadog` (match the per-job `environment.name` in `release.yml`) |
 
 The environment name MUST match exactly. PyPI's OIDC verifier checks `repository`, `workflow`, AND `environment` claims; mismatch on any of the three rejects the publish.
 
@@ -57,9 +59,9 @@ The push triggers `.github/workflows/release.yml`. Monitor at `https://github.co
 
 After the workflow completes:
 
-- [ ] All four packages visible at `https://pypi.org/project/whatifd/<version>/` (and `/whatifd-langfuse/`, `/whatifd-inspect-ai/`, `/whatifd-phoenix/`)
+- [ ] All five packages visible at `https://pypi.org/project/whatifd/<version>/` (and `/whatifd-langfuse/`, `/whatifd-inspect-ai/`, `/whatifd-phoenix/`, `/whatifd-datadog/`)
 - [ ] GitHub Release created at `https://github.com/victoralfred/whatifd/releases/tag/vX.Y.Z` with auto-generated notes
-- [ ] `pip install whatifd whatifd-langfuse whatifd-inspect-ai whatifd-phoenix` in a clean venv resolves cleanly
+- [ ] `pip install whatifd whatifd-langfuse whatifd-inspect-ai whatifd-phoenix whatifd-datadog` in a clean venv resolves cleanly
 - [ ] `whatifd --help` works after install
 - [ ] **Every shipped schema URL resolves with HTTP 200**: `https://whatif.codes/schema/report/v0.1.json` AND `https://whatif.codes/schema/report/v0.2.json` (and any future versions). The active producer's `schema_uri` field points to the newest; older versions remain reachable for consumers still validating archived reports. If any URL 404s post-tag-push, deploy the corresponding `src/whatifd/report/schema/vX.Y.schema.json` file to the static host backing `whatif.codes` BEFORE announcing the release. Load-bearing post-release step, not optional.
 

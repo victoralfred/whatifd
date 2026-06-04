@@ -12,6 +12,15 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-04
+
+Highlights: a fourth trace-source adapter (**`whatifd-datadog`** — Datadog LLM
+Observability) plus a CI-side verdict-metrics emitter; **`py.typed`** on all
+packages so consumers get inline types; `whatifd fork` reports its own output
+paths (`--print-paths` / `--output-json` / `--output-md`) and resolves a
+runner from your project root; a marker-based GitHub Action + a GitLab CI/CD
+component; and an `Any`-elimination pass with per-package mypy gating.
+
 ### Fixed — `whatifd fork` can load a runner from your own project (#runner-loader)
 
 - **A `python:<module>:<attr>` runner / scorer / spans-provider in your project root now imports.** The runner/scorer loaders resolved references with `importlib.import_module` but never put the invocation directory on `sys.path` — and an installed `whatifd` console script doesn't add it (unlike `python -m`). So a developer's own `target.runner: python:my_agent.replay:run` failed with `No module named 'my_agent'`, making the tool unusable for custom projects. New `whatifd._dynamic_import.ensure_cwd_importable()` puts the cwd on `sys.path` before import (the runner is user-supplied code whatifd loads by contract, so resolving it from the project root is the expected behavior); wired into both `runner_loader` and `scorer_loader`.

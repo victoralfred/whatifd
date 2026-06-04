@@ -301,6 +301,20 @@ def test_build_trace_source_datadog_missing_credentials_raises(
         build_trace_source(SourceConfig(adapter="datadog", dd_from="now-24h"))
 
 
+def test_build_trace_source_datadog_missing_app_key_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Export API requires BOTH keys. With DD_API_KEY present but
+    DD_APP_KEY absent, the error must name the *Application* key
+    specifically (and not DD_API_KEY) — the dual-credential requirement."""
+    monkeypatch.setenv("DD_API_KEY", "present-api-key")
+    monkeypatch.delenv("DD_APP_KEY", raising=False)
+    with pytest.raises(AdapterFactoryError, match=r"DD_APP_KEY.*Application key") as exc:
+        build_trace_source(SourceConfig(adapter="datadog", dd_from="now-24h"))
+    # The present key must NOT appear in the missing-list.
+    assert "DD_API_KEY," not in str(exc.value)
+
+
 def test_build_trace_source_datadog_missing_window_raises() -> None:
     """Cardinal #1: the Export API's 15-min default must not silently
     apply. SourceConfig's validator requires dd_from; the factory's

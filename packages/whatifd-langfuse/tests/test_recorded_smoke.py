@@ -60,8 +60,13 @@ def _vcr_aiohttp_stub_broken() -> bool:
     """
     try:
         import aiohttp.streams
-    except ImportError:
-        return False  # aiohttp absent → vcr won't try to patch it
+    except ModuleNotFoundError:
+        # aiohttp genuinely absent → vcr won't try to patch it, so the
+        # stub-import error can't occur. Any OTHER ImportError (a partial
+        # or corrupted aiohttp install) is NOT swallowed — it propagates so
+        # a real environment breakage surfaces instead of masquerading as
+        # "vcr stub fine" (cardinal #1: no silent failure-masking).
+        return False
     return not hasattr(aiohttp.streams, "AsyncStreamReaderMixin")
 
 

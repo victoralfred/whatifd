@@ -181,16 +181,25 @@ def build_scorer(cfg: ScorerConfig) -> Scorer:
         # explicit validation-bypass escape hatch) can reach this
         # point with None. Cardinal #1: surface as a typed
         # AdapterFactoryError naming the missing field, not an
-        # AssertionError. Each field is checked individually so the
-        # error message is actionable.
-        for field_name in ("judge_provider", "judge_model_id", "rubric_id", "rubric_text"):
-            if getattr(cfg, field_name) is None:
-                raise AdapterFactoryError(
-                    f"scorer.adapter='inspect_ai' requires scorer.{field_name}. "
-                    "The config-validation layer normally catches this before "
-                    "factory dispatch; reaching this branch means the validator "
-                    "was bypassed (e.g., via ScorerConfig.model_construct)."
-                )
+        # AssertionError. Each field is checked EXPLICITLY (not via a
+        # getattr loop) so mypy narrows the values to `str` for the
+        # InspectAIScorer constructor below.
+        def _missing(field_name: str) -> AdapterFactoryError:
+            return AdapterFactoryError(
+                f"scorer.adapter='inspect_ai' requires scorer.{field_name}. "
+                "The config-validation layer normally catches this before "
+                "factory dispatch; reaching this branch means the validator "
+                "was bypassed (e.g., via ScorerConfig.model_construct)."
+            )
+
+        if cfg.judge_provider is None:
+            raise _missing("judge_provider")
+        if cfg.judge_model_id is None:
+            raise _missing("judge_model_id")
+        if cfg.rubric_id is None:
+            raise _missing("rubric_id")
+        if cfg.rubric_text is None:
+            raise _missing("rubric_text")
 
         scorer: Scorer = InspectAIScorer(
             score_fn=score_fn,
@@ -255,7 +264,12 @@ def _build_langfuse_source() -> TraceSource:
     try:
         client = Langfuse(host=host, public_key=public_key, secret_key=secret_key)
         source: TraceSource = LangfuseTraceSource(
-            api=client.api,
+            # The real `LangfuseAPI` structurally satisfies the adapter's
+            # `_LangfuseAPILike` Protocol (the adapter types `api` as a
+            # structural subset so tests can pass a mock). mypy can't verify
+            # the SDK class against a Protocol defined in the adapter package
+            # without importing it, so narrow here.
+            api=client.api,  # type: ignore[arg-type,unused-ignore]
             # Default cohort classifier: tags-based, mirroring
             # the whatifd-langfuse README. v0.2 adds config-driven
             # classifier selection (see cascade-catalog).
@@ -337,7 +351,12 @@ def _build_phoenix_source(cfg: SourceConfig) -> TraceSource:
         return "baseline"
 
     source: TraceSource = PhoenixTraceSource(
-        spans_provider=provider,
+        # `provider` is resolved from a user-supplied `python:<module>:<attr>`
+        # reference (dynamic), so the loader can only type it as a generic
+        # callable. The adapter expects `Callable[[], Iterable[dict]]`; the
+        # shape is validated at runtime (conformance + the adapter's own
+        # iteration), not statically.
+        spans_provider=provider,  # type: ignore[arg-type,unused-ignore]
         cohort_classifier=_default_classifier,
     )
     return source

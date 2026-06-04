@@ -33,16 +33,42 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Literal, Protocol, TypedDict, TypeGuard, cast
 
 # Verdict → numeric code, matching the `whatifd fork` exit codes (0/1/2) so a
 # monitor can alert on `whatifd.verdict.code > 0`.
 VERDICT_CODE: dict[str, int] = {"ship": 0, "dont_ship": 1, "inconclusive": 2}
 
 _SERIES_PATH = "/api/v1/series"
+
+
+class _SeriesItem(TypedDict):
+    metric: str
+    type: Literal["gauge"]
+    points: list[list[int | float]]
+    tags: list[str]
+
+
+class _SeriesBody(TypedDict):
+    series: list[_SeriesItem]
+
+
+class _HttpResponse(Protocol):
+    def raise_for_status(self) -> None: ...
+
+
+class _HttpxModule(Protocol):
+    def post(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        json: object,
+        timeout: float,
+    ) -> _HttpResponse: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +80,7 @@ class Metric:
     tags: tuple[str, ...] = field(default_factory=tuple)
 
 
-def _num(value: Any) -> float | None:
+def _num(value: object) -> float | None:
     """Coerce a JSON number to float; None/non-numeric → None (skip the metric
     rather than emit a bogus 0)."""
     if isinstance(value, bool):  # bool is an int subclass — exclude it here
@@ -64,7 +90,24 @@ def _num(value: Any) -> float | None:
     return None
 
 
-def report_to_metrics(report: dict[str, Any], *, extra_tags: Sequence[str] = ()) -> list[Metric]:
+def _is_json_object(value: object) -> TypeGuard[Mapping[str, object]]:
+    if not isinstance(value, Mapping):
+        return False
+    mapping = cast("Mapping[object, object]", value)
+    return all(isinstance(key, str) for key in mapping)
+
+
+def _json_objects(value: object) -> tuple[Mapping[str, object], ...]:
+    """Return JSON object entries from a decoded array-like value."""
+    if not isinstance(value, list):
+        return ()
+    items = cast("list[object]", value)
+    return tuple(item for item in items if _is_json_object(item))
+
+
+def report_to_metrics(
+    report: Mapping[str, object], *, extra_tags: Sequence[str] = ()
+) -> list[Metric]:
     """Project a `ReportV01` dict into a flat list of gauge metrics.
 
     Run-level: `whatifd.verdict.code` (0/1/2) + `whatifd.findings.blocking`.
@@ -82,7 +125,7 @@ def report_to_metrics(report: dict[str, Any], *, extra_tags: Sequence[str] = ())
         Metric("whatifd.verdict.code", float(VERDICT_CODE.get(verdict, -1)), run_tags)
     ]
 
-    for cohort in report.get("cohort_results") or []:
+    for cohort in _json_objects(report.get("cohort_results")):
         name = str(cohort.get("name", "unknown"))
         ctags = (*base, f"cohort:{name}", f"verdict:{verdict}")
         count_fields = (
@@ -131,7 +174,7 @@ def report_to_metrics(report: dict[str, Any], *, extra_tags: Sequence[str] = ())
                 Metric("whatifd.cohort.improvement_ratio", (improved or 0.0) / scored, ctags)
             )
 
-    findings = report.get("decision_findings") or []
+    findings = _json_objects(report.get("decision_findings"))
     blocking = sum(1 for f in findings if str(f.get("severity", "")).startswith("blocks"))
     metrics.append(Metric("whatifd.findings.blocking", float(blocking), run_tags))
     return metrics
@@ -151,14 +194,15 @@ class DatadogMetricsClient:
         if not metrics:
             return
         try:
-            import httpx  # type: ignore[import-not-found,unused-ignore]
+            import httpx as httpx_module  # type: ignore[import-not-found,unused-ignore]
         except ImportError as exc:  # pragma: no cover - only without [live]
             raise RuntimeError(
                 "whatifd-datadog's metrics emitter requires `httpx`. Install "
                 "with `pip install whatifd-datadog[live]`."
             ) from exc
 
-        body = {
+        httpx = cast("_HttpxModule", httpx_module)
+        body: _SeriesBody = {
             "series": [
                 {
                     "metric": m.name,
@@ -202,9 +246,12 @@ def emit_report(
     if not path.is_file():
         raise FileNotFoundError(f"report not found: {path}")
     try:
-        report = json.loads(path.read_text())
+        loaded = json.loads(path.read_text())
     except json.JSONDecodeError as exc:
         raise ValueError(f"report is not valid JSON: {path} ({exc})") from exc
+    if not isinstance(loaded, Mapping):
+        raise ValueError(f"report JSON root must be an object: {path}")
+    report = cast("Mapping[str, object]", loaded)
 
     metrics = report_to_metrics(report, extra_tags=extra_tags)
     if dry_run:

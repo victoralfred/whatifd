@@ -26,7 +26,21 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict, cast
+
+
+class PageMeta(TypedDict, total=False):
+    after: str
+
+
+class Meta(TypedDict, total=False):
+    page: PageMeta
+
+
+class ExportResponse(TypedDict, total=False):
+    data: list[dict[str, Any]]
+    meta: Meta
+
 
 _LIST_PATH = "/api/v2/llm-obs/v1/spans/events"
 # The Export API caps `page[limit]` at 5000; default to a conservative page.
@@ -104,10 +118,10 @@ class DatadogExportClient:
                     page_params["page[cursor]"] = cursor
                 resp = http.get(_LIST_PATH, params=page_params)
                 resp.raise_for_status()
-                body = resp.json()
-                data = body.get("data") or []
+                body = cast(ExportResponse, resp.json())
+                data = body.get("data", [])
                 yield list(data)
-                cursor = (((body.get("meta") or {}).get("page")) or {}).get("after")
+                cursor = body.get("meta", {}).get("page", {}).get("after")
                 if not cursor or not data:
                     return
 

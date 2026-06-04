@@ -1418,6 +1418,19 @@ The doctrine-bot review on PR #104 (post-merge) flagged this as a tracking gap: 
 **Resolved by:** P2 PR on branch `feat/cli-emit-report-paths`.
 
 
+### `py.typed` markers shipped (PEP 561) — consumer typing (resolved 2026-06-04)
+
+**Source decision:** a user reported `Stub file not found for "whatifd_inspect_ai"` in their IDE when importing the packages into their own project (e.g. `DEV/whatif`). Root cause: none of the five packages shipped a `py.typed` marker, so PEP-561 tools (Pyright/Pylance, mypy) couldn't read the inline types — every import was flagged.
+
+**Rippled to / refactor protection:**
+- Added empty `py.typed` to all five package roots (`src/whatifd/`, `packages/*/src/whatifd_*/`). Hatchling includes it in wheels automatically (verified via `unzip -l`).
+- **Consumer-facing fix confirmed:** a module importing the adapters now type-checks clean (was: every import flagged).
+- **Surfaced but NOT regressed in CI:** once core ships `py.typed`, type-checking the packages *with the workspace installed* reveals pre-existing latent arg-type imprecisions (e.g. `factory.py` passing `str | None` to `InspectAIScorer`; `DatadogTraceSource._project_tool_span` passing `object` to `ToolSpan.input`). These were masked when `whatifd` was untyped. CI's `mypy src` runs WITHOUT the workspace group → adapters not-found → `ignore_missing_imports` → green (replicated). So this change keeps CI green; cleaning those latent imprecisions (and optionally dropping the `ignore_missing_imports` override to let core type-check adapter usage) is a deliberate **follow-up**, not done here to avoid an unbounded cross-package typing cascade.
+- The root pyproject's `[[tool.mypy.overrides]]` comment updated (no longer claims "no py.typed marker").
+
+**Resolved by:** PR on branch `fix/ship-py-typed-markers`.
+
+
 ### GitLab CI/CD Catalog component — scaffold (P4, partial 2026-06-04)
 
 **Source decision:** integrations-plan P4. GitLab analog of the `whatifd-fork` action, as a CI/CD Catalog component. Like P3, the component code is buildable but Catalog publication is owner-only (a dedicated GitLab project marked a catalog resource).

@@ -24,13 +24,20 @@ from collections.abc import Generator
 from importlib.metadata import PackageNotFoundError, version
 
 import pytest
+import whatifd_datadog
 import whatifd_inspect_ai
 import whatifd_langfuse
 import whatifd_phoenix
 
 import whatifd
 
-_DISTRIBUTIONS = ("whatifd", "whatifd-langfuse", "whatifd-inspect-ai")
+_DISTRIBUTIONS = (
+    "whatifd",
+    "whatifd-langfuse",
+    "whatifd-inspect-ai",
+    "whatifd-phoenix",
+    "whatifd-datadog",
+)
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -87,6 +94,10 @@ def test_whatifd_phoenix_version_matches_distribution_metadata() -> None:
     assert whatifd_phoenix.__version__ == version("whatifd-phoenix")
 
 
+def test_whatifd_datadog_version_matches_distribution_metadata() -> None:
+    assert whatifd_datadog.__version__ == version("whatifd-datadog")
+
+
 def test_no_package_reports_sentinel_when_installed() -> None:
     """`0.0.0+unknown` is the source-only fallback. In an installed
     test environment all four packages MUST report a real version —
@@ -97,6 +108,7 @@ def test_no_package_reports_sentinel_when_installed() -> None:
     assert whatifd_langfuse.__version__ != "0.0.0+unknown"
     assert whatifd_inspect_ai.__version__ != "0.0.0+unknown"
     assert whatifd_phoenix.__version__ != "0.0.0+unknown"
+    assert whatifd_datadog.__version__ != "0.0.0+unknown"
 
 
 def test_all_workspace_packages_share_the_same_version() -> None:
@@ -114,10 +126,11 @@ def test_all_workspace_packages_share_the_same_version() -> None:
         "whatifd-langfuse": whatifd_langfuse.__version__,
         "whatifd-inspect-ai": whatifd_inspect_ai.__version__,
         "whatifd-phoenix": whatifd_phoenix.__version__,
+        "whatifd-datadog": whatifd_datadog.__version__,
     }
     distinct = set(versions.values())
     assert len(distinct) == 1, (
         f"workspace packages disagree on version: {versions!r}. "
-        f"All four pyproject.toml `version` fields must be bumped "
+        f"All five pyproject.toml `version` fields must be bumped "
         f"in lockstep — see RELEASING.md."
     )

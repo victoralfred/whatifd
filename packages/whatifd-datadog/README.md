@@ -62,6 +62,29 @@ The adapter is span-iterator-shaped (like `whatifd-phoenix`): `spans_provider`
 is any zero-arg callable yielding normalized span dicts, so you can wire your
 own transport or feed fixtures in tests with no network.
 
+## Emitting verdict metrics (the sink)
+
+After `whatifd fork` writes its report, push verdict + cohort metrics to
+Datadog so dashboards/monitors can track Ship-rate and regression trends:
+
+```bash
+whatifd-datadog-emit reports/whatifd-fork-2026-06-04.json --tag service:my-agent
+```
+
+Emits gauges: `whatifd.verdict.code` (0=ship / 1=dont_ship / 2=inconclusive,
+matching the CLI exit code), `whatifd.cohort.{selected,replayed,scored,
+improved,regressed,unchanged,median_delta,ci_lower,ci_upper,floor_passed,
+regression_ratio,improvement_ratio}` (tagged `cohort:<name>`; null-valued
+fields like an unavailable CI bound are skipped, not zeroed), and
+`whatifd.findings.blocking`.
+
+- **Out of whatifd core by design** — it reads the already-written report and
+  only reports; it never touches the verdict path.
+- **Soft-fails by default** — a metrics hiccup exits 0 so it can't turn a green
+  verdict red in CI. Pass `--strict` to fail the step on emission errors.
+- Agentless: `POST /api/v1/series` with `DD_API_KEY` (`DD_SITE` for region).
+  `--dry-run` prints metrics without submitting. Needs the `[live]` extra.
+
 ## Cardinal alignment
 
 - **#5 Sensitive[T] at the boundary** — span `input` / `output` (Datadog

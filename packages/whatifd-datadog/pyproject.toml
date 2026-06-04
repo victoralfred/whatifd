@@ -47,6 +47,11 @@ live = [
   "httpx>=0.27,<1.0",
 ]
 
+[project.scripts]
+# CI-side verdict-metrics emitter (P1b). Reads a ReportV01 JSON written by
+# `whatifd fork` and pushes gauges to Datadog. Out of whatifd core by design.
+whatifd-datadog-emit = "whatifd_datadog.emit:main"
+
 [project.urls]
 Homepage = "https://github.com/victoralfred/whatifd"
 Issues   = "https://github.com/victoralfred/whatifd/issues"

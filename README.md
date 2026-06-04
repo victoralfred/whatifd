@@ -4,7 +4,6 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Status](https://img.shields.io/badge/status-alpha-yellow.svg)](#status)
 
 > **whatifd's product is the verdict's defensibility.** Fork production traces, replay with a proposed change, score the diff — and ship a Ship / Don't Ship / Inconclusive verdict a reviewer can read, follow the reasoning, and either trust or know exactly which assumption to challenge.
 
@@ -20,29 +19,19 @@ When you change a prompt, model, or tool in an LLM system, you don't actually kn
 
 ![whatifd on one page](./experiment_runner_overview.png)
 
-## Status
-
-**v0.2.0 — alpha.** v0.2 widens v0.1 along five axes: a `regression_check` experiment shape joins `failure_rescue` (Phase A/C); a doctrinally-correct paired-percentile bootstrap replaces the v0.1 empirical-quantile shortcut, and `MethodologyDisclosure.bootstrap.method` declares the real method (Phase E.1/E.2); the Arize Phoenix / OpenInference adapter ships as `whatifd-phoenix` (Phase D); a `whatifd-fork` GitHub Action wraps the CLI for PR-comment + status-annotation workflows (Phase I); and cardinal #4 widens from top-level-only to per-field opt-in inside `RunManifest`, with cross-platform CI byte-equality enforcement (Phase J). `inspect_ai` is now reachable from YAML via `scorer.score_fn` (Phase B).
-
-| Version | Status | What it does |
-|---|---|---|
-| v0.1 | shipped (2026-05-09) | Langfuse ingest, prompt override, cached-tool replay, Inspect AI scorer, evidence-first Markdown + JSON reports, CI exit codes. |
-| v0.2 | shipped (2026-05-10) | `regression_check` shape; paired-percentile bootstrap; Phoenix / OpenInference adapter; `whatifd-fork` GitHub Action; per-field determinism widening + cross-platform CI; YAML-loaded `inspect_ai` scorer. |
-| v0.3 | M12 | Cluster-paired bootstrap; LangSmith adapter; marketplace publication of the GitHub Action; `environment.dependencies` ordering canonicalization; live-tool replay (opt-in, allowlist). |
-| v1.0 | year 2 | The pre-merge regression gate for LLM behavior. |
-
 ## Install
 
 ```bash
-uv pip install whatifd whatifd-langfuse whatifd-phoenix whatifd-inspect-ai
+# Core + the adapters you use (each is an optional package):
+uv pip install whatifd whatifd-langfuse whatifd-inspect-ai whatifd-phoenix
 
-# From source (uv workspace):
+# From source (uv workspace) — includes the in-development whatifd-datadog adapter:
 git clone https://github.com/victoralfred/whatifd
 cd whatifd
 uv sync --all-extras --dev --group workspace
 ```
 
-## Quickstart (programmatic — works today)
+## Quickstart (programmatic)
 
 The library API is the load-bearing surface. The snippet below is **shape-only** — it omits `RunManifest`, `MethodologyDisclosure`, and `CacheSummary` construction plus the actual `run_pipeline(...)` call to keep the README focused. The full runnable end-to-end example lives at [`docs/getting-started.md`](./docs/getting-started.md). Minimal shape:
 
@@ -76,7 +65,7 @@ delta_fn = build_delta_fn(
 # Full worked example: docs/getting-started.md.
 ```
 
-## Quickstart (CLI — stub adapters work today)
+## Quickstart (CLI — stub adapters, no credentials needed)
 
 ```bash
 # Write a config:
@@ -106,16 +95,16 @@ uv run whatifd fork --config whatifd.config.yaml
 #   2 = Inconclusive verdict / setup failure / floor violation
 ```
 
-Real Langfuse traces require `LANGFUSE_HOST` (or `LANGFUSE_BASE_URL`) + `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` in the environment. Real Inspect AI scoring is reachable from YAML via `scorer.score_fn: python:<module>:<attr>` (Phase B); the v0.1 programmatic-only path is preserved.
+Real Langfuse traces require `LANGFUSE_HOST` (or `LANGFUSE_BASE_URL`) + `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` in the environment. Real Inspect AI scoring is reachable from YAML via `scorer.score_fn: python:<module>:<attr>`.
 
 ## How it composes
 
 `whatifd` doesn't replace your tracer or your eval framework — it composes them into an experiment.
 
-- **Tracers (reads from)**: Langfuse (v0.1); Arize Phoenix / OpenInference (v0.2); LangSmith / OpenTelemetry GenAI (v0.3+).
-- **Scorers (wraps)**: Inspect AI (v0.1, real adapter shipped); pluggable via the scorer registry.
+- **Tracers (reads from)**: Langfuse, Arize Phoenix / OpenInference, and Datadog LLM Observability (each a small read-only adapter package). LangSmith / OpenTelemetry GenAI are candidates for future adapters.
+- **Scorers (wraps)**: Inspect AI (real adapter shipped); pluggable via the scorer registry.
 - **Your agent (calls back into)**: any Python callable matching the [runner contract](./docs/runner-contract.md).
-- **Downstream of `whatifd`'s decisions**: your existing CI (GitHub Actions, GitLab CI), SLO platforms (Nobl9, Sloth, Honeycomb), incident tooling.
+- **Downstream of `whatifd`'s decisions**: your CI gates on the exit code — a `whatifd-fork` GitHub Action (`.github/actions/whatifd-fork/`) and a GitLab CI/CD component (`integrations/gitlab/`) wrap it with verdict comments + artifacts. Also composes with SLO platforms (Nobl9, Sloth, Honeycomb) and incident tooling.
 
 ## What `whatifd` is not
 
@@ -141,7 +130,7 @@ The full design — problem framing, prior art, runner contract, report shape, e
 
 ## Contributing
 
-Pre-alpha. Issues and design discussion welcome; pull requests deferred until v0.1 ships.
+Alpha. Issues, design discussion, and pull requests welcome. The design doctrine and cardinal rules (in [`.claude/skills/whatifd-design/SKILL.md`](./.claude/skills/whatifd-design/SKILL.md)) are load-bearing — read them before proposing changes to the trust floor, schema, or verdict logic.
 
 ## License
 

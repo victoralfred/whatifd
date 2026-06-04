@@ -12,6 +12,10 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Fixed — ship `py.typed` markers (PEP 561) so consumers get inline types
+
+- **All five packages now ship a `py.typed` marker** (`whatifd` core + `whatifd-langfuse` / `whatifd-phoenix` / `whatifd-inspect-ai` / `whatifd-datadog`). Without it, a developer importing the libraries into their own project saw `Stub file not found for "whatifd_inspect_ai"` (and the like) from their type checker / IDE (Pyright/Pylance, mypy) on every import. The marker tells PEP-561-aware tools to read the packages' inline annotations. Hatchling includes the marker in the built wheels automatically (verified); no build-config change needed. Confirmed: a module importing the adapters now type-checks clean (previously every import was flagged). The root pyproject's adapter mypy-override comment is updated — it no longer claims "no py.typed marker"; it now only scopes core's own mypy run (which doesn't deep-type-check foreign-package internals).
+
 ### Added — GitLab CI/CD Catalog component for whatifd (P4)
 
 - **`integrations/gitlab/templates/whatifd-fork.yml`** — the GitLab analog of the `whatifd-fork` GitHub action: a CI/CD Catalog component that runs `whatifd fork --print-paths`, gates the pipeline on the verdict exit code, uploads `reports/` as an artifact, and posts the verdict as a **merge-request note** deduped by the shared `<!-- whatifd-fork -->` marker (#94 parity) via the GitLab Notes API. Uses Python stdlib `urllib` (no `curl`/`jq`, so the default `python:3.12-slim` works) and the **CI_JOB_TOKEN-default / GITLAB_TOKEN-fallback** token model. Inputs: `stage`/`image`/`config`/`pip-install`/`fail-on-dont-ship`/`comment-on-mr`. Canonical source is staged in the monorepo; publishing to the GitLab Catalog is an owner-only step (dedicated GitLab project + catalog resource + release) documented in `integrations/gitlab/README.md`. Structural + python-compile pins in `tests/integration/test_gitlab_component.py`.

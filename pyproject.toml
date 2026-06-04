@@ -109,13 +109,13 @@ strict = true
 warn_unused_ignores = true
 warn_return_any = true
 
-# Optional adapter packages: type stubs are not exposed (no py.typed
-# marker today) so untyped-import errors are expected when mypy runs
-# without the workspace install (e.g., the pre-commit isolated env).
-# `ignore_missing_imports` here also silences the corresponding
-# `unused-ignore` warning when the workspace IS installed and types
-# are available — the per-module override is the correct shape for
-# "import is fine, just don't try to type-check the foreign code."
+# Optional adapter packages. They now SHIP `py.typed` (PEP 561), so external
+# consumers and IDEs see inline types — no more "Stub file not found". This
+# override only governs CORE's own mypy run: when the workspace isn't
+# installed (the pre-commit / CI mypy env) the adapter imports are not-found,
+# and even when it is installed we don't deep-type-check foreign-package
+# internals from core (that's each adapter's own mypy job). `ignore_missing_imports`
+# is the right shape for "import is fine, don't type-check the foreign code."
 [[tool.mypy.overrides]]
 module = [
     "whatifd_inspect_ai",

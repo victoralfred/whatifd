@@ -2,12 +2,12 @@
 
 ## Supported versions
 
-This project is pre-alpha. Security fixes will be issued for the most recent minor release once v0.1 ships.
+Security fixes are issued for the most recent minor release.
 
-| Version | Supported                       |
-|---------|---------------------------------|
-| 0.0.x   | :x: (pre-alpha, no guarantees)  |
-| 0.1.x   | :white_check_mark: (planned)    |
+| Version | Supported          |
+|---------|--------------------|
+| 0.3.x   | :white_check_mark: |
+| < 0.3   | :x:                |
 
 ## Reporting a vulnerability
 

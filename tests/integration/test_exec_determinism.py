@@ -24,6 +24,7 @@ from whatifd.cli_pipeline import build_delta_fn
 from whatifd.config import ChangeConfig
 from whatifd.pipeline import run_pipeline
 from whatifd.runner_loader import LoadedRunner
+from whatifd.serialization.canonical import canonical_json_bytes
 from whatifd.serialization.determinism import extract_deterministic_subset
 from whatifd.serialization.encoder import encode_report_v01
 from whatifd.types.policy import DecisionPolicy, TrustFloor
@@ -110,6 +111,8 @@ def _run_exec_and_extract_subset(tmp_path) -> dict[str, Any]:
 @pytest.mark.skipif(sys.platform == "win32", reason="exec: lane is POSIX-only in v1")
 def test_exec_lane_deterministic_subset_byte_equal(tmp_path) -> None:
     # Two fresh runs (fresh subprocess each) → byte-equal deterministic subset.
+    # Compare via the serialization boundary (canonical_json_bytes), matching
+    # the python-lane determinism suite, rather than a raw json.dumps.
     subset_a = _run_exec_and_extract_subset(tmp_path)
     subset_b = _run_exec_and_extract_subset(tmp_path)
-    assert json.dumps(subset_a, sort_keys=True) == json.dumps(subset_b, sort_keys=True)
+    assert canonical_json_bytes(subset_a) == canonical_json_bytes(subset_b)

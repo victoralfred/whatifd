@@ -36,15 +36,27 @@ task is done only when its tests pass and CI is green.
    down).
 5. **Verify.** Run `uv run pytest` (full suite), `uv run mypy src`, `ruff`, and
    the relevant integration tests. Paste results in the sub-PR.
-6. **Land.** Open the sub-PR into `auto/whatifd-hardening`; when its CI is green,
-   squash-merge it. If CI is red, fix before starting the next task — never leave
-   the integration branch red.
+6. **Land — per-sub-PR review gate (review happens per task, NOT deferred to the
+   final PR).** A sub-PR may be squash-merged into `auto/whatifd-hardening` ONLY
+   when **all** hold:
+   - CI is green (`pytest`, `mypy`, `ruff`, determinism, consistency).
+   - The `claude doctrine review` check has **no Blocking issues** (an
+     `Inconclusive`/advisory verdict does not block; a verdict listing
+     **Blocking issues** does — fix them and re-push before merging).
+   - The sub-PR includes its **CHANGELOG `[Unreleased]`** entry (for any
+     user-facing change) and, for doctrine-guarded work, its
+     **`cascade-catalog.md`** entry — in the same sub-PR.
+   If any gate fails, fix before starting the next task — never leave the
+   integration branch red and never merge a sub-PR the doctrine review blocks.
+   This is the structural answer to "batched diff hides per-change review": each
+   change is reviewed by CI + the doctrine bot at sub-PR time.
 7. **Update** the single PR body (task board: done / in-progress / next) and
    print a one-line status. Keep `consistency_check.py --repo .` and
    `--self-test` at exit 0 (cardinal rule 7 still applies).
 8. **Stall rule.** Two iterations with no landed change on a task → mark it
-   BLOCKED with a diagnosis and move on; if the whole board stalls, stop and
-   summarize.
+   BLOCKED with a diagnosis, **post a notification comment on PR #147** (the
+   human is out of the loop but must be able to see blocks), and move on; if the
+   whole board stalls, stop and summarize on the PR.
 
 ## Backlog (priority order; full-autonomy scope)
 
@@ -68,6 +80,16 @@ task is done only when its tests pass and CI is green.
 **P2 — doctrine-guarded features (design under doctrine, cascade-catalog entry each):**
 - §11 cluster-paired bootstrap math · §12 judge-vs-human calibration gate ·
   §19 `ReportV01` signing/provenance.
+
+**Statistical doctrine anchors (cardinal #10) — binding on §11/§12/§13/§14:**
+every statistical change must (a) keep `MethodologyDisclosure` honest — the
+declared `bootstrap.method`, `resamples`, power/MDE, and any stability term must
+reflect what actually ran at runtime, never a label that overstates the method
+(see deferred §4's honesty obligation and `doctrine.md` "Statistical claims must
+match the design"); (b) keep per-trace evidence descriptive, not inferential;
+(c) make no causal claim beyond "associated under cached-tool replay". A sub-PR
+that populates a disclosure field without the matching implementation is a
+cardinal-#10 violation and must be blocked by its own regression test.
 
 **P3 — documentation completeness:**
 - Reconcile every `docs/` page and the site to whatever P1/P2 ships; keep

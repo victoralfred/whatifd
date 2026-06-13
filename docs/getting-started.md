@@ -2,7 +2,7 @@
 
 A worked, end-to-end example that runs the whatifd pipeline and produces a `Ship` / `Don't Ship` / `Inconclusive` verdict report. Read top-to-bottom.
 
-> **What works today (v0.1):** the programmatic API (`whatifd.pipeline.run_pipeline`) drives the full pipeline end-to-end with both real adapters (`whatifd-langfuse`, `whatifd-inspect-ai`) in the path. The `whatifd fork` CLI command is wired through config + the cardinal-#7 two-affirmation gate but its dispatcher body is a documented stub for v0.1.0; see [`phases.md`](../.claude/skills/whatifd-design/references/phases.md) "Implementation gaps." The integration-test suite (`tests/integration/test_real_adapters.py`) is the load-bearing reference for the pattern below.
+> **What works today (v0.3):** both the programmatic API (`whatifd.pipeline.run_pipeline`) and the **`whatifd fork` CLI** drive the full pipeline end-to-end — config load → cardinal-#7 two-affirmation → source/runner/scorer → verdict → JSON + Markdown report artifacts. The runner can be a Python callable (`python:<module>:<attr>`) or **any language** via the [`exec:` lane](./runner-contract-exec.md). The integration-test suite (`tests/integration/test_real_adapters.py`) is the load-bearing reference for the programmatic pattern below.
 
 ## Install
 
@@ -254,9 +254,10 @@ The five-section structure (header → cohort table → findings → cache + met
 ## What's next
 
 - **[Runner contract](./runner-contract.md)** — the protocol your replay code implements
+- **[`exec:` runner lane](./runner-contract-exec.md)** — implement the runner in any language over stdio; validate it with `whatifd exec-check "exec:<argv>"`
 - **[Concepts](./concepts.md)** — the doctrine: defensible verdicts, non-claims, trust floor vs decision policy
 - **[Walkthroughs](./walkthroughs/)** — seven rendered examples (Ship, Don't Ship, Inconclusive)
-- **[`examples/minimal_agent/`](../examples/minimal_agent/)** — copy-paste reference Runner
+- **[`examples/minimal_agent/`](../examples/minimal_agent/)** (Python) and **[`examples/exec_agent_node/`](../examples/exec_agent_node/)** (Node, via `exec:`) — copy-paste reference runners
 
 ## Stub adapters: what they do (and don't)
 
@@ -267,9 +268,9 @@ Two CLI-friendly placeholders ship with whatifd core for credentialless smokes:
 
 The stub is the right default for an end-to-end CLI smoke that proves the wiring works. It is the wrong default for an experiment whose verdict you want to act on.
 
-## Known limitations (v0.1.0)
+## Known limitations (v0.3.0)
 
-- The `whatifd fork` CLI dispatcher is stubbed; use the programmatic API above. End-to-end CLI wiring is the next branch.
+- *(Resolved)* The `whatifd fork` CLI is fully wired end-to-end as of v0.3.0 — config → verdict → report artifacts. The programmatic API above remains useful for embedding the pipeline directly.
 - ~~CI bounds are empirical 5th/95th percentiles, not stratified bootstrap.~~ **Resolved in v0.2 (Phase E.2):** CI bounds use real paired-percentile bootstrap (`bootstrap.method = "paired_percentile_bootstrap"`, `resamples = 2000`). Cluster-paired bootstrap is the v0.3 surface.
 - Cache `verify` does structural checks but not cryptographic content-hash. Deferred to v0.2.
 

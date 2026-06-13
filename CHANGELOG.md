@@ -21,6 +21,7 @@ change is called out under `### Changed (BREAKING)`.
 
 ### Fixed
 
+- **Docs: corrected stale "the `whatifd fork` CLI is a stub" claims.** `getting-started.md` and `runner-contract.md` still said the fork dispatcher was a documented v0.1.0 stub and to "use the programmatic API"; the CLI has been fully wired end-to-end since v0.3.0 (verified: it produces report artifacts). README + getting-started now also document the `exec:` runner lane, `whatifd exec-check`, and the Node example.
 - Renamed the adopter-facing telemetry doc `AGENT_TELEMENTRY.md` → `AGENT_TELEMETRY.md` (filename typo); the `cat CLAUDE.md.append.md >> CLAUDE.md` adoption flow is unchanged.
 
 ## [0.3.0] - 2026-06-04

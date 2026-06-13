@@ -27,7 +27,7 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 |---|---|
 | PLANNED | 20 |
 | PR_OPEN | 1 |
-| DONE | 2 |
+| DONE | 3 |
 | AWAITING_HUMAN | 6 |
 | REJECTED | 1 |
 | IN_PROGRESS / BLOCKED / DEFERRED | 0 |
@@ -85,7 +85,7 @@ log:
   - 2026-06-13 PR_OPEN→DONE — PR #136 merged; re-verified on main: install line lists 5 packages, no "in-development", adapter_inventory exit 0
 
 ### GAP-003 — RELEASING.md package/adapter counts predate the fifth package
-status: PR_OPEN
+status: DONE
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -104,9 +104,10 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-03; RELEASING.md:3,36,83,89,100,101,122
   - 2026-06-13 CONFIRMED→PLANNED
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/003-releasing-counts off main; fixed counts at :3,:36,:83,:89,:100,:101,:103,:109,:122 + added datadog to :102 install line; :109 verified against release.yml (5 publish-* jobs); left :20 (OIDC claims) and :115 (4 github actions) unchanged; AC verified (numeric_claims 0 findings exit 0; test_version_parity 7 passed covering all five); PR #137
+  - 2026-06-13 PR_OPEN→DONE — PR #137 merged; re-verified on main: numeric_claims exit 0
 
 ### GAP-004 — SECURITY.md supported-versions table frozen at pre-v0.1
-status: PLANNED
+status: PR_OPEN
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -119,10 +120,11 @@ acceptance:
   - table reflects the policy already stated in the file (most recent minor = 0.3.x supported), no "(planned)" on released versions, no "pre-alpha"/"once v0.1 ships" wording
   - `python consistency_check.py --repo . --only stale_status_words` → no SECURITY.md finding
   - note: the *policy itself* ("most recent minor only") is unchanged — changing the policy would be a HUMAN decision; this unit only makes the table match the existing policy sentence
-pr:
+pr: "#138"
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — new unit (seed appendix); SECURITY.md:5,10 vs git tag v0.3.0
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/004-security-versions off main; table → 0.3.x supported / <0.3 not, intro de-staled, policy unchanged; AC verified (no SECURITY.md finding in stale_status_words; no pre-alpha/planned/once-v0.1 residue); PR #138
 
 ### GAP-005 — "six rendered walkthroughs" claims vs seven files in docs/walkthroughs/
 status: PLANNED
@@ -331,6 +333,28 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED — first eligible META unit for Phase 3; fix proposed, not applied (held at human gate)
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — human fast-tracked; branch gap/030-py313-frozen-slots off fresh main, `assert excinfo.type in (...)` → `assert issubclass(excinfo.type, (...))`; verified `pytest tests/unit/whatifd/adapters/test_protocols.py` 20 passed on both 3.13.13 and 3.14.0; PR #135
   - 2026-06-13 PR_OPEN→DONE — PR #135 merged (MERGED 2026-06-13T02:12:47Z); re-verified on main: test_slots_rejects_arbitrary_attrs passes under py3.13.13 (1 passed)
+
+### GAP-031 — SECURITY/CONTRIBUTING/copilot docs cite nonexistent src/whatifd/{ingest,score} paths
+status: PLANNED
+lane: META
+tier: T1-credibility
+class: DRIFT
+size: S
+depends-on: none
+evidence:
+  - SECURITY.md:46 — "Official adapters shipped under `src/whatifd/ingest/`"; :47 — "default scorer wrappers in `src/whatifd/score/`"
+  - CONTRIBUTING.md:103 ("src/whatifd/score/", "src/whatifd/diff/"), :111 ("Adding a tracer adapter (`src/whatifd/ingest/`)"), :129 ("Adding a scorer (`src/whatifd/score/`)")
+  - .github/copilot-instructions.md:65,76 — same `src/whatifd/{ingest,score,diff}/` references
+  - `ls src/whatifd/` → adapters/ (factory.py, protocols.py, stub.py, pii.py), scorer_loader.py, diff.py (a FILE), contract/; NO ingest/ or score/ dirs; external adapters live in packages/whatifd-*/
+  - discovered 2026-06-13 during GAP-004 (SECURITY.md edit); a contributor following these docs hits nonexistent module paths
+acceptance:
+  - every `src/whatifd/ingest/` and `src/whatifd/score/` reference in SECURITY.md, CONTRIBUTING.md, .github/copilot-instructions.md updated to the real layout (in-repo: src/whatifd/adapters/, scorer_loader.py; external: packages/whatifd-*/) or removed; `src/whatifd/diff/` → diff.py where it implies a dir
+  - `grep -rn "src/whatifd/ingest\|src/whatifd/score" --include="*.md" . | grep -v docs/sessions` → 0 hits
+  - reconciliation toward the tree (truth hierarchy); if any path names a *planned* future module, label it roadmap rather than asserting it ships
+pr:
+log:
+  - 2026-06-13 HYPOTHESIS→CONFIRMED — discovered during GAP-004; ls src/whatifd/ vs SECURITY.md:46-47 / CONTRIBUTING.md:103,111,129 / copilot-instructions.md:65,76
+  - 2026-06-13 CONFIRMED→PLANNED
 
 ## Units — T2 (reach)
 
@@ -589,6 +613,7 @@ Also recorded as corrected-premise (not separate rejected units): H-05's "no cal
 - 2026-06-13 GAP-030 fast-tracked at human request: PLANNED→PR_OPEN (#135) on branch gap/030-py313-frozen-slots (issubclass fix; 20 passed on 3.13.13 + 3.14.0). Board: 22 PLANNED / 1 PR_OPEN / 6 AWAITING_HUMAN / 1 REJECTED.
 - 2026-06-13 iter 1: PR #134 + #135 merged (Gate A); GAP-030 PR_OPEN→DONE (reconciled, re-verified on main); GAP-002 PLANNED→PR_OPEN (#136). Board: 21 PLANNED / 1 PR_OPEN / 1 DONE / 6 AWAITING_HUMAN / 1 REJECTED.
 - 2026-06-13 iter 2: PR #136 merged; GAP-002 PR_OPEN→DONE (reconciled, re-verified on main); GAP-003 PLANNED→PR_OPEN (#137). Board: 20 PLANNED / 1 PR_OPEN / 2 DONE / 6 AWAITING_HUMAN / 1 REJECTED.
+- 2026-06-13 iter 3: PR #137 merged; GAP-003 PR_OPEN→DONE (reconciled, re-verified on main); GAP-004 PLANNED→PR_OPEN (#138); discovered + recorded GAP-031 (dead src/whatifd/{ingest,score} doc paths). Board: 20 PLANNED / 1 PR_OPEN / 3 DONE / 6 AWAITING_HUMAN / 1 REJECTED (31 units).
 
 ## Closeout report
 

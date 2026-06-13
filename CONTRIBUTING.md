@@ -100,7 +100,7 @@ must update to `tool_cache.get(...)`.
 
 ### What gets reviewed especially carefully
 
-- **Architectural changes** (anything in `src/whatifd/contract/`, `src/whatifd/replay/`, `src/whatifd/decision/`, `src/whatifd/statistical/`, `src/whatifd/diff.py`) require a corresponding `DESIGN.md` update or a clear note about why the design is unchanged.
+- **Architectural changes** (anything in `src/whatifd/contract/`, `src/whatifd/replay/`, `src/whatifd/score/`, `src/whatifd/diff/`) require a corresponding `DESIGN.md` update or a clear note about why the design is unchanged.
 - **Report format changes** must preserve all 5 mandatory sections (Verdict / Stats / Replay validity / Baseline integrity / Evidence + judge rationale). Removing a section requires a major-version bump.
 - **Public API changes** (anything users import from `whatifd.*`) must be either additive or behind a major-version bump. Pre-1.0, breaking changes are allowed but documented in `CHANGELOG.md` under `### Changed (BREAKING)`.
 - **CLI flag or exit-code changes** must update the README quickstart and any docs mentioning them.
@@ -108,7 +108,7 @@ must update to `tool_cache.get(...)`.
 
 ---
 
-## Adding a tracer adapter (`src/whatifd/adapters/` + `packages/whatifd-<source>/`)
+## Adding a tracer adapter (`src/whatifd/ingest/`)
 
 The adapter contract is small:
 
@@ -126,7 +126,7 @@ Tests should live at `tests/ingest/test_<adapter>.py` with two flavors:
 
 ---
 
-## Adding a scorer (`src/whatifd/scorer_loader.py` + the `Scorer` protocol)
+## Adding a scorer (`src/whatifd/score/`)
 
 Wrap an existing eval framework rather than reimplementing scoring from scratch. A scorer receives a `ScoreCase` and returns a numeric score plus a rationale string. **The rationale is mandatory** because it surfaces in the report's Evidence section, and the report's unit of trust is *verdict + evidence + rationale*, not just numbers.
 

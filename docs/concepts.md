@@ -121,4 +121,4 @@ The architecture's trust-first cost is real: slower than a naive implementation,
 - The runner contract: [runner-contract.md](runner-contract.md) (Phase 10)
 - The walkthrough scenarios that pressure-tested this design: [walkthroughs/README.md](walkthroughs/README.md)
 - The full design rationale: [DESIGN.md](../DESIGN.md)
-- The long-term destination: [Path Z](https://whatif.codes/concepts/path-z.html) (Phase 10) — describes the tool doctrine separately from v0.1 doctrine.
+- The long-term destination: [path-z.md](path-z.md) (Phase 10) — describes the tool doctrine separately from v0.1 doctrine.

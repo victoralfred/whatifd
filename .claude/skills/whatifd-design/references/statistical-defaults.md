@@ -140,7 +140,7 @@ Concretely:
 - Scoring: every replayed trace, no active selection
 - Bootstrap: full B=5000 every run
 
-If cost becomes a barrier to adoption, sequential testing (roadmap) and active selection with confirmatory holdout (roadmap) are the planned interventions. Both require careful design to avoid biasing verdicts.
+If cost becomes a barrier to adoption, sequential testing (v0.3) and active selection with confirmatory holdout (v0.3) are the planned interventions. Both require careful design to avoid biasing verdicts.
 
 ## What this implies for `whatifd.config.yaml`
 

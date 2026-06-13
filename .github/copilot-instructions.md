@@ -62,7 +62,7 @@ Exit codes used by the CLI (from README):
   - Report must include mandatory sections (Verdict, Stats, Replay validity, Baseline integrity, Evidence + judge rationale). Preserve these when changing report format.
 
 - Architecture governance:
-  - Architectural changes touching `src/whatifd/contract/`, `src/whatifd/replay/`, `src/whatifd/decision/`, `src/whatifd/statistical/`, `src/whatifd/diff.py` require a DESIGN.md update or explicit justification in the PR.
+  - Architectural changes touching `src/whatifd/contract/`, `src/whatifd/replay/`, `src/whatifd/score/`, `src/whatifd/diff/` require a DESIGN.md update or explicit justification in the PR.
   - When you change schema/major decisions, update the cascade-catalog (see `.claude/skills/whatifd-design/references/cascade-catalog.md`).
 
 - Sensitive/defensive rules (from whatifd-design SKILL):
@@ -73,7 +73,7 @@ Exit codes used by the CLI (from README):
 4) Where Copilot should look first
 
 - READ FIRST: README.md, CONTRIBUTING.md, DESIGN.md, and `.claude/skills/whatifd-design/SKILL.md` and its references.
-- Source entry points: `src/whatifd/adapters/`, `src/whatifd/replay/`, `src/whatifd/statistical/`, `src/whatifd/diff.py`.
+- Source entry points: `src/whatifd/ingest/`, `src/whatifd/replay/`, `src/whatifd/score/`, `src/whatifd/diff/`.
 - Tests and fixtures: `tests/` (use recorded fixtures to avoid network calls during local analysis).
 
 

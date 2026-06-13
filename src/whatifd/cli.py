@@ -802,6 +802,13 @@ def report_migrate(
         bool,
         typer.Option("--in-place", help="Overwrite the input file instead of writing alongside."),
     ] = False,
+    indent: Annotated[
+        bool,
+        typer.Option(
+            "--indent/--no-indent",
+            help="Write human-readable indented JSON (default) or compact JSON.",
+        ),
+    ] = True,
 ) -> None:
     """Migrate a report to the current schema.
 
@@ -815,8 +822,10 @@ def report_migrate(
     structured stderr message + exit 2, never an unhandled exception.
 
     Output: writes `<report>.v0.2.json` next to the input by default,
-    or overwrites the input with `--in-place`. Already-current reports
-    are reported as no-ops with exit 0.
+    or overwrites the input with `--in-place`. The artifact is
+    human-readable indented JSON by default (its audience is an operator
+    diffing v0.1 vs v0.2); pass `--no-indent` for the compact canonical
+    form. Already-current reports are reported as no-ops with exit 0.
     """
     from whatifd.report.migrate import (
         MigrationError,
@@ -843,7 +852,7 @@ def report_migrate(
         )
         raise typer.Exit(code=EXIT_SUCCESS)
 
-    from whatifd.serialization import canonical_json_bytes
+    from whatifd.serialization import canonical_json_bytes, indented_json_bytes
 
     # `parent / (stem + suffix)` rather than `with_suffix` — explicit
     # about intent: keep the original stem, append the version marker,
@@ -853,7 +862,11 @@ def report_migrate(
     out_path = (
         report if in_place else report.parent / f"{report.stem}.v{REPORT_SCHEMA_VERSION}.json"
     )
-    out_path.write_bytes(canonical_json_bytes(migrated) + b"\n")
+    # The migrator artifact's audience is a human diffing v0.1 vs v0.2,
+    # so indent by default (#79); --no-indent restores the compact
+    # canonical form. Both go through the serialization boundary.
+    encode = indented_json_bytes if indent else canonical_json_bytes
+    out_path.write_bytes(encode(migrated) + b"\n")
     typer.echo(f"whatifd report-migrate: wrote {out_path} (v{REPORT_SCHEMA_VERSION}).")
     raise typer.Exit(code=EXIT_SUCCESS)
 

@@ -1,6 +1,6 @@
 # Releasing whatifd
 
-Runbook for cutting a release. The release workflow is fully automated via PyPI Trusted Publishing — pushing a `v*.*.*` tag triggers `.github/workflows/release.yml`, which builds all four distributions, publishes each to its own PyPI project, and creates a GitHub Release with auto-generated notes.
+Runbook for cutting a release. The release workflow is fully automated via PyPI Trusted Publishing — pushing a `v*.*.*` tag triggers `.github/workflows/release.yml`, which builds all five distributions, publishes each to its own PyPI project, and creates a GitHub Release with auto-generated notes.
 
 ## One-time setup (per maintainer / per project)
 
@@ -33,7 +33,7 @@ For any release (substitute the target version `vX.Y.Z` throughout):
 
 ### 1. Pre-flight (on a release-prep branch)
 
-- [ ] All four `pyproject.toml` versions match the target tag (root + three adapter packages); `tests/unit/whatifd/test_version_parity.py` pins this
+- [ ] All five `pyproject.toml` versions match the target tag (root + four adapter packages); `tests/unit/whatifd/test_version_parity.py` pins this
 - [ ] `Development Status` classifier is appropriate (`3 - Alpha` through v0.4.x; bump to `4 - Beta` at v0.5+)
 - [ ] `CHANGELOG.md` `[Unreleased]` block promoted to `[X.Y.Z] - YYYY-MM-DD`; a fresh `[Unreleased]` header added
 - [ ] CHANGELOG link footer updated (`[Unreleased]` → `[X.Y.Z]` plus a fresh `[Unreleased]` line)
@@ -80,13 +80,13 @@ The job's `environment.name` doesn't match what's configured on PyPI for that pr
 
 ### Build failure on a single package
 
-The build job builds all four in sequence; a failure in one fails the whole tag's release. Fix and either delete + re-tag (if no PyPI uploads happened) or bump to the next patch version (if any package already uploaded — PyPI does NOT permit overwriting a published version).
+The build job builds all five in sequence; a failure in one fails the whole tag's release. Fix and either delete + re-tag (if no PyPI uploads happened) or bump to the next patch version (if any package already uploaded — PyPI does NOT permit overwriting a published version).
 
 ### Mid-release partial upload
 
 If `whatifd` publishes but one of the adapters fails, the resulting state is inconsistent (e.g., users can install `whatifd` but the adapters reference a now-orphaned version). The recovery is:
 
-1. **Bump ALL four packages to the next patch** (e.g., `0.2.1` everywhere — root + three adapters). Workspace version parity is a release invariant that operator-facing docs (README version table, CHANGELOG, schema URI mapping) depend on; `tests/unit/whatifd/test_version_parity.py` pins it. Skipping any bump orphans that package against the others, breaking the "one workspace, one version" mental model.
+1. **Bump ALL five packages to the next patch** (e.g., `0.2.1` everywhere — root + four adapters). Workspace version parity is a release invariant that operator-facing docs (README version table, CHANGELOG, schema URI mapping) depend on; `tests/unit/whatifd/test_version_parity.py` pins it. Skipping any bump orphans that package against the others, breaking the "one workspace, one version" mental model.
 2. Update the adapters' `dependencies` to require `whatifd==<new-version>` (or `>=` if you don't need strict parity).
 3. Tag `vX.Y.Z` and re-run the workflow. PyPI rejects republishing a version, so the bump is necessary even if no source changed. Adapters publish after the root succeeds.
 
@@ -97,16 +97,16 @@ If `whatifd` publishes but one of the adapters fails, the resulting state is inc
 Steps:
 1. Configure a parallel set of TestPyPI Trusted Publishers at https://test.pypi.org/manage/account/publishing/ — same owner / repo / workflow / environment-name claims; `test.pypi.org` is a separate registry from `pypi.org` so the publishers don't collide.
 2. In a temporary workflow branch, point each `pypa/gh-action-pypi-publish` step at TestPyPI by adding `repository-url: https://test.pypi.org/legacy/`.
-3. **On the same throwaway branch, bump every workspace `pyproject.toml` version to `X.Y.ZrcN`** (root + all three adapters). The git tag is metadata only — PyPI publishes whatever the `pyproject.toml` `version` field declares. The tag↔version guard in `release.yml` will fail the workflow if these disagree ([cardinal #1](./CLAUDE.md#cardinal-rules-non-negotiable): failure-as-data, structural enforcement, not convention). Skipping this step silently publishes the wrong version and burns the slot.
-4. Tag and push `vX.Y.ZrcN` (e.g., `v0.2.0rc1`). Verify all four packages appear at `https://test.pypi.org/project/whatifd/X.Y.ZrcN/` etc.
-5. `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ whatifd==X.Y.ZrcN whatifd-langfuse==X.Y.ZrcN whatifd-inspect-ai==X.Y.ZrcN whatifd-phoenix==X.Y.ZrcN` in a clean venv.
-6. If everything resolves and `whatifd --help` works, **delete the throwaway branch and discard its commits** (the workflow edits and the `X.Y.ZrcN` version bumps are intentionally ephemeral — they live only on the throwaway branch and are never cherry-picked, merged, or otherwise carried forward). Then from `main`, return to the per-release checklist above; **its pre-flight item "All four `pyproject.toml` versions match the target tag" is the load-bearing gate for the prod tag.** The tag↔version guard will fail the workflow if `main`'s pyprojects still declare the prior release's version when you push `vX.Y.Z`. Bump them in a PR off `main` before tagging.
+3. **On the same throwaway branch, bump every workspace `pyproject.toml` version to `X.Y.ZrcN`** (root + all four adapters). The git tag is metadata only — PyPI publishes whatever the `pyproject.toml` `version` field declares. The tag↔version guard in `release.yml` will fail the workflow if these disagree ([cardinal #1](./CLAUDE.md#cardinal-rules-non-negotiable): failure-as-data, structural enforcement, not convention). Skipping this step silently publishes the wrong version and burns the slot.
+4. Tag and push `vX.Y.ZrcN` (e.g., `v0.2.0rc1`). Verify all five packages appear at `https://test.pypi.org/project/whatifd/X.Y.ZrcN/` etc.
+5. `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ whatifd==X.Y.ZrcN whatifd-langfuse==X.Y.ZrcN whatifd-inspect-ai==X.Y.ZrcN whatifd-phoenix==X.Y.ZrcN whatifd-datadog==X.Y.ZrcN` in a clean venv.
+6. If everything resolves and `whatifd --help` works, **delete the throwaway branch and discard its commits** (the workflow edits and the `X.Y.ZrcN` version bumps are intentionally ephemeral — they live only on the throwaway branch and are never cherry-picked, merged, or otherwise carried forward). Then from `main`, return to the per-release checklist above; **its pre-flight item "All five `pyproject.toml` versions match the target tag" is the load-bearing gate for the prod tag.** The tag↔version guard will fail the workflow if `main`'s pyprojects still declare the prior release's version when you push `vX.Y.Z`. Bump them in a PR off `main` before tagging.
 
 The pre-release tag remains on TestPyPI and on a GitHub Release; you can delete the GitHub Release if you want to keep the public release notes focused on the real tag.
 
 ## Supply-chain hardening
 
-The release workflow grants `id-token: write` to four publish jobs so PyPI can verify the OIDC claim. The action that *consumes* that token, `pypa/gh-action-pypi-publish`, is currently pinned to `release/v1` (PyPA's recommended floating ref). For maximum hardening on a sensitive release, pin to a full commit SHA before tagging:
+The release workflow grants `id-token: write` to five publish jobs so PyPI can verify the OIDC claim. The action that *consumes* that token, `pypa/gh-action-pypi-publish`, is currently pinned to `release/v1` (PyPA's recommended floating ref). For maximum hardening on a sensitive release, pin to a full commit SHA before tagging:
 
 1. Find the latest commit SHA for the release on https://github.com/pypa/gh-action-pypi-publish/releases.
 2. Replace each `pypa/gh-action-pypi-publish@release/v1` line in `.github/workflows/release.yml` with `pypa/gh-action-pypi-publish@<full-40-char-sha> # v1.X.Y`.
@@ -119,7 +119,7 @@ The github-published `actions/checkout`, `actions/upload-artifact`, `actions/dow
 For `0.1.x` patches:
 
 1. Branch off `main`, fix
-2. Bump version in all three `pyproject.toml` files
+2. Bump version in all five `pyproject.toml` files
 3. Add `[0.1.x] - YYYY-MM-DD` block to CHANGELOG
 4. Open + merge PR
 5. Tag `v0.1.x` and push

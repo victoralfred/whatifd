@@ -25,9 +25,9 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 
 | state | count |
 |---|---|
-| PLANNED | 21 |
+| PLANNED | 20 |
 | PR_OPEN | 1 |
-| DONE | 1 |
+| DONE | 2 |
 | AWAITING_HUMAN | 6 |
 | REJECTED | 1 |
 | IN_PROGRESS / BLOCKED / DEFERRED | 0 |
@@ -62,7 +62,7 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED — acceptance set; PR lands in whatifd-docs
 
 ### GAP-002 — README omits shipped whatifd-datadog from install line and calls it "in-development"
-status: PR_OPEN
+status: DONE
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -82,9 +82,10 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-02; README.md:26,28 vs packages/ + CHANGELOG 0.3.0
   - 2026-06-13 CONFIRMED→PLANNED
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/002-readme-datadog off main; install line now names all 5 packages, "in-development" removed; AC verified (grep exit 1, adapter_inventory 0 findings exit 0); PR #136
+  - 2026-06-13 PR_OPEN→DONE — PR #136 merged; re-verified on main: install line lists 5 packages, no "in-development", adapter_inventory exit 0
 
 ### GAP-003 — RELEASING.md package/adapter counts predate the fifth package
-status: PLANNED
+status: PR_OPEN
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -98,10 +99,11 @@ acceptance:
   - every count in RELEASING.md matches the tree (5 packages / 4 adapters), incl. :109 verified against release.yml
   - `python consistency_check.py --repo . --only numeric_claims` → exit 0
   - `uv run pytest tests/unit/whatifd/test_version_parity.py` passes and covers all five packages
-pr:
+pr: "#137"
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-03; RELEASING.md:3,36,83,89,100,101,122
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/003-releasing-counts off main; fixed counts at :3,:36,:83,:89,:100,:101,:103,:109,:122 + added datadog to :102 install line; :109 verified against release.yml (5 publish-* jobs); left :20 (OIDC claims) and :115 (4 github actions) unchanged; AC verified (numeric_claims 0 findings exit 0; test_version_parity 7 passed covering all five); PR #137
 
 ### GAP-004 — SECURITY.md supported-versions table frozen at pre-v0.1
 status: PLANNED
@@ -586,6 +588,7 @@ Also recorded as corrected-premise (not separate rejected units): H-05's "no cal
 - 2026-06-13 Phase-2 amend: PR #0 CI surfaced a pre-existing Python-3.13 test failure (test_slots_rejects_arbitrary_attrs); isolated as not caused by the docs-only PR; recorded as GAP-030 (META, T1). Board: 23 PLANNED / 6 AWAITING_HUMAN / 1 REJECTED.
 - 2026-06-13 GAP-030 fast-tracked at human request: PLANNED→PR_OPEN (#135) on branch gap/030-py313-frozen-slots (issubclass fix; 20 passed on 3.13.13 + 3.14.0). Board: 22 PLANNED / 1 PR_OPEN / 6 AWAITING_HUMAN / 1 REJECTED.
 - 2026-06-13 iter 1: PR #134 + #135 merged (Gate A); GAP-030 PR_OPEN→DONE (reconciled, re-verified on main); GAP-002 PLANNED→PR_OPEN (#136). Board: 21 PLANNED / 1 PR_OPEN / 1 DONE / 6 AWAITING_HUMAN / 1 REJECTED.
+- 2026-06-13 iter 2: PR #136 merged; GAP-002 PR_OPEN→DONE (reconciled, re-verified on main); GAP-003 PLANNED→PR_OPEN (#137). Board: 20 PLANNED / 1 PR_OPEN / 2 DONE / 6 AWAITING_HUMAN / 1 REJECTED.
 
 ## Closeout report
 

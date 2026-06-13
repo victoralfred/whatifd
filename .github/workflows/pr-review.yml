@@ -8,7 +8,9 @@ name: pr-review (claude)
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
-    branches: [main]
+    # `main` plus autopilot integration branches so each sub-PR into the
+    # long-lived hardening branch gets a per-task doctrine review.
+    branches: [main, "auto/**"]
 
 permissions:
   contents: read

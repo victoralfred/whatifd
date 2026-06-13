@@ -115,8 +115,7 @@ class ExecRunner:
         hello = self._recv(_HELLO_TIMEOUT_S)
         if hello.get("type") != "hello" or hello.get("protocol") != PROTOCOL:
             raise ExecRunnerError(
-                "exec runner handshake failed: expected a "
-                f"{PROTOCOL!r} `hello` frame first.",
+                f"exec runner handshake failed: expected a {PROTOCOL!r} `hello` frame first.",
                 details={"raw_excerpt": _excerpt(hello)},
             )
         self._runner_name = _as_str_or_none(hello.get("runner_name"))
@@ -233,8 +232,7 @@ class ExecRunner:
         lookup_id = frame.get("lookup_id")
         if tool_name is None or not isinstance(args, dict):
             raise ExecRunnerError(
-                "exec runner sent a malformed tool_lookup "
-                "(missing tool_name or non-object args).",
+                "exec runner sent a malformed tool_lookup (missing tool_name or non-object args).",
                 details={"raw_excerpt": _excerpt(frame)},
             )
         cached = tool_cache.lookup(tool_name, args)

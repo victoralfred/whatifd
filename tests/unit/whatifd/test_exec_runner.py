@@ -18,7 +18,7 @@ from whatifd.runner_loader import RunnerLoadError, load_runner
 
 # A parametric reference child: it interprets `trace_input.user_message` as a
 # command so one script exercises every path.
-_REFERENCE_CHILD = '''\
+_REFERENCE_CHILD = """\
 import sys, json
 
 def send(o):
@@ -53,13 +53,13 @@ while True:
     else:
         send({"v":1,"type":"replay_response","request_id":rid,
               "output":{"text":"replayed:" + msg,"tool_spans":[],"metadata":{}}})
-'''
+"""
 
-_BAD_HELLO_CHILD = '''\
+_BAD_HELLO_CHILD = """\
 import sys, json
 sys.stdout.write(json.dumps({"v":1,"type":"not_hello"}) + "\\n"); sys.stdout.flush()
 sys.stdin.readline()
-'''
+"""
 
 _DIES_CHILD = "import sys; sys.exit(3)\n"
 

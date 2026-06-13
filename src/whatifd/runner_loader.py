@@ -105,9 +105,7 @@ def _load_exec_runner(reference: str) -> LoadedRunner:
             f"({exc}). argv uses POSIX shell-word rules (no shell interpolation)."
         ) from exc
     if not argv:
-        raise RunnerLoadError(
-            f"target.runner {reference!r}: exec command is empty after parsing."
-        )
+        raise RunnerLoadError(f"target.runner {reference!r}: exec command is empty after parsing.")
 
     # Imported lazily: the subprocess machinery is only needed when an
     # `exec:` runner is actually used, and keeps the loader light for the

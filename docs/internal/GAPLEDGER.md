@@ -25,9 +25,9 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 
 | state | count |
 |---|---|
-| PLANNED | 20 |
+| PLANNED | 19 |
 | PR_OPEN | 1 |
-| DONE | 3 |
+| DONE | 4 |
 | AWAITING_HUMAN | 6 |
 | REJECTED | 1 |
 | IN_PROGRESS / BLOCKED / DEFERRED | 0 |
@@ -107,7 +107,7 @@ log:
   - 2026-06-13 PR_OPEN→DONE — PR #137 merged; re-verified on main: numeric_claims exit 0
 
 ### GAP-004 — SECURITY.md supported-versions table frozen at pre-v0.1
-status: PR_OPEN
+status: DONE
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -125,9 +125,10 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — new unit (seed appendix); SECURITY.md:5,10 vs git tag v0.3.0
   - 2026-06-13 CONFIRMED→PLANNED
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/004-security-versions off main; table → 0.3.x supported / <0.3 not, intro de-staled, policy unchanged; AC verified (no SECURITY.md finding in stale_status_words; no pre-alpha/planned/once-v0.1 residue); PR #138
+  - 2026-06-13 PR_OPEN→DONE — PR #138 merged; re-verified on main: no pre-alpha/once-v0.1 residue in SECURITY.md
 
 ### GAP-005 — "six rendered walkthroughs" claims vs seven files in docs/walkthroughs/
-status: PLANNED
+status: PR_OPEN
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -143,10 +144,11 @@ evidence:
 acceptance:
   - `grep -rn "six rendered\|six committed\|six \`.md\`" README.md docs/getting-started.md docs/schema/v0.1.md docs/walkthroughs/README.md` → no hits (replaced by "seven" or count-free phrasing)
   - `ls docs/walkthroughs/0*.md | wc -l` output cited in PR body matches the new wording
-pr:
+pr: "#139"
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-21; README.md:124 et al. vs 7 files
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/005-walkthrough-count off main; fixed 4 count claims (README:124, schema/v0.1:176, getting-started:252,258, walkthroughs/README:118); preserved walkthroughs/README:114 "six observations" (not a file count); corrected :118 fidelity wording to match the renderer tests; AC verified (scoped grep no hits; ls → 7); PR #139
 
 ### GAP-006 — docs/concepts.md dead relative link to path-z.md
 status: PLANNED
@@ -614,6 +616,7 @@ Also recorded as corrected-premise (not separate rejected units): H-05's "no cal
 - 2026-06-13 iter 1: PR #134 + #135 merged (Gate A); GAP-030 PR_OPEN→DONE (reconciled, re-verified on main); GAP-002 PLANNED→PR_OPEN (#136). Board: 21 PLANNED / 1 PR_OPEN / 1 DONE / 6 AWAITING_HUMAN / 1 REJECTED.
 - 2026-06-13 iter 2: PR #136 merged; GAP-002 PR_OPEN→DONE (reconciled, re-verified on main); GAP-003 PLANNED→PR_OPEN (#137). Board: 20 PLANNED / 1 PR_OPEN / 2 DONE / 6 AWAITING_HUMAN / 1 REJECTED.
 - 2026-06-13 iter 3: PR #137 merged; GAP-003 PR_OPEN→DONE (reconciled, re-verified on main); GAP-004 PLANNED→PR_OPEN (#138); discovered + recorded GAP-031 (dead src/whatifd/{ingest,score} doc paths). Board: 20 PLANNED / 1 PR_OPEN / 3 DONE / 6 AWAITING_HUMAN / 1 REJECTED (31 units).
+- 2026-06-13 iter 4: PR #138 merged; GAP-004 PR_OPEN→DONE (reconciled, re-verified on main); GAP-005 PLANNED→PR_OPEN (#139). Board: 19 PLANNED / 1 PR_OPEN / 4 DONE / 6 AWAITING_HUMAN / 1 REJECTED (31 units).
 
 ## Closeout report
 

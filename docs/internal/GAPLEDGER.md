@@ -25,9 +25,9 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 
 | state | count |
 |---|---|
-| PLANNED | 13 |
-| PR_OPEN | 1 |
-| DONE | 9 |
+| PLANNED | 3 |
+| PR_OPEN | 10 |
+| DONE | 10 |
 | AWAITING_HUMAN | 6 |
 | REJECTED | 2 |
 | IN_PROGRESS / BLOCKED / DEFERRED | 0 |
@@ -35,7 +35,7 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 ## Units — T1 (credibility)
 
 ### GAP-001 — whatif.codes status/version drift: site presents v0.2 as latest, v0.3 as "planned"
-status: PR_OPEN
+status: DONE
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -61,6 +61,7 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-01; docs/index.md:167,174 vs git tags + CHANGELOG [0.3.0]
   - 2026-06-13 CONFIRMED→PLANNED — acceptance set; PR lands in whatifd-docs
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/001-site-status-v030 in whatifd-docs (off af9420a); v0.3 row → shipped(2026-06-04) + roadmap row for unshipped promises; RAGAS/Custom/langfuse v0.3-planned → planned; version + install lines (incl faq/llms.txt/config.md residue) → v0.3.0/5 packages; AC verified (release_table site-side → 0 findings); cross-repo PR whatifd-docs#15. Ledger transition travels in this main-repo PR (cross-repo unit).
+  - 2026-06-13 PR_OPEN→DONE — whatifd-docs#15 MERGED + main-repo ledger PR #143 merged; site release_table → 0 findings
 
 ### GAP-002 — README omits shipped whatifd-datadog from install line and calls it "in-development"
 status: DONE
@@ -173,7 +174,7 @@ log:
   - 2026-06-13 PR_OPEN→DONE — batch landed via #140 (revert #141 closed unmerged; re-confirmed #142); re-verified on main: concepts.md links to whatif.codes/concepts/path-z.html
 
 ### GAP-007 — 13 dead `manifest.json` relative links in walkthroughs + design-skill references
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T1-credibility
 class: HYGIENE
@@ -255,7 +256,7 @@ log:
   - 2026-06-13 PR_OPEN→DONE — landed via #140; re-verified on main: statistical-defaults.md says "(roadmap)", stale_status_words clean
 
 ### GAP-011 — cluster-paired bootstrap promised publicly, absent from tree (promotion)
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T1-credibility
 class: FEATURE
@@ -275,7 +276,7 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED — promotion artifact, not implementation
 
 ### GAP-012 — judge-calibration gate absent (disclosure exists, mechanism doesn't) (promotion)
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T1-credibility
 class: FEATURE
@@ -294,7 +295,7 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED
 
 ### GAP-013 — pre-run power/MDE disclosure absent (post-run observed-MDE exists) (promotion)
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T1-credibility
 class: FEATURE
@@ -311,7 +312,7 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED
 
 ### GAP-014 — no K-replay / flake-stability handling on replay (promotion)
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T1-credibility
 class: FEATURE
@@ -380,7 +381,7 @@ log:
 ## Units — T2 (reach)
 
 ### GAP-015 — runner contract is Python-only; `exec:` stdio lane (promotion; spec drafted)
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T2-reach
 class: FEATURE
@@ -398,7 +399,7 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED
 
 ### GAP-016 — OTel GenAI SemConv source adapter missing (promotion)
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T2-reach
 class: FEATURE
@@ -414,7 +415,7 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED
 
 ### GAP-017 — LangSmith adapter publicly promised on v0.3 row, unshipped (promotion)
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T2-reach
 class: FEATURE
@@ -433,7 +434,7 @@ log:
 ## Units — T3 (demand & distribution)
 
 ### GAP-018 — cost/latency as first-class endpoints (promotion)
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T3-demand
 class: FEATURE
@@ -466,7 +467,7 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED — human review required before any public linking
 
 ### GAP-020 — verdict provenance / report signing (promotion)
-status: PLANNED
+status: PR_OPEN
 lane: CODE
 tier: T3-demand
 class: FEATURE
@@ -638,6 +639,7 @@ Also recorded as corrected-premise (not separate rejected units): H-05's "no cal
 - 2026-06-13 iter 4: PR #138 merged; GAP-004 PR_OPEN→DONE (reconciled, re-verified on main); GAP-005 PLANNED→PR_OPEN (#139). Board: 19 PLANNED / 1 PR_OPEN / 4 DONE / 6 AWAITING_HUMAN / 1 REJECTED (31 units).
 - 2026-06-13 iter 5 (BATCH per maintainer request — markdown drift in one PR): PR #139 merged; GAP-005 PR_OPEN→DONE (reconciled). GAP-006/008/010/031 PLANNED→PR_OPEN (all #140). GAP-009 PLANNED→REJECTED (CLAUDE.md.append.md is an intended shipped artifact). GAP-007 re-laned META→CODE (manifest link is renderer-emitted, pulled from the batch). Reformatted GAPLEDGER self-references (path-z/manifest) so the ledger stops tripping internal_links. Board: 14 PLANNED / 4 PR_OPEN / 5 DONE / 6 AWAITING_HUMAN / 2 REJECTED (31 units).
 - 2026-06-13 iter 6 (CROSS-REPO): batch #140 confirmed on main (revert #141 closed unmerged; re-merge #142) → GAP-006/008/010/031 PR_OPEN→DONE. GAP-001 PLANNED→PR_OPEN: site fix opened as whatifd-docs#15 (v0.3 row → shipped + roadmap row; v0.3-planned labels relabeled; version/install/count residue across index/integrations/getting-started/faq/llms.txt/config reconciled; release_table site-side → 0). This main-repo ledger PR carries GAP-001's transition + the four DONE reconciliations. Board: 13 PLANNED / 1 PR_OPEN / 9 DONE / 6 AWAITING_HUMAN / 2 REJECTED (31 units).
+- 2026-06-13 iter 7 (BATCH per maintainer request — CODE promotions in one PR): whatifd-docs#15 + #143 merged → GAP-001 PR_OPEN→DONE. Promoted all 10 CODE-lane gaps to whatif-features/references/deferred-refactors.md §11-§20 (PR #144), each PLANNED→PR_OPEN with pr=#144: GAP-011→§11 (cross-refs existing §4/§5, no dup), GAP-012→§12, GAP-013→§13, GAP-014→§14, GAP-015→§15 (drafted spec referenced), GAP-016→§16, GAP-017→§17, GAP-018→§18, GAP-020→§19, GAP-007→§20 (re-laned render decision). No phases.md edits (rule 9); doctrine-guarded items (§11/12/18) flagged for cascade-catalog + doctrine review on promotion. Board: 3 PLANNED / 10 PR_OPEN / 10 DONE / 6 AWAITING_HUMAN / 2 REJECTED (31 units). Remaining PLANNED: GAP-019, GAP-023, GAP-028.
 
 ## Closeout report
 

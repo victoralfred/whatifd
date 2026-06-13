@@ -65,7 +65,7 @@ from whatifd.adapters.protocols import (
     TraceSource,
 )
 from whatifd.cache.keying import CacheKeyComponents
-from whatifd.contract import ScoreCase
+from whatifd.contract import ScoreCase, ToolSpan
 from whatifd.types.sensitive import Sensitive
 from whatifd.types.statistical import ClusterKeySupport
 
@@ -85,6 +85,17 @@ def _hash16(*parts: str) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class StubToolSpanSpec:
+    """Plain-text inputs for a stub tool span. `input`/`output` are tool
+    content and get wrapped as `Sensitive[str]` in `to_raw_trace` (cardinal
+    #5); `None` passes through. Lets a fixture exercise the tool-span path."""
+
+    name: str
+    input: str | None = None
+    output: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class StubTraceSpec:
     """Plain-text inputs used to construct a stub `RawTrace` row.
 
@@ -93,7 +104,8 @@ class StubTraceSpec:
     `"failure"` so the most common scenario (failure-rescue) reads
     cleanly; pass `"baseline"` explicitly for baseline rows.
     `cluster_key` is `None` by default; pass a string to populate
-    the per-trace cluster signal.
+    the per-trace cluster signal. `tool_spans` is empty by default;
+    pass `StubToolSpanSpec` rows to emit tool spans.
     """
 
     trace_id: str
@@ -102,6 +114,7 @@ class StubTraceSpec:
     cohort: str = "failure"
     cluster_key: str | None = None
     skip_reason: str | None = None
+    tool_spans: tuple[StubToolSpanSpec, ...] = ()
 
     def to_raw_trace(self) -> RawTrace:
         """Project this spec into a `RawTrace`. Co-located with
@@ -116,6 +129,22 @@ class StubTraceSpec:
             original_response=_wrap(self.original_response, classification="user_content"),
             cluster_key=self.cluster_key,
             skip_reason=self.skip_reason,
+            tool_spans=[
+                ToolSpan(
+                    name=ts.name,
+                    input=(
+                        _wrap(ts.input, classification="user_content")
+                        if ts.input is not None
+                        else None
+                    ),
+                    output=(
+                        _wrap(ts.output, classification="user_content")
+                        if ts.output is not None
+                        else None
+                    ),
+                )
+                for ts in self.tool_spans
+            ],
         )
 
 

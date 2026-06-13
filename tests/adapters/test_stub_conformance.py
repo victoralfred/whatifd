@@ -21,6 +21,7 @@ import pytest
 from whatifd.adapters import Scorer, TraceSource
 from whatifd.adapters.stub import (
     StubScorer,
+    StubToolSpanSpec,
     StubTraceSource,
     StubTraceSpec,
 )
@@ -40,6 +41,16 @@ def _failure_specs() -> list[StubTraceSpec]:
             user_message="why is my code broken?",
             original_response="check your imports",
             cohort="failure",
+            # Emit a tool span so the conformance harness exercises the
+            # cardinal-#5 tool-span wrapping assertion (previously skipped —
+            # no fixture surfaced a tool span).
+            tool_spans=(
+                StubToolSpanSpec(
+                    name="search_docs",
+                    input="ImportError traceback",
+                    output="check sys.path / module name",
+                ),
+            ),
         ),
         StubTraceSpec(
             trace_id="t-2",

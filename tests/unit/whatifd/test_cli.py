@@ -21,7 +21,9 @@ Pin properties:
 from __future__ import annotations
 
 import json
+import shutil
 import sys
+from pathlib import Path
 
 import pytest
 from click.testing import Result
@@ -128,6 +130,19 @@ class TestExecCheck:
         result = runner.invoke(app, ["exec-check", target])
         assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
         assert "does NOT conform" in _all_output(result)
+
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+    def test_node_reference_runner_conforms(self, runner: CliRunner) -> None:
+        # The shipped Node reference runner must speak whatifd-exec/1 — keeps
+        # examples/exec_agent_node/agent.js from bit-rotting wherever node is
+        # available (locally + CI runners that have it).
+        repo_root = Path(__file__).resolve().parents[3]
+        agent = repo_root / "examples" / "exec_agent_node" / "agent.js"
+        assert agent.exists(), agent
+        result = runner.invoke(app, ["exec-check", f"exec:node {agent}"])
+        assert result.exit_code == EXIT_SUCCESS, _all_output(result)
+        assert "exec-agent-node" in _all_output(result)
+        assert "conforms to whatifd-exec/1" in _all_output(result)
 
 
 def _all_output(result: Result) -> str:

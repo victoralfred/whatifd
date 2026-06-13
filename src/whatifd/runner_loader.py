@@ -141,10 +141,9 @@ def load_runner(reference: str) -> LoadedRunner:
         return _load_exec_runner(reference)
     if not reference.startswith(_PYTHON_PREFIX):
         raise RunnerLoadError(
-            f"target.runner {reference!r} has unsupported scheme. Supported: "
-            "`python:<module.path>:<attr>`. The `exec:<argv>` stdio lane is "
-            "specified in docs/runner-contract-exec.md (implementation pending; "
-            "tracked in the design cascade-catalog)."
+            f"target.runner {reference!r} has unsupported scheme. Supported schemes: "
+            "`python:<module.path>:<attr>` and `exec:<argv>` "
+            "(see docs/runner-contract-exec.md)."
         )
 
     body = reference[len(_PYTHON_PREFIX) :]

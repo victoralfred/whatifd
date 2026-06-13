@@ -957,6 +957,11 @@ def exec_check(
     probe = TraceInput(user_message="whatifd exec-check probe", metadata={})
     cfg = ReplayConfig(system_prompt=None, model=None, overrides={})
 
+    conformed = False
+    fail_exc: ExecRunnerError | None = None
+    # `close()` in a `finally` so the child is never leaked — not on an
+    # ExecRunnerError, and not on an unexpected exception between start() and
+    # the success path either (the gap the prior structure left open).
     try:
         runner.start()
         typer.echo(
@@ -968,13 +973,17 @@ def exec_check(
             f"  ok  replay — got ReplayOutput "
             f"(text {len(out.text)} chars, {len(out.tool_spans)} tool span(s))"
         )
+        conformed = True
     except ExecRunnerError as exc:
-        typer.echo(f"  FAIL  {exc}", err=True)
+        fail_exc = exc
+    finally:
         runner.close()
-        typer.echo("whatifd exec-check: runner does NOT conform.", err=True)
-        raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE) from exc
 
-    runner.close()
+    if not conformed:
+        typer.echo(f"  FAIL  {fail_exc}", err=True)
+        typer.echo("whatifd exec-check: runner does NOT conform.", err=True)
+        raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE) from fail_exc
+
     typer.echo("  ok  shutdown")
     typer.echo("whatifd exec-check: runner conforms to whatifd-exec/1.")
     raise typer.Exit(code=EXIT_SUCCESS)

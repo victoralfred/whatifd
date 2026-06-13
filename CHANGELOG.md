@@ -12,6 +12,10 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Added
+
+- **`whatifd report-migrate` now writes human-readable indented JSON by default** (#79). The migrator artifact's audience is an operator diffing a v0.1 report against its migrated v0.2 form, not a hash function — so a single very long line was the wrong default. New `--indent/--no-indent` flag (default `--indent`); `--no-indent` restores the compact canonical form. Backed by a new `whatifd.serialization.indented_json_bytes` helper that carries the same cardinal-#5 `Sensitive[T]` rejection as `canonical_json_bytes`.
+
 ### Fixed
 
 - Renamed the adopter-facing telemetry doc `AGENT_TELEMENTRY.md` → `AGENT_TELEMETRY.md` (filename typo); the `cat CLAUDE.md.append.md >> CLAUDE.md` adoption flow is unchanged.

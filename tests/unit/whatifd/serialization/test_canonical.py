@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from whatifd.serialization import canonical_json_bytes
+from whatifd.serialization import canonical_json_bytes, indented_json_bytes
 from whatifd.types.sensitive import Sensitive, UnredactedSensitiveError
 
 
@@ -109,3 +109,49 @@ class TestSensitiveRejection:
         s = Sensitive("password123", classification="user_secret")
         with pytest.raises(TypeError):
             canonical_json_bytes({"creds": s})
+
+
+class TestIndentedJsonBytes:
+    """The human-readable migrator-artifact encoder (#79). Same input
+    domain and cardinal-#5 contract as `canonical_json_bytes`, but
+    indented for an operator diffing reports in an editor.
+    """
+
+    def test_returns_ascii_bytes(self) -> None:
+        out = indented_json_bytes({"a": 1})
+        assert isinstance(out, bytes)
+        out.decode("ascii")  # must not raise
+
+    def test_is_multiline_indented(self) -> None:
+        out = indented_json_bytes({"a": 1, "b": 2}).decode("ascii")
+        assert "\n" in out
+        assert '  "a": 1' in out  # indent=2
+
+    def test_keys_sorted_for_stable_diffs(self) -> None:
+        out = indented_json_bytes({"z": 1, "a": 2, "m": 3}).decode("ascii")
+        assert out.index('"a"') < out.index('"m"') < out.index('"z"')
+
+    def test_non_ascii_escaped(self) -> None:
+        out = indented_json_bytes({"name": "café"})
+        out.decode("ascii")  # ensure_ascii=True keeps it ASCII
+        assert b"\\u00e9" in out
+
+    def test_same_semantics_as_canonical(self) -> None:
+        import json
+
+        obj = {"z": 1, "a": [1, 2, {"k": None}], "m": "x"}
+        assert json.loads(indented_json_bytes(obj)) == json.loads(canonical_json_bytes(obj))
+
+    def test_top_level_sensitive_raises(self) -> None:
+        s = Sensitive("password123", classification="user_secret")
+        with pytest.raises(UnredactedSensitiveError, match="cardinal #5"):
+            indented_json_bytes(s)
+
+    def test_nested_sensitive_raises_via_stdlib(self) -> None:
+        # Same best-effort v0.1 fallback as canonical_json_bytes:
+        # nested Sensitive has no JSON hook → stdlib TypeError.
+        # TODO(phase-5): flips to UnredactedSensitiveError when the
+        # graph walk lands.
+        s = Sensitive("password123", classification="user_secret")
+        with pytest.raises(TypeError):
+            indented_json_bytes({"creds": s})

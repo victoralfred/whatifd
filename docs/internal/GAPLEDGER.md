@@ -25,11 +25,12 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 
 | state | count |
 |---|---|
-| PLANNED | 22 |
+| PLANNED | 21 |
 | PR_OPEN | 1 |
+| DONE | 1 |
 | AWAITING_HUMAN | 6 |
 | REJECTED | 1 |
-| DONE / IN_PROGRESS / BLOCKED / DEFERRED | 0 |
+| IN_PROGRESS / BLOCKED / DEFERRED | 0 |
 
 ## Units — T1 (credibility)
 
@@ -61,7 +62,7 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED — acceptance set; PR lands in whatifd-docs
 
 ### GAP-002 — README omits shipped whatifd-datadog from install line and calls it "in-development"
-status: PLANNED
+status: PR_OPEN
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -76,10 +77,11 @@ acceptance:
   - README install line lists all five published packages
   - `grep -n "in-development" README.md` → no Datadog-adjacent hit
   - `python consistency_check.py --repo . --only adapter_inventory` → exit 0
-pr:
+pr: "#136"
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-02; README.md:26,28 vs packages/ + CHANGELOG 0.3.0
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/002-readme-datadog off main; install line now names all 5 packages, "in-development" removed; AC verified (grep exit 1, adapter_inventory 0 findings exit 0); PR #136
 
 ### GAP-003 — RELEASING.md package/adapter counts predate the fifth package
 status: PLANNED
@@ -305,7 +307,7 @@ log:
   - 2026-06-13 CONFIRMED→PLANNED
 
 ### GAP-030 — test_slots_rejects_arbitrary_attrs over-strict on Python 3.13 (red CI on release HEAD)
-status: PR_OPEN
+status: DONE
 lane: META
 tier: T1-credibility
 class: HYGIENE
@@ -326,6 +328,7 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — Phase-2 discovery via PR #0 CI; run 27453089668 + reproduction transcript; isolated as pre-existing (main was green at same SHA)
   - 2026-06-13 CONFIRMED→PLANNED — first eligible META unit for Phase 3; fix proposed, not applied (held at human gate)
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — human fast-tracked; branch gap/030-py313-frozen-slots off fresh main, `assert excinfo.type in (...)` → `assert issubclass(excinfo.type, (...))`; verified `pytest tests/unit/whatifd/adapters/test_protocols.py` 20 passed on both 3.13.13 and 3.14.0; PR #135
+  - 2026-06-13 PR_OPEN→DONE — PR #135 merged (MERGED 2026-06-13T02:12:47Z); re-verified on main: test_slots_rejects_arbitrary_attrs passes under py3.13.13 (1 passed)
 
 ## Units — T2 (reach)
 
@@ -582,6 +585,7 @@ Also recorded as corrected-premise (not separate rejected units): H-05's "no cal
 - 2026-06-13 Phase 0–2: preflight (self-test exit 0), evidence sweep (28 checker findings triaged; demo executed; both repos at recorded SHAs), ledger written; PR #0 opened. Board: 22 PLANNED / 6 AWAITING_HUMAN / 1 REJECTED.
 - 2026-06-13 Phase-2 amend: PR #0 CI surfaced a pre-existing Python-3.13 test failure (test_slots_rejects_arbitrary_attrs); isolated as not caused by the docs-only PR; recorded as GAP-030 (META, T1). Board: 23 PLANNED / 6 AWAITING_HUMAN / 1 REJECTED.
 - 2026-06-13 GAP-030 fast-tracked at human request: PLANNED→PR_OPEN (#135) on branch gap/030-py313-frozen-slots (issubclass fix; 20 passed on 3.13.13 + 3.14.0). Board: 22 PLANNED / 1 PR_OPEN / 6 AWAITING_HUMAN / 1 REJECTED.
+- 2026-06-13 iter 1: PR #134 + #135 merged (Gate A); GAP-030 PR_OPEN→DONE (reconciled, re-verified on main); GAP-002 PLANNED→PR_OPEN (#136). Board: 21 PLANNED / 1 PR_OPEN / 1 DONE / 6 AWAITING_HUMAN / 1 REJECTED.
 
 ## Closeout report
 

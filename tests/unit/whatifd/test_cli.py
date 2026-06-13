@@ -21,6 +21,7 @@ Pin properties:
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 from click.testing import Result
@@ -70,6 +71,63 @@ class TestCloseRunner:
 
         # Cardinal #1: a cleanup failure must not mask the verdict.
         _close_runner(Boom())
+
+
+_EXEC_CHECK_CONFORMING_CHILD = """\
+import sys, json
+
+def send(o):
+    sys.stdout.write(json.dumps(o) + "\\n"); sys.stdout.flush()
+
+def recv():
+    line = sys.stdin.readline()
+    return json.loads(line) if line else None
+
+send({"v":1,"type":"hello","protocol":"whatifd-exec/1",
+      "runner_name":"conformant","runner_version":"9.9"})
+recv()  # hello_ack
+while True:
+    f = recv()
+    if f is None or f.get("type") == "shutdown":
+        break
+    send({"v":1,"type":"replay_response","request_id":f.get("request_id"),
+          "output":{"text":"ok","tool_spans":[],"metadata":{}}})
+"""
+
+_EXEC_CHECK_BAD_CHILD = """\
+import sys, json
+sys.stdout.write(json.dumps({"v":1,"type":"nope"}) + "\\n"); sys.stdout.flush()
+sys.stdin.readline()
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="exec: lane is POSIX-only in v1")
+class TestExecCheck:
+    def _target(self, tmp_path, src: str) -> str:
+        import sys as _sys
+
+        script = tmp_path / "agent.py"
+        script.write_text(src, encoding="utf-8")
+        return f"exec:{_sys.executable} {script}"
+
+    def test_conforming_runner_passes(self, runner: CliRunner, tmp_path) -> None:
+        target = self._target(tmp_path, _EXEC_CHECK_CONFORMING_CHILD)
+        result = runner.invoke(app, ["exec-check", target])
+        assert result.exit_code == EXIT_SUCCESS, _all_output(result)
+        out = _all_output(result)
+        assert "handshake" in out
+        assert "conforms to whatifd-exec/1" in out
+
+    def test_non_exec_target_rejected(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["exec-check", "python:foo.bar:run"])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "not an `exec:` target" in _all_output(result)
+
+    def test_nonconforming_runner_fails(self, runner: CliRunner, tmp_path) -> None:
+        target = self._target(tmp_path, _EXEC_CHECK_BAD_CHILD)
+        result = runner.invoke(app, ["exec-check", target])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "does NOT conform" in _all_output(result)
 
 
 def _all_output(result: Result) -> str:

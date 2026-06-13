@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any, Literal
 
 import pytest
@@ -117,6 +118,58 @@ def test_sync_runner_runs_through_kernel_and_produces_score() -> None:
     # fields via .unwrap.
     assert scorer.last_case.input.user_message == "hello"
     assert scorer.last_case.original_output.text == "orig response"
+
+
+_EXEC_E2E_CHILD = """\
+import sys, json
+
+def send(o):
+    sys.stdout.write(json.dumps(o) + "\\n"); sys.stdout.flush()
+
+def recv():
+    line = sys.stdin.readline()
+    return json.loads(line) if line else None
+
+send({"v":1,"type":"hello","protocol":"whatifd-exec/1",
+      "runner_name":"e2e","runner_version":"1.0"})
+recv()  # hello_ack
+while True:
+    f = recv()
+    if f is None or f.get("type") == "shutdown":
+        break
+    msg = f.get("trace_input", {}).get("user_message", "")
+    send({"v":1,"type":"replay_response","request_id":f.get("request_id"),
+          "output":{"text":"replayed:" + msg,"tool_spans":[],"metadata":{}}})
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="exec: lane is POSIX-only in v1")
+def test_exec_runner_runs_through_kernel_and_produces_score(tmp_path) -> None:
+    # End-to-end (§15): an exec: runner flows through the real
+    # build_delta_fn → replay kernel → scorer path, exactly like the
+    # python: lane. The child's ReplayOutput must reach the ScoreCase.
+    from whatifd.exec_runner import ExecRunner
+
+    child = tmp_path / "agent.py"
+    child.write_text(_EXEC_E2E_CHILD, encoding="utf-8")
+    runner = ExecRunner([sys.executable, str(child)])
+    scorer = _ScoringScorer(score=0.7)
+    delta_fn = build_delta_fn(
+        loaded_runner=LoadedRunner(callable_=runner, kind="sync", reference="exec:python agent.py"),
+        scorer=scorer,
+        change=_change(),
+        replay_timeout_seconds=10.0,
+    )
+    try:
+        delta = delta_fn(_raw())
+    finally:
+        runner.close()
+
+    assert delta == 0.7
+    assert scorer.last_case is not None
+    # The exec child's output reached the ScoreCase through the kernel.
+    assert scorer.last_case.replayed_output.text == "replayed:hello"
+    assert scorer.last_case.input.user_message == "hello"
 
 
 def test_original_tool_spans_threaded_into_score_case() -> None:

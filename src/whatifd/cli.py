@@ -51,6 +51,7 @@ NOT as a runtime crash that bypasses cardinal #1.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import Annotated
 
@@ -236,6 +237,20 @@ def _compute_config_hash(cfg: WhatifConfig) -> str:
 
     payload = cfg.model_dump(mode="json")
     return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def _close_runner(runner: object) -> None:
+    """Best-effort deterministic teardown for a stateful runner.
+
+    The `exec:` lane's `ExecRunner` owns a child process and MUST be closed
+    (send `shutdown`, then SIGTERM→SIGKILL); stateless `python:` runners have
+    no `close()` and this is a no-op. Teardown never raises — a cleanup
+    failure must not mask the run's verdict (cardinal #1).
+    """
+    close = getattr(runner, "close", None)
+    if callable(close):
+        with contextlib.suppress(Exception):
+            close()
 
 
 def _run_fork_pipeline(
@@ -511,6 +526,13 @@ def _run_fork_pipeline(
     except Exception as exc:  # boundary catch; cardinal #1
         typer.echo(f"whatifd: pipeline error: {type(exc).__name__}: {exc}", err=True)
         return EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+    finally:
+        # A stateful runner (exec: lane) spawns its child lazily inside
+        # run_pipeline; close it deterministically here, on success or
+        # failure. Stateless python: runners are a no-op. This is the
+        # session-teardown hook the cascade-catalog "exec: runner lane"
+        # entry requires to land WITH ExecRunner.
+        _close_runner(loaded_runner.callable_)
 
     # Cardinal #5 structural defense: walk the report tree before
     # serialization. The encoder's reject-unwrapped-Sensitive in

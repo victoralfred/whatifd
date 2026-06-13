@@ -29,6 +29,7 @@ from typer.testing import CliRunner
 from whatifd.cli import (
     EXIT_INCONCLUSIVE_OR_SETUP_FAILURE,
     EXIT_SUCCESS,
+    _close_runner,
     app,
 )
 
@@ -36,6 +37,39 @@ from whatifd.cli import (
 @pytest.fixture
 def runner() -> CliRunner:
     return CliRunner()
+
+
+class TestCloseRunner:
+    """Deterministic runner teardown for the exec: lane (and no-op for python:)."""
+
+    def test_closes_a_closeable_runner(self) -> None:
+        class Spy:
+            closed = False
+
+            def close(self) -> None:
+                self.closed = True
+
+        spy = Spy()
+        _close_runner(spy)
+        assert spy.closed is True
+
+    def test_noop_on_stateless_runner(self) -> None:
+        # A plain function (the python: lane) has no close(); must not raise.
+        _close_runner(lambda *a, **k: None)
+
+    def test_noncallable_close_attr_is_ignored(self) -> None:
+        class NotReally:
+            close = "not a method"
+
+        _close_runner(NotReally())  # must not raise
+
+    def test_teardown_failure_is_suppressed(self) -> None:
+        class Boom:
+            def close(self) -> None:
+                raise RuntimeError("teardown blew up")
+
+        # Cardinal #1: a cleanup failure must not mask the verdict.
+        _close_runner(Boom())
 
 
 def _all_output(result: Result) -> str:

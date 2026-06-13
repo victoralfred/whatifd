@@ -25,9 +25,9 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 
 | state | count |
 |---|---|
-| PLANNED | 14 |
-| PR_OPEN | 4 |
-| DONE | 5 |
+| PLANNED | 13 |
+| PR_OPEN | 1 |
+| DONE | 9 |
 | AWAITING_HUMAN | 6 |
 | REJECTED | 2 |
 | IN_PROGRESS / BLOCKED / DEFERRED | 0 |
@@ -35,7 +35,7 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 ## Units — T1 (credibility)
 
 ### GAP-001 — whatif.codes status/version drift: site presents v0.2 as latest, v0.3 as "planned"
-status: PLANNED
+status: PR_OPEN
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -56,10 +56,11 @@ acceptance:
   - all "v0.3-planned"/"planned for v0.3" labels on shipped-version rows relabeled truthfully (roadmap, no version ≤ 0.3)
   - site install lines name all five published packages (or explicitly scope which are needed per page)
   - `python consistency_check.py --repo whatifd --site-dir whatifd-docs --only release_table,stale_status_words` → 0 site-side findings
-pr:
+pr: "whatifd-docs#15"
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-01; docs/index.md:167,174 vs git tags + CHANGELOG [0.3.0]
   - 2026-06-13 CONFIRMED→PLANNED — acceptance set; PR lands in whatifd-docs
+  - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/001-site-status-v030 in whatifd-docs (off af9420a); v0.3 row → shipped(2026-06-04) + roadmap row for unshipped promises; RAGAS/Custom/langfuse v0.3-planned → planned; version + install lines (incl faq/llms.txt/config.md residue) → v0.3.0/5 packages; AC verified (release_table site-side → 0 findings); cross-repo PR whatifd-docs#15. Ledger transition travels in this main-repo PR (cross-repo unit).
 
 ### GAP-002 — README omits shipped whatifd-datadog from install line and calls it "in-development"
 status: DONE
@@ -152,7 +153,7 @@ log:
   - 2026-06-13 PR_OPEN→DONE — PR #139 merged; re-verified on main: scoped grep no "six" count claims, ls docs/walkthroughs/0*.md → 7
 
 ### GAP-006 — docs/concepts.md dead relative link to path-z.md
-status: PR_OPEN
+status: DONE
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -169,6 +170,7 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — new unit (seed appendix); docs/concepts.md:124; file absent, site page present
   - 2026-06-13 CONFIRMED→PLANNED
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — batch branch gap/markdown-drift-batch; repointed to https://whatif.codes/concepts/path-z.html (site html_baseurl confirmed); AC verified (internal_links no concepts.md finding); PR #140
+  - 2026-06-13 PR_OPEN→DONE — batch landed via #140 (revert #141 closed unmerged; re-confirmed #142); re-verified on main: concepts.md links to whatif.codes/concepts/path-z.html
 
 ### GAP-007 — 13 dead `manifest.json` relative links in walkthroughs + design-skill references
 status: PLANNED
@@ -193,7 +195,7 @@ log:
   - 2026-06-13 re-laned META→CODE + evidence corrected — links are renderer-emitted (summary.py:217, markdown.py:345; summary.py:46 "sibling artifact"); not a markdown typo; pulled from the gap/markdown-drift-batch PR #140
 
 ### GAP-008 — AGENT_TELEMENTRY.md filename misspelling
-status: PR_OPEN
+status: DONE
 lane: META
 tier: T1-credibility
 class: HYGIENE
@@ -210,6 +212,7 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-18; ls output
   - 2026-06-13 CONFIRMED→PLANNED
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — batch branch; git mv to AGENT_TELEMETRY.md (file had no internal misspelling); [Unreleased] CHANGELOG note added; released CHANGELOG history left intact (rule 4); PR #140
+  - 2026-06-13 PR_OPEN→DONE — landed via #140; re-verified on main: AGENT_TELEMETRY.md present, old name gone, filename_hygiene clean
 
 ### GAP-009 — stray CLAUDE.md.append.md duplicates CLAUDE.md telemetry section
 status: REJECTED
@@ -232,7 +235,7 @@ log:
   - 2026-06-13 PLANNED→REJECTED — false positive; CLAUDE.md.append.md is an intended shipped adopter artifact (AGENT_TELEMETRY.md:12,50; CHANGELOG:677; skill-dashboard.sh:65), not stray. Discovered during the markdown-drift batch.
 
 ### GAP-010 — stale "(v0.3)" label on sequential testing in statistical-defaults.md
-status: PR_OPEN
+status: DONE
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -249,6 +252,7 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — seed appendix (H-04-adjacent); statistical-defaults.md:143 vs git tag v0.3.0
   - 2026-06-13 CONFIRMED→PLANNED
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — batch branch; "(v0.3)" ×2 → "(roadmap)"; AC verified (stale_status_words → 0 findings exit 0); PR #140
+  - 2026-06-13 PR_OPEN→DONE — landed via #140; re-verified on main: statistical-defaults.md says "(roadmap)", stale_status_words clean
 
 ### GAP-011 — cluster-paired bootstrap promised publicly, absent from tree (promotion)
 status: PLANNED
@@ -348,7 +352,7 @@ log:
   - 2026-06-13 PR_OPEN→DONE — PR #135 merged (MERGED 2026-06-13T02:12:47Z); re-verified on main: test_slots_rejects_arbitrary_attrs passes under py3.13.13 (1 passed)
 
 ### GAP-031 — SECURITY/CONTRIBUTING/copilot docs cite nonexistent src/whatifd/{ingest,score} paths
-status: PR_OPEN
+status: DONE
 lane: META
 tier: T1-credibility
 class: DRIFT
@@ -371,6 +375,7 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — discovered during GAP-004; ls src/whatifd/ vs SECURITY.md:46-47 / CONTRIBUTING.md:103,111,129 / copilot-instructions.md:65,76
   - 2026-06-13 CONFIRMED→PLANNED
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — batch branch; ingest/→adapters/+packages, score/→scorer_loader.py, core-list score/→statistical/+decision/, diff/→diff.py across SECURITY/CONTRIBUTING/copilot; AC verified (no ingest/score paths remain in those 3 files; targets exist); PR #140
+  - 2026-06-13 PR_OPEN→DONE — landed via #140; re-verified on main: no src/whatifd/ingest|score references in SECURITY/CONTRIBUTING/copilot
 
 ## Units — T2 (reach)
 
@@ -632,6 +637,7 @@ Also recorded as corrected-premise (not separate rejected units): H-05's "no cal
 - 2026-06-13 iter 3: PR #137 merged; GAP-003 PR_OPEN→DONE (reconciled, re-verified on main); GAP-004 PLANNED→PR_OPEN (#138); discovered + recorded GAP-031 (dead src/whatifd/{ingest,score} doc paths). Board: 20 PLANNED / 1 PR_OPEN / 3 DONE / 6 AWAITING_HUMAN / 1 REJECTED (31 units).
 - 2026-06-13 iter 4: PR #138 merged; GAP-004 PR_OPEN→DONE (reconciled, re-verified on main); GAP-005 PLANNED→PR_OPEN (#139). Board: 19 PLANNED / 1 PR_OPEN / 4 DONE / 6 AWAITING_HUMAN / 1 REJECTED (31 units).
 - 2026-06-13 iter 5 (BATCH per maintainer request — markdown drift in one PR): PR #139 merged; GAP-005 PR_OPEN→DONE (reconciled). GAP-006/008/010/031 PLANNED→PR_OPEN (all #140). GAP-009 PLANNED→REJECTED (CLAUDE.md.append.md is an intended shipped artifact). GAP-007 re-laned META→CODE (manifest link is renderer-emitted, pulled from the batch). Reformatted GAPLEDGER self-references (path-z/manifest) so the ledger stops tripping internal_links. Board: 14 PLANNED / 4 PR_OPEN / 5 DONE / 6 AWAITING_HUMAN / 2 REJECTED (31 units).
+- 2026-06-13 iter 6 (CROSS-REPO): batch #140 confirmed on main (revert #141 closed unmerged; re-merge #142) → GAP-006/008/010/031 PR_OPEN→DONE. GAP-001 PLANNED→PR_OPEN: site fix opened as whatifd-docs#15 (v0.3 row → shipped + roadmap row; v0.3-planned labels relabeled; version/install/count residue across index/integrations/getting-started/faq/llms.txt/config reconciled; release_table site-side → 0). This main-repo ledger PR carries GAP-001's transition + the four DONE reconciliations. Board: 13 PLANNED / 1 PR_OPEN / 9 DONE / 6 AWAITING_HUMAN / 2 REJECTED (31 units).
 
 ## Closeout report
 

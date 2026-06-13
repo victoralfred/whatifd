@@ -34,6 +34,8 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import os
+import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -72,6 +74,49 @@ class LoadedRunner:
 
 
 _PYTHON_PREFIX = "python:"
+_EXEC_PREFIX = "exec:"
+
+
+def _load_exec_runner(reference: str) -> LoadedRunner:
+    """Resolve an `exec:<argv>` reference to an `ExecRunner` (whatifd-exec/1).
+
+    POSIX-only in v1 (§9.3 of the spec): argv is split with POSIX shell-word
+    rules and there is no shell interpolation. The returned `ExecRunner` is a
+    *stateful* `Runner` that owns its child process across the session; the
+    CLI fork wiring must `close()` it deterministically. See
+    `docs/runner-contract-exec.md` and `src/whatifd/exec_runner.py`.
+    """
+    if os.name != "posix":
+        raise RunnerLoadError(
+            f"target.runner {reference!r}: the `exec:` runner lane is POSIX-only "
+            "in this version. Use a `python:<module>:<attr>` runner on this platform."
+        )
+    body = reference[len(_EXEC_PREFIX) :].strip()
+    if not body:
+        raise RunnerLoadError(
+            f"target.runner {reference!r} is missing its command. "
+            "Format: `exec:<argv>` (e.g. `exec:./replay-agent --mode whatifd`)."
+        )
+    try:
+        argv = shlex.split(body)
+    except ValueError as exc:
+        raise RunnerLoadError(
+            f"target.runner {reference!r}: could not parse the exec command "
+            f"({exc}). argv uses POSIX shell-word rules (no shell interpolation)."
+        ) from exc
+    if not argv:
+        raise RunnerLoadError(
+            f"target.runner {reference!r}: exec command is empty after parsing."
+        )
+
+    # Imported lazily: the subprocess machinery is only needed when an
+    # `exec:` runner is actually used, and keeps the loader light for the
+    # common `python:` path.
+    from whatifd.exec_runner import ExecRunner
+
+    # `exec:` runners are always sync in v1 (the parent drives the child
+    # synchronously, one in-flight replay_request at a time — §9.1).
+    return LoadedRunner(callable_=ExecRunner(argv), kind="sync", reference=reference)
 
 
 def load_runner(reference: str) -> LoadedRunner:
@@ -94,6 +139,8 @@ def load_runner(reference: str) -> LoadedRunner:
     """
     if not isinstance(reference, str) or not reference:
         raise RunnerLoadError(f"target.runner must be a non-empty string; got {reference!r}.")
+    if reference.startswith(_EXEC_PREFIX):
+        return _load_exec_runner(reference)
     if not reference.startswith(_PYTHON_PREFIX):
         raise RunnerLoadError(
             f"target.runner {reference!r} has unsupported scheme. Supported: "

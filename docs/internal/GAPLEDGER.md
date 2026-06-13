@@ -25,11 +25,11 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 
 | state | count |
 |---|---|
-| PLANNED | 19 |
-| PR_OPEN | 1 |
-| DONE | 4 |
+| PLANNED | 14 |
+| PR_OPEN | 4 |
+| DONE | 5 |
 | AWAITING_HUMAN | 6 |
-| REJECTED | 1 |
+| REJECTED | 2 |
 | IN_PROGRESS / BLOCKED / DEFERRED | 0 |
 
 ## Units — T1 (credibility)
@@ -128,7 +128,7 @@ log:
   - 2026-06-13 PR_OPEN→DONE — PR #138 merged; re-verified on main: no pre-alpha/once-v0.1 residue in SECURITY.md
 
 ### GAP-005 — "six rendered walkthroughs" claims vs seven files in docs/walkthroughs/
-status: PR_OPEN
+status: DONE
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -149,46 +149,51 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-21; README.md:124 et al. vs 7 files
   - 2026-06-13 CONFIRMED→PLANNED
   - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — branch gap/005-walkthrough-count off main; fixed 4 count claims (README:124, schema/v0.1:176, getting-started:252,258, walkthroughs/README:118); preserved walkthroughs/README:114 "six observations" (not a file count); corrected :118 fidelity wording to match the renderer tests; AC verified (scoped grep no hits; ls → 7); PR #139
+  - 2026-06-13 PR_OPEN→DONE — PR #139 merged; re-verified on main: scoped grep no "six" count claims, ls docs/walkthroughs/0*.md → 7
 
 ### GAP-006 — docs/concepts.md dead relative link to path-z.md
-status: PLANNED
+status: PR_OPEN
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
 size: S
 depends-on: none
 evidence:
-  - docs/concepts.md:124 — "[path-z.md](path-z.md) (Phase 10)" — no docs/path-z.md in tree
+  - docs/concepts.md:124 — dead relative link to path-z.md (Phase 10); no docs/path-z.md in tree (evidence written without the link syntax so it does not self-trip internal_links)
   - the page exists on the site: whatifd-docs docs/concepts/path-z.md (renders at whatif.codes)
 acceptance:
   - the link resolves: either points to the live site page URL or a committed file; "(Phase 10)" label re-checked against phases.md
   - `python consistency_check.py --repo . --only internal_links` → no concepts.md finding
-pr:
+pr: "#140"
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — new unit (seed appendix); docs/concepts.md:124; file absent, site page present
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — batch branch gap/markdown-drift-batch; repointed to https://whatif.codes/concepts/path-z.html (site html_baseurl confirmed); AC verified (internal_links no concepts.md finding); PR #140
 
 ### GAP-007 — 13 dead `manifest.json` relative links in walkthroughs + design-skill references
 status: PLANNED
-lane: META
+lane: CODE
 tier: T1-credibility
 class: HYGIENE
 size: M
 depends-on: none
 evidence:
-  - checker `internal_links`: docs/walkthroughs/{01,02,03,04,05,07}-*.md (6 links), .claude/skills/whatifd-design/references/walkthroughs.md:49,83,161,212,289 (5), cascade-catalog.md:586 (1) — e.g. docs/walkthroughs/01-clean-ship.md:19 "[Manifest →](manifest.json)"
-  - no manifest.json committed anywhere under docs/walkthroughs/ (`find docs -name manifest.json` → empty)
-  - triage at execution: walkthroughs are "canonical rendered output" (docs/walkthroughs/README.md:5) — decide commit-the-manifests vs remove/relabel links; 06-rerun-after-fix.md has no such link, suggesting the links are vestigial
+  - checker internal_links flags the manifest link in docs/walkthroughs/{01,02,03,04,05,07}-*.md (6), .claude/skills/whatifd-design/references/walkthroughs.md:49,83,161,212,289 (5), cascade-catalog.md:586 (1)
+  - RE-SCOPED 2026-06-13 (was lane META "dead doc links"): the link is RENDERER-EMITTED, not hand-written. src/whatifd/render/summary.py:217 and render/markdown.py:345 emit the manifest link; summary.py:46 documents it as "manifest.json — sibling artifact at the bundle write site" — i.e. correct-by-design relative to a live `whatifd fork` output bundle, where manifest.json IS written next to the .md
+  - docs/walkthroughs/*.md are renderer output the fidelity tests pin (tests/unit/whatifd/render/test_walkthroughs.py); editing the docs alone would desync them from the renderer (a fake fix). docs/walkthroughs/README.md:120 — these files are generated from the skill's walkthroughs.md upstream
+  - so this is product/render behavior, not a doc typo → lane CODE
 acceptance:
-  - `python consistency_check.py --repo . --only internal_links` → no manifest.json findings
-  - decision (commit vs remove) recorded in the PR body with rationale
+  - a decision is made and executed for the committed-sample context: (a) renderer emits a resolving target/anchor in sample output, OR (b) commit companion manifest.json next to each walkthrough, OR (c) scope the consistency checker to not flag bundle-relative sibling links (justified-exclusion, must keep --self-test green) — recorded with rationale
+  - after the decision: `python consistency_check.py --repo . --only internal_links` → no manifest.json findings AND the renderer fidelity tests still pass
+  - doctrine note: render/ is product behavior; promotion (phases.md / whatif-features) unless human approves CODE-EXEC
 pr:
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — new unit (seed appendix); 13 checker hits, no target files in tree
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 re-laned META→CODE + evidence corrected — links are renderer-emitted (summary.py:217, markdown.py:345; summary.py:46 "sibling artifact"); not a markdown typo; pulled from the gap/markdown-drift-batch PR #140
 
 ### GAP-008 — AGENT_TELEMENTRY.md filename misspelling
-status: PLANNED
+status: PR_OPEN
 lane: META
 tier: T1-credibility
 class: HYGIENE
@@ -197,32 +202,37 @@ depends-on: none
 evidence:
   - `ls *.md` → AGENT_TELEMENTRY.md (TELEMENTRY ≠ TELEMETRY)
 acceptance:
-  - `git mv AGENT_TELEMENTRY.md AGENT_TELEMETRY.md`; all inbound references updated (`grep -rn "TELEMENTRY" . --exclude-dir=.git` → 0 hits)
+  - `git mv AGENT_TELEMENTRY.md AGENT_TELEMETRY.md` done; no genuine inbound LINK to the file existed (the only inbound refs are released CHANGELOG history + this ledger/drafts describing the bug)
   - `python consistency_check.py --repo . --only filename_hygiene` → exit 0
-pr:
+  - reconciled-AC note: the original "grep TELEMENTRY → 0 hits" is NOT literally achievable — remaining hits are (a) released CHANGELOG history (rule 4, accurate at 0.3.0, left intact), (b) the [Unreleased] note documenting the rename, (c) ledger/draft bug-descriptions. None is a broken inbound link.
+pr: "#140"
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-18; ls output
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — batch branch; git mv to AGENT_TELEMETRY.md (file had no internal misspelling); [Unreleased] CHANGELOG note added; released CHANGELOG history left intact (rule 4); PR #140
 
 ### GAP-009 — stray CLAUDE.md.append.md duplicates CLAUDE.md telemetry section
-status: PLANNED
+status: REJECTED
 lane: META
 tier: T1-credibility
 class: HYGIENE
 size: S
 depends-on: none
 evidence:
-  - CLAUDE.md.append.md exists at repo root; its content ("## Session telemetry (whatifd-design skill)...") already appears verbatim inside CLAUDE.md
-acceptance:
-  - confirm byte-level duplication (diff against the corresponding CLAUDE.md section); if duplicate, remove the stray file; if it diverges, reconcile into CLAUDE.md first
-  - `ls CLAUDE.md.append.md` → no such file
+  - CLAUDE.md.append.md content matches this repo's CLAUDE.md telemetry section (modulo line-wrapping) — but this is BY DESIGN, not stray:
+  - AGENT_TELEMETRY.md:12 "├── CLAUDE.md.append.md (block to append to your CLAUDE.md)"; :50 "cat CLAUDE.md.append.md >> CLAUDE.md" — it is the adopter copy-paste artifact
+  - CHANGELOG.md:677 ships it: "`CLAUDE.md.append.md` — session-telemetry protocol block for adopters."
+  - scripts/skill-dashboard.sh:65 references it
+  - the duplication is the repo dogfooding the skill it distributes; removing the file would break the documented adoption flow + the shipped artifact set
+acceptance: n/a (rejected — no defect)
 pr:
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — new unit (Phase-1 sweep); file present at root, content duplicated in CLAUDE.md
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 PLANNED→REJECTED — false positive; CLAUDE.md.append.md is an intended shipped adopter artifact (AGENT_TELEMETRY.md:12,50; CHANGELOG:677; skill-dashboard.sh:65), not stray. Discovered during the markdown-drift batch.
 
 ### GAP-010 — stale "(v0.3)" label on sequential testing in statistical-defaults.md
-status: PLANNED
+status: PR_OPEN
 lane: DOCS
 tier: T1-credibility
 class: DRIFT
@@ -234,10 +244,11 @@ evidence:
 acceptance:
   - the line no longer names a version ≤ released (relabel to a future version or "roadmap")
   - `python consistency_check.py --repo . --only stale_status_words` → no statistical-defaults.md finding
-pr:
+pr: "#140"
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — seed appendix (H-04-adjacent); statistical-defaults.md:143 vs git tag v0.3.0
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — batch branch; "(v0.3)" ×2 → "(roadmap)"; AC verified (stale_status_words → 0 findings exit 0); PR #140
 
 ### GAP-011 — cluster-paired bootstrap promised publicly, absent from tree (promotion)
 status: PLANNED
@@ -337,7 +348,7 @@ log:
   - 2026-06-13 PR_OPEN→DONE — PR #135 merged (MERGED 2026-06-13T02:12:47Z); re-verified on main: test_slots_rejects_arbitrary_attrs passes under py3.13.13 (1 passed)
 
 ### GAP-031 — SECURITY/CONTRIBUTING/copilot docs cite nonexistent src/whatifd/{ingest,score} paths
-status: PLANNED
+status: PR_OPEN
 lane: META
 tier: T1-credibility
 class: DRIFT
@@ -351,12 +362,15 @@ evidence:
   - discovered 2026-06-13 during GAP-004 (SECURITY.md edit); a contributor following these docs hits nonexistent module paths
 acceptance:
   - every `src/whatifd/ingest/` and `src/whatifd/score/` reference in SECURITY.md, CONTRIBUTING.md, .github/copilot-instructions.md updated to the real layout (in-repo: src/whatifd/adapters/, scorer_loader.py; external: packages/whatifd-*/) or removed; `src/whatifd/diff/` → diff.py where it implies a dir
-  - `grep -rn "src/whatifd/ingest\|src/whatifd/score" --include="*.md" . | grep -v docs/sessions` → 0 hits
+  - `grep -rn "src/whatifd/ingest\|src/whatifd/score" --include="*.md" . | grep -v "docs/sessions\|docs/internal"` → 0 hits (docs/internal = ledger+drafts, which describe the bug)
   - reconciliation toward the tree (truth hierarchy); if any path names a *planned* future module, label it roadmap rather than asserting it ships
-pr:
+deferred-finding:
+  - CONTRIBUTING.md "Adding a tracer adapter" body shows an outdated `class TracerAdapter(Protocol): fetch_traces(...)`; the real contract is `TraceSource.iter_traces` (src/whatifd/adapters/protocols.py:251) + `Scorer` (:289). Path fixed here; the Protocol example rewrite is a deeper follow-up (logged, not done in this batch).
+pr: "#140"
 log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — discovered during GAP-004; ls src/whatifd/ vs SECURITY.md:46-47 / CONTRIBUTING.md:103,111,129 / copilot-instructions.md:65,76
   - 2026-06-13 CONFIRMED→PLANNED
+  - 2026-06-13 PLANNED→IN_PROGRESS→PR_OPEN — batch branch; ingest/→adapters/+packages, score/→scorer_loader.py, core-list score/→statistical/+decision/, diff/→diff.py across SECURITY/CONTRIBUTING/copilot; AC verified (no ingest/score paths remain in those 3 files; targets exist); PR #140
 
 ## Units — T2 (reach)
 
@@ -617,6 +631,7 @@ Also recorded as corrected-premise (not separate rejected units): H-05's "no cal
 - 2026-06-13 iter 2: PR #136 merged; GAP-002 PR_OPEN→DONE (reconciled, re-verified on main); GAP-003 PLANNED→PR_OPEN (#137). Board: 20 PLANNED / 1 PR_OPEN / 2 DONE / 6 AWAITING_HUMAN / 1 REJECTED.
 - 2026-06-13 iter 3: PR #137 merged; GAP-003 PR_OPEN→DONE (reconciled, re-verified on main); GAP-004 PLANNED→PR_OPEN (#138); discovered + recorded GAP-031 (dead src/whatifd/{ingest,score} doc paths). Board: 20 PLANNED / 1 PR_OPEN / 3 DONE / 6 AWAITING_HUMAN / 1 REJECTED (31 units).
 - 2026-06-13 iter 4: PR #138 merged; GAP-004 PR_OPEN→DONE (reconciled, re-verified on main); GAP-005 PLANNED→PR_OPEN (#139). Board: 19 PLANNED / 1 PR_OPEN / 4 DONE / 6 AWAITING_HUMAN / 1 REJECTED (31 units).
+- 2026-06-13 iter 5 (BATCH per maintainer request — markdown drift in one PR): PR #139 merged; GAP-005 PR_OPEN→DONE (reconciled). GAP-006/008/010/031 PLANNED→PR_OPEN (all #140). GAP-009 PLANNED→REJECTED (CLAUDE.md.append.md is an intended shipped artifact). GAP-007 re-laned META→CODE (manifest link is renderer-emitted, pulled from the batch). Reformatted GAPLEDGER self-references (path-z/manifest) so the ledger stops tripping internal_links. Board: 14 PLANNED / 4 PR_OPEN / 5 DONE / 6 AWAITING_HUMAN / 2 REJECTED (31 units).
 
 ## Closeout report
 

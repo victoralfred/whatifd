@@ -23,9 +23,9 @@ When you change a prompt, model, or tool in an LLM system, you don't actually kn
 
 ```bash
 # Core + the adapters you use (each is an optional package):
-uv pip install whatifd whatifd-langfuse whatifd-inspect-ai whatifd-phoenix
+uv pip install whatifd whatifd-langfuse whatifd-inspect-ai whatifd-phoenix whatifd-datadog
 
-# From source (uv workspace) — includes the in-development whatifd-datadog adapter:
+# From source (uv workspace) — includes every adapter:
 git clone https://github.com/victoralfred/whatifd
 cd whatifd
 uv sync --all-extras --dev --group workspace

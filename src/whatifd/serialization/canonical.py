@@ -103,3 +103,39 @@ def canonical_json_bytes(obj: Any) -> bytes:
         separators=(",", ":"),
         ensure_ascii=True,
     ).encode("ascii")
+
+
+def indented_json_bytes(obj: Any) -> bytes:
+    """Return a human-readable, key-sorted JSON encoding of `obj` as ASCII bytes.
+
+    Same input domain as `canonical_json_bytes` (plain JSON values —
+    dicts/lists/str/num/bool/None — already past redaction), but
+    formatted for a human reading or diffing the file in an editor:
+    `indent=2`, one key/value per line.
+
+    This is NOT a hash input and NOT the canonical/content-addressed form
+    (whitespace makes it non-canonical). Use it only on artifact-write
+    paths whose audience is a person — e.g. the `whatifd report-migrate`
+    output, where an operator diffs a v0.1 report against its migrated
+    v0.2 form. `sort_keys=True` is kept so the indented output stays
+    diff-stable across dict-insertion-order changes; `ensure_ascii=True`
+    keeps the bytes ASCII regardless of host locale.
+
+    Cardinal #5 contract: identical to `canonical_json_bytes` — a
+    top-level `Sensitive[T]` raises `UnredactedSensitiveError`, and a
+    nested `Sensitive` reaches `json.dumps` and raises `TypeError` (no
+    JSON hook). See `canonical_json_bytes` for the full reasoning.
+    """
+    if isinstance(obj, Sensitive):
+        raise UnredactedSensitiveError(
+            "indented_json_bytes received a Sensitive[T] instance "
+            "directly. This helper is for human-readable artifact output "
+            "of already-redacted report data; raw user content must not "
+            "reach it (cardinal #5)."
+        )
+    return json.dumps(
+        obj,
+        sort_keys=True,
+        indent=2,
+        ensure_ascii=True,
+    ).encode("ascii")

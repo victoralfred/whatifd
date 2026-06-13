@@ -396,3 +396,43 @@ class TestSubcommands:
         upgraded = json.loads(report.read_text(encoding="utf-8"))
         assert upgraded["schema_version"] == "0.2"
         assert upgraded["experiment_shape"] == "failure_rescue"
+
+    def _write_v01(self, path) -> None:
+        import json
+
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1",
+                    "schema_uri": "https://whatif.codes/schema/report/v0.1.json",
+                    "verdict_state": "ship",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_report_migrate_indents_by_default(self, runner: CliRunner, tmp_path) -> None:
+        # #79: the migrator artifact's audience is a human diffing v0.1 vs
+        # v0.2, so the default output is multi-line indented JSON.
+        report = tmp_path / "report.json"
+        self._write_v01(report)
+        result = runner.invoke(app, ["report-migrate", str(report)])
+        assert result.exit_code == EXIT_SUCCESS, _all_output(result)
+        text = (tmp_path / "report.v0.2.json").read_text(encoding="utf-8")
+        assert "\n" in text.strip(), "default output should be multi-line (indented)"
+        assert '  "experiment_shape"' in text, "indent=2 should pad keys"
+
+    def test_report_migrate_no_indent_is_compact(self, runner: CliRunner, tmp_path) -> None:
+        import json
+
+        report = tmp_path / "report.json"
+        self._write_v01(report)
+        result = runner.invoke(app, ["report-migrate", str(report), "--no-indent"])
+        assert result.exit_code == EXIT_SUCCESS, _all_output(result)
+        text = (tmp_path / "report.v0.2.json").read_text(encoding="utf-8")
+        # Compact canonical form: single line (plus the trailing newline)
+        # and no ", " / ": " whitespace separators.
+        assert text.strip().count("\n") == 0, "--no-indent should be single-line"
+        assert ", " not in text and ": " not in text
+        # Same semantic content regardless of formatting.
+        assert json.loads(text)["experiment_shape"] == "failure_rescue"

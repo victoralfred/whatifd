@@ -25,7 +25,7 @@ released PyPI packages → **Inconclusive, exit 2, as the page promises**
 
 | state | count |
 |---|---|
-| PLANNED | 22 |
+| PLANNED | 23 |
 | AWAITING_HUMAN | 6 |
 | REJECTED | 1 |
 | DONE / PR_OPEN / IN_PROGRESS / BLOCKED / DEFERRED | 0 |
@@ -303,6 +303,28 @@ log:
   - 2026-06-13 HYPOTHESIS→CONFIRMED — H-07; grep transcript + deferred catalog inspection
   - 2026-06-13 CONFIRMED→PLANNED
 
+### GAP-030 — test_slots_rejects_arbitrary_attrs over-strict on Python 3.13 (red CI on release HEAD)
+status: PLANNED
+lane: META
+tier: T1-credibility
+class: HYGIENE
+size: S
+depends-on: none
+evidence:
+  - tests/unit/whatifd/adapters/test_protocols.py:239-241 — `pytest.raises((TypeError, AttributeError))` then `assert excinfo.type in (TypeError, AttributeError)` (exact-class match)
+  - CI run 27453089668 job test (py3.13): "FAILED ... test_slots_rejects_arbitrary_attrs - assert <class 'dataclasses.FrozenInstanceError'> in (<class 'TypeError'>, <class 'AttributeError'>)"; the raised exc is FrozenInstanceError("cannot assign to field 'mystery'")
+  - `python3 -c` transcript: FrozenInstanceError MRO = [FrozenInstanceError, AttributeError, Exception, ...]; issubclass(FrozenInstanceError, AttributeError) → True; `in (TypeError, AttributeError)` → False — so pytest.raises catches it but the sub-assertion rejects it
+  - NOT caused by PR #0: `git diff --stat origin/main...gap/000-ledger` → only .md files; main's ci run 26979347027 had test (py3.13) = success at 47869c1 on 2026-06-04. Failure surfaced 2026-06-13 from a Python 3.13 patch bump that reordered the frozen-vs-slots __setattr__ check (frozen now fires first → FrozenInstanceError)
+  - the test comment (:227-237) anticipated only 3.14 TypeError and "older" AttributeError; it did not anticipate 3.13's FrozenInstanceError
+acceptance:
+  - the sub-assertion accepts FrozenInstanceError without weakening the "fail loudly on a genuinely new exception class" intent — preferred fix: `assert issubclass(excinfo.type, (TypeError, AttributeError))` (isinstance semantics; a non-subclass SlotsViolationError still fails loudly); alt: add `dataclasses.FrozenInstanceError` to both tuples
+  - `test (py3.13)` passes in CI; 3.11/3.12/3.14 stay green
+  - lane note: META (test-portability/CI hygiene, no product behavior change) — direct-fixable in Phase 3 on its own branch `gap/030-py313-frozen-slots`; NOT folded into PR #0 (ledger-only) per the one-unit-one-branch rule
+pr:
+log:
+  - 2026-06-13 HYPOTHESIS→CONFIRMED — Phase-2 discovery via PR #0 CI; run 27453089668 + reproduction transcript; isolated as pre-existing (main was green at same SHA)
+  - 2026-06-13 CONFIRMED→PLANNED — first eligible META unit for Phase 3; fix proposed, not applied (held at human gate)
+
 ## Units — T2 (reach)
 
 ### GAP-015 — runner contract is Python-only; `exec:` stdio lane (promotion; spec drafted)
@@ -556,6 +578,7 @@ Also recorded as corrected-premise (not separate rejected units): H-05's "no cal
 ## Iteration log
 
 - 2026-06-13 Phase 0–2: preflight (self-test exit 0), evidence sweep (28 checker findings triaged; demo executed; both repos at recorded SHAs), ledger written; PR #0 opened. Board: 22 PLANNED / 6 AWAITING_HUMAN / 1 REJECTED.
+- 2026-06-13 Phase-2 amend: PR #0 CI surfaced a pre-existing Python-3.13 test failure (test_slots_rejects_arbitrary_attrs); isolated as not caused by the docs-only PR; recorded as GAP-030 (META, T1). Board: 23 PLANNED / 6 AWAITING_HUMAN / 1 REJECTED.
 
 ## Closeout report
 

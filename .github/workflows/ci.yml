@@ -4,7 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # `main` plus the autopilot integration branches (`auto/**`) so sub-PRs
+    # into the long-lived hardening branch get full CI per task, not only
+    # when the integration PR is updated.
+    branches: [main, "auto/**"]
 
 permissions:
   contents: read

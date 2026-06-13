@@ -51,6 +51,7 @@ NOT as a runtime crash that bypasses cardinal #1.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import Annotated
 
@@ -236,6 +237,20 @@ def _compute_config_hash(cfg: WhatifConfig) -> str:
 
     payload = cfg.model_dump(mode="json")
     return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def _close_runner(runner: object) -> None:
+    """Best-effort deterministic teardown for a stateful runner.
+
+    The `exec:` lane's `ExecRunner` owns a child process and MUST be closed
+    (send `shutdown`, then SIGTERM→SIGKILL); stateless `python:` runners have
+    no `close()` and this is a no-op. Teardown never raises — a cleanup
+    failure must not mask the run's verdict (cardinal #1).
+    """
+    close = getattr(runner, "close", None)
+    if callable(close):
+        with contextlib.suppress(Exception):
+            close()
 
 
 def _run_fork_pipeline(
@@ -511,6 +526,13 @@ def _run_fork_pipeline(
     except Exception as exc:  # boundary catch; cardinal #1
         typer.echo(f"whatifd: pipeline error: {type(exc).__name__}: {exc}", err=True)
         return EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+    finally:
+        # A stateful runner (exec: lane) spawns its child lazily inside
+        # run_pipeline; close it deterministically here, on success or
+        # failure. Stateless python: runners are a no-op. This is the
+        # session-teardown hook the cascade-catalog "exec: runner lane"
+        # entry requires to land WITH ExecRunner.
+        _close_runner(loaded_runner.callable_)
 
     # Cardinal #5 structural defense: walk the report tree before
     # serialization. The encoder's reject-unwrapped-Sensitive in
@@ -879,3 +901,80 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+@app.command("exec-check")
+def exec_check(
+    target: Annotated[
+        str,
+        typer.Argument(
+            help="An `exec:<argv>` runner target to validate (e.g. `exec:./replay-agent`)."
+        ),
+    ],
+) -> None:
+    """Validate that an `exec:` runner speaks the `whatifd-exec/1` protocol.
+
+    Spawns the child and drives it through a conformance sequence — `hello`
+    handshake → a probe `replay_request` (answering any `tool_lookup` from a
+    seeded synthetic cache so both a hit and a miss are exercised) → clean
+    `shutdown` — printing pass/fail per behavior. This checks *protocol*
+    conformance (framing, handshake, a valid `ReplayOutput`, teardown), not
+    the agent's answer quality. Exit 0 if the runner conforms, 2 otherwise.
+
+    Cardinal #1: a non-conforming runner produces a structured operator-
+    readable message + setup-failure exit code, never a raw traceback.
+    """
+    from whatifd.contract import ReplayConfig, ToolCache, TraceInput
+    from whatifd.exec_runner import PROTOCOL, ExecRunner, ExecRunnerError
+    from whatifd.runner_loader import RunnerLoadError, load_runner
+
+    if not target.startswith("exec:"):
+        typer.echo(
+            f"whatifd exec-check: {target!r} is not an `exec:` target. "
+            "This command validates the exec lane; use `exec:<argv>`.",
+            err=True,
+        )
+        raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE)
+
+    try:
+        loaded = load_runner(target)
+    except RunnerLoadError as exc:
+        typer.echo(f"whatifd exec-check: {exc}", err=True)
+        raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE) from exc
+
+    runner = loaded.callable_
+    if not isinstance(runner, ExecRunner):
+        typer.echo(
+            f"whatifd exec-check: {target!r} did not resolve to an exec runner.",
+            err=True,
+        )
+        raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE)
+
+    # Seed a synthetic cache: a runner that issues the documented probe tool
+    # call gets a hit; any other call is a miss. Either way the protocol
+    # round-trips — exec-check verifies framing, not the agent's choices.
+    probe_cache = ToolCache(cache={ToolCache._key("search", {"q": "whatifd-exec-check"}): "ok"})
+    probe = TraceInput(user_message="whatifd exec-check probe", metadata={})
+    cfg = ReplayConfig(system_prompt=None, model=None, overrides={})
+
+    try:
+        runner.start()
+        typer.echo(
+            f"  ok  handshake — runner {runner.runner_name or '?'} "
+            f"v{runner.runner_version or '?'} ({PROTOCOL})"
+        )
+        out = runner(probe, cfg, probe_cache)
+        typer.echo(
+            f"  ok  replay — got ReplayOutput "
+            f"(text {len(out.text)} chars, {len(out.tool_spans)} tool span(s))"
+        )
+    except ExecRunnerError as exc:
+        typer.echo(f"  FAIL  {exc}", err=True)
+        runner.close()
+        typer.echo("whatifd exec-check: runner does NOT conform.", err=True)
+        raise typer.Exit(code=EXIT_INCONCLUSIVE_OR_SETUP_FAILURE) from exc
+
+    runner.close()
+    typer.echo("  ok  shutdown")
+    typer.echo("whatifd exec-check: runner conforms to whatifd-exec/1.")
+    raise typer.Exit(code=EXIT_SUCCESS)

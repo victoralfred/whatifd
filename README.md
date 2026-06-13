@@ -103,7 +103,7 @@ Real Langfuse traces require `LANGFUSE_HOST` (or `LANGFUSE_BASE_URL`) + `LANGFUS
 
 - **Tracers (reads from)**: Langfuse, Arize Phoenix / OpenInference, and Datadog LLM Observability (each a small read-only adapter package). LangSmith / OpenTelemetry GenAI are candidates for future adapters.
 - **Scorers (wraps)**: Inspect AI (real adapter shipped); pluggable via the scorer registry.
-- **Your agent (calls back into)**: any Python callable matching the [runner contract](./docs/runner-contract.md).
+- **Your agent (calls back into)**: a Python callable via `python:<module>:<attr>`, **or any language** via the [`exec:` runner lane](./docs/runner-contract-exec.md) — your replay entry point as a child process speaking a small NDJSON protocol over stdio (no SDK). Both satisfy the [runner contract](./docs/runner-contract.md); validate a runner with `whatifd exec-check`.
 - **Downstream of `whatifd`'s decisions**: your CI gates on the exit code — a `whatifd-fork` GitHub Action (`.github/actions/whatifd-fork/`) and a GitLab CI/CD component (`integrations/gitlab/`) wrap it with verdict comments + artifacts. Also composes with SLO platforms (Nobl9, Sloth, Honeycomb) and incident tooling.
 
 ## What `whatifd` is not

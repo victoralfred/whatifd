@@ -123,4 +123,16 @@ whatifd fork --target "python:my_agent.replay:run" \
             --score "inspect_ai:faithfulness"
 ```
 
-The runner-target loader resolves `python:<module>:<attr>` via `importlib`. The `_run_fork_pipeline` dispatcher in `src/whatifd/cli.py` is currently a documented stub for v0.1.0; the signature is stable (witness-token thread per cardinal #7), so closing the wiring is a body fill, not a contract change.
+The runner-target loader resolves `python:<module>:<attr>` via `importlib` (and `exec:<argv>` via a child process — see the [exec lane](./runner-contract-exec.md)). As of v0.3.0 the `_run_fork_pipeline` dispatcher in `src/whatifd/cli.py` is fully wired end-to-end (config → source/runner/scorer → verdict → report artifacts); the witness-token thread (cardinal #7) is structural.
+
+## The `exec:` lane (non-Python runners)
+
+`python:<module>:<attr>` is the default and fully-supported scheme. A second
+scheme, **`exec:<argv>`**, lets you implement the runner contract in *any*
+language by running your replay entry point as a child process that speaks a
+small line-buffered NDJSON protocol over stdin/stdout — no SDK, ~50 lines in
+the guest language. The full wire contract (`whatifd-exec/1`), failure
+mapping, and report/manifest additions are specified in
+[`docs/runner-contract-exec.md`](./runner-contract-exec.md). The spec is
+accepted; the implementation lands incrementally (tracked in the design
+cascade-catalog under "exec: runner lane").

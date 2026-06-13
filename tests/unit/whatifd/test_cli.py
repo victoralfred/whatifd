@@ -21,6 +21,9 @@ Pin properties:
 from __future__ import annotations
 
 import json
+import shutil
+import sys
+from pathlib import Path
 
 import pytest
 from click.testing import Result
@@ -29,6 +32,7 @@ from typer.testing import CliRunner
 from whatifd.cli import (
     EXIT_INCONCLUSIVE_OR_SETUP_FAILURE,
     EXIT_SUCCESS,
+    _close_runner,
     app,
 )
 
@@ -36,6 +40,109 @@ from whatifd.cli import (
 @pytest.fixture
 def runner() -> CliRunner:
     return CliRunner()
+
+
+class TestCloseRunner:
+    """Deterministic runner teardown for the exec: lane (and no-op for python:)."""
+
+    def test_closes_a_closeable_runner(self) -> None:
+        class Spy:
+            closed = False
+
+            def close(self) -> None:
+                self.closed = True
+
+        spy = Spy()
+        _close_runner(spy)
+        assert spy.closed is True
+
+    def test_noop_on_stateless_runner(self) -> None:
+        # A plain function (the python: lane) has no close(); must not raise.
+        _close_runner(lambda *a, **k: None)
+
+    def test_noncallable_close_attr_is_ignored(self) -> None:
+        class NotReally:
+            close = "not a method"
+
+        _close_runner(NotReally())  # must not raise
+
+    def test_teardown_failure_is_suppressed(self) -> None:
+        class Boom:
+            def close(self) -> None:
+                raise RuntimeError("teardown blew up")
+
+        # Cardinal #1: a cleanup failure must not mask the verdict.
+        _close_runner(Boom())
+
+
+_EXEC_CHECK_CONFORMING_CHILD = """\
+import sys, json
+
+def send(o):
+    sys.stdout.write(json.dumps(o) + "\\n"); sys.stdout.flush()
+
+def recv():
+    line = sys.stdin.readline()
+    return json.loads(line) if line else None
+
+send({"v":1,"type":"hello","protocol":"whatifd-exec/1",
+      "runner_name":"conformant","runner_version":"9.9"})
+recv()  # hello_ack
+while True:
+    f = recv()
+    if f is None or f.get("type") == "shutdown":
+        break
+    send({"v":1,"type":"replay_response","request_id":f.get("request_id"),
+          "output":{"text":"ok","tool_spans":[],"metadata":{}}})
+"""
+
+_EXEC_CHECK_BAD_CHILD = """\
+import sys, json
+sys.stdout.write(json.dumps({"v":1,"type":"nope"}) + "\\n"); sys.stdout.flush()
+sys.stdin.readline()
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="exec: lane is POSIX-only in v1")
+class TestExecCheck:
+    def _target(self, tmp_path, src: str) -> str:
+        import sys as _sys
+
+        script = tmp_path / "agent.py"
+        script.write_text(src, encoding="utf-8")
+        return f"exec:{_sys.executable} {script}"
+
+    def test_conforming_runner_passes(self, runner: CliRunner, tmp_path) -> None:
+        target = self._target(tmp_path, _EXEC_CHECK_CONFORMING_CHILD)
+        result = runner.invoke(app, ["exec-check", target])
+        assert result.exit_code == EXIT_SUCCESS, _all_output(result)
+        out = _all_output(result)
+        assert "handshake" in out
+        assert "conforms to whatifd-exec/1" in out
+
+    def test_non_exec_target_rejected(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["exec-check", "python:foo.bar:run"])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "not an `exec:` target" in _all_output(result)
+
+    def test_nonconforming_runner_fails(self, runner: CliRunner, tmp_path) -> None:
+        target = self._target(tmp_path, _EXEC_CHECK_BAD_CHILD)
+        result = runner.invoke(app, ["exec-check", target])
+        assert result.exit_code == EXIT_INCONCLUSIVE_OR_SETUP_FAILURE
+        assert "does NOT conform" in _all_output(result)
+
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+    def test_node_reference_runner_conforms(self, runner: CliRunner) -> None:
+        # The shipped Node reference runner must speak whatifd-exec/1 — keeps
+        # examples/exec_agent_node/agent.js from bit-rotting wherever node is
+        # available (locally + CI runners that have it).
+        repo_root = Path(__file__).resolve().parents[3]
+        agent = repo_root / "examples" / "exec_agent_node" / "agent.js"
+        assert agent.exists(), agent
+        result = runner.invoke(app, ["exec-check", f"exec:node {agent}"])
+        assert result.exit_code == EXIT_SUCCESS, _all_output(result)
+        assert "exec-agent-node" in _all_output(result)
+        assert "conforms to whatifd-exec/1" in _all_output(result)
 
 
 def _all_output(result: Result) -> str:

@@ -43,8 +43,8 @@ Please do not publicly disclose the issue or open public PRs that reference it u
 
 - The `whatifd` library and CLI itself.
 - The runner-contract Pydantic models in `src/whatifd/contract/`.
-- Official adapters shipped under `src/whatifd/ingest/`.
-- The default scorer wrappers in `src/whatifd/score/`.
+- Official adapters: the `src/whatifd/adapters/` protocols/factory and the `packages/whatifd-*/` workspace packages.
+- The scorer loader `src/whatifd/scorer_loader.py` and the bundled scorer wrappers.
 - The default report templates and exit-code policy.
 
 **Out of scope** (these are the user's responsibility):

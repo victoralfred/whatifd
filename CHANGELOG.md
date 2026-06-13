@@ -12,6 +12,10 @@ change is called out under `### Changed (BREAKING)`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Renamed the adopter-facing telemetry doc `AGENT_TELEMENTRY.md` → `AGENT_TELEMETRY.md` (filename typo); the `cat CLAUDE.md.append.md >> CLAUDE.md` adoption flow is unchanged.
+
 ## [0.3.0] - 2026-06-04
 
 Highlights: a fourth trace-source adapter (**`whatifd-datadog`** — Datadog LLM

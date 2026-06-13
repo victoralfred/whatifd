@@ -1,11 +1,12 @@
 # Runner contract over stdio — the `exec:` scheme (`whatifd-exec/1`)
 
-> **Status:** DRAFT spec for ledger unit **H-09** · lane `CODE` → this document
-> *is* the promotion artifact ("spec PR first, implementation second").
-> Proposed repo location: `docs/runner-contract-exec.md`, with a paired
-> amendment to `whatifd-design/references/phases.md` and a
-> `cascade-catalog.md` entry (the runner contract is a doctrine-guarded
-> boundary; see contracts.md).
+> **Status:** ACCEPTED spec (promoted 2026-06-13, autopilot cycle 2). This is
+> the contract the `exec:` lane implements; the design questions formerly in §9
+> are now settled (see §9). Implementation follows in its own sub-PR(s) per the
+> doctrine-guarded "spec first, implementation second" discipline; the design
+> record + the load-bearing integration decision (subprocess lifetime vs the
+> per-trace `Runner` protocol) live in
+> `whatifd-design/references/cascade-catalog.md` ("exec: runner lane").
 >
 > **Lineage:** written 2026-06-13 against `src/whatifd/contract/__init__.py`,
 > `src/whatifd/runner_loader.py`, and `docs/runner-contract.md` at `main`
@@ -219,13 +220,33 @@ answer to "which runner produced this verdict."
 - `docs/runner-contract.md` gains a short "exec lane" section linking here;
   loader error text updated to name both schemes.
 
-## 9. Open questions for the design review (decide in the promotion PR)
+## 9. Design decisions (settled at promotion, 2026-06-13)
 
-1. Concurrency: v1 pins one in-flight `replay_request`; is per-child
-   concurrency worth a `capabilities` negotiation in v1.1, or do we scale by
-   child *processes* (simpler, preserves per-trace isolation)?
-2. Should `hello.runner_version` be floor-relevant (refuse Ship when the
-   child won't identify itself), or disclosure-only in v1? (Lean:
-   disclosure-only; identity hashing already covers the audit need.)
-3. Windows: argv splitting + line buffering are the known sharp edges;
-   declare POSIX-only for v1 or gate on a CI runner?
+1. **Concurrency — scale by processes, not in-child concurrency.** v1 pins
+   exactly one in-flight `replay_request` per child and preserves per-trace
+   isolation. Parallelism across traces is achieved by running multiple child
+   *processes* (the parent already parallelizes replay), which keeps each
+   child's protocol state trivially correct and matches the per-trace
+   isolation the replay kernel assumes. A `capabilities`-negotiated in-child
+   concurrency is explicitly deferred to a future version with its own spec.
+2. **`hello.runner_version` is disclosure-only in v1**, not floor-relevant. A
+   child that won't identify itself does not by itself downgrade the verdict;
+   the executable sha256 + argv already satisfy the "which runner produced
+   this verdict?" audit need (§2.2, §7). Making identity floor-relevant is a
+   policy a later version may add, but the v1 floor is unchanged.
+3. **POSIX-only in v1.** argv splitting (POSIX shell-word rules) and line
+   buffering are specified for POSIX; Windows is a documented non-target for
+   v1 (the loader rejects `exec:` with a clear "POSIX-only in this version"
+   message when `os.name != "posix"`). A Windows lane, if demanded, is a
+   separate increment.
+
+**Settled integration decision (the load-bearing one for implementation):**
+the child is spawned **lazily on the first replay and kept alive across the
+session**, but the `Runner` protocol is invoked *per trace*. The exec runner
+is therefore a **stateful callable** (`ExecRunner` instance) that owns the
+child process and is registered for **deterministic teardown** — the CLI fork
+wiring closes it in a `finally` (sending `shutdown`, then SIGTERM→SIGKILL on
+the grace timer) after the last trace. This is the one place the exec lane
+needs more than the stateless `python:` callable; it is recorded in the
+cascade-catalog so the kernel/CLI teardown hook is implemented in lockstep
+with `ExecRunner`, never bolted on after.

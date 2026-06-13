@@ -183,15 +183,15 @@ These together cover ~3 of the 9 matrix cells with regression-grade pins. The re
 
 ---
 
-## 15. `exec:` stdio runner lane (language-agnostic runner)
+## 15. `exec:` stdio runner lane (language-agnostic runner) — SPEC ACCEPTED, implementing
 
-**What:** A `runner: exec:<cmd>` scheme that speaks the runner contract as JSON over stdio, unlocking TS/Go/other agent stacks without per-language SDKs. Today `src/whatifd/runner_loader.py:99` accepts only `python:<module>:<attr>`. A full DRAFT spec already exists at `docs/internal/drafts/runner-contract-exec-spec.md` (`whatifd-exec/1`, written against the v0.3.0 contract).
+**What:** A `runner: exec:<cmd>` scheme that speaks the runner contract as JSON over stdio, unlocking TS/Go/other agent stacks without per-language SDKs. Today `src/whatifd/runner_loader.py` accepts only `python:<module>:<attr>`.
 
-**Why deferred:** Doctrine-guarded boundary (the runner contract). Promotion is "spec PR first, implementation second": move the draft to `docs/runner-contract-exec.md` (marked proposal) + a `phases.md` amendment + a `cascade-catalog.md` entry, before any code.
+**Status (updated 2026-06-13, autopilot cycle 2):** PROMOTED — the spec is accepted at `docs/runner-contract-exec.md` (`whatifd-exec/1`, §9 design questions settled), with the implementation cascade recorded in `cascade-catalog.md` ("exec: runner lane"). Spec-first is done; the implementation (loader scheme + `ExecRunner` subprocess driver + teardown hook + `runner_protocol_error` registry code + manifest fields + conformance assets) lands in follow-up sub-PRs.
 
-**Trigger to promote:** Confirmed demand for a non-Python runner (the single largest TAM limit). The drafted spec is the promotion artifact when that demand lands.
+**Why it was deferred:** Doctrine-guarded boundary (the runner contract); "spec PR first, implementation second".
 
-**Source:** gap-bridge GAP-015 (H-09); draft at `docs/internal/drafts/runner-contract-exec-spec.md`.
+**Source:** gap-bridge GAP-015 (H-09); accepted spec at `docs/runner-contract-exec.md`.
 
 ---
 

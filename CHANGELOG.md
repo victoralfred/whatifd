@@ -14,6 +14,7 @@ change is called out under `### Changed (BREAKING)`.
 
 ### Added
 
+- **Accepted the `exec:` runner-lane spec** (`docs/runner-contract-exec.md`, `whatifd-exec/1`) — a second `target.runner` scheme that runs the replay entry point as a child process speaking line-buffered NDJSON over stdio, so non-Python agents satisfy the runner contract without an SDK. This change promotes the design (spec accepted, the §9 open questions settled, design recorded in the cascade-catalog); the implementation lands incrementally in follow-up changes. `docs/runner-contract.md` now points to it and the loader's unsupported-scheme error names the upcoming lane.
 - **`whatifd report-migrate` now writes human-readable indented JSON by default** (#79). The migrator artifact's audience is an operator diffing a v0.1 report against its migrated v0.2 form, not a hash function — so a single very long line was the wrong default. New `--indent/--no-indent` flag (default `--indent`); `--no-indent` restores the compact canonical form. Backed by a new `whatifd.serialization.indented_json_bytes` helper that carries the same cardinal-#5 `Sensitive[T]` rejection as `canonical_json_bytes`.
 
 ### Fixed

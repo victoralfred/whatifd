@@ -96,8 +96,10 @@ def load_runner(reference: str) -> LoadedRunner:
         raise RunnerLoadError(f"target.runner must be a non-empty string; got {reference!r}.")
     if not reference.startswith(_PYTHON_PREFIX):
         raise RunnerLoadError(
-            f"target.runner {reference!r} has unsupported scheme. v0.1 supports "
-            "`python:<module.path>:<attr>` only."
+            f"target.runner {reference!r} has unsupported scheme. Supported: "
+            "`python:<module.path>:<attr>`. The `exec:<argv>` stdio lane is "
+            "specified in docs/runner-contract-exec.md (implementation pending; "
+            "tracked in the design cascade-catalog)."
         )
 
     body = reference[len(_PYTHON_PREFIX) :]

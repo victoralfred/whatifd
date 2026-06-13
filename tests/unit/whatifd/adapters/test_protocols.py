@@ -224,21 +224,26 @@ class TestAdapterMetadata:
             m.adapter_id = "y"  # type: ignore[misc]
 
     def test_slots_rejects_arbitrary_attrs(self) -> None:
-        # On CPython 3.14, frozen + slots dataclass setattr of a
-        # non-slot attribute raises TypeError from the dataclass-
-        # generated __setattr__ (it calls super().__setattr__ with a
-        # super(cls, self) object whose type doesn't match, surfacing
-        # as `super(type, obj): obj is not an instance...`). Older
-        # CPython versions surfaced AttributeError from the slots
-        # layer first. Accept the union to stay portable, and pin
-        # the current shape with a sub-assertion so a future Python
-        # change that produces a *different* exception class (e.g.,
-        # a new SlotsViolationError) fails loudly here rather than
-        # silently passing through `pytest.raises(Exception)`.
+        # Setting a non-slot attr on a frozen + slots dataclass raises a
+        # different exception class depending on the CPython version,
+        # because the frozen check and the slots check fire in a
+        # version-dependent order:
+        #   - 3.14: TypeError from the dataclass-generated __setattr__
+        #     (super().__setattr__ with a super(cls, self) object whose
+        #     type doesn't match: `super(type, obj): obj is not an
+        #     instance...`).
+        #   - 3.13: dataclasses.FrozenInstanceError (the frozen check
+        #     fires first); it subclasses AttributeError.
+        #   - older: AttributeError from the slots layer first.
+        # All three are TypeError-or-AttributeError (FrozenInstanceError
+        # via subclassing). Assert membership in that hierarchy with
+        # issubclass so a genuinely new, unrelated exception class (e.g.
+        # a future SlotsViolationError that isn't a subclass) still fails
+        # loudly rather than passing through `pytest.raises(Exception)`.
         m = AdapterMetadata(adapter_id="x", package_version="1.0.0")
         with pytest.raises((TypeError, AttributeError)) as excinfo:
             m.mystery = "x"  # type: ignore[attr-defined]
-        assert excinfo.type in (TypeError, AttributeError)
+        assert issubclass(excinfo.type, (TypeError, AttributeError))
 
 
 # ---------------------------------------------------------------------------

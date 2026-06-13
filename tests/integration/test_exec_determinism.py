@@ -23,7 +23,7 @@ from whatifd.adapters.stub import StubScorer, StubTraceSource, StubTraceSpec
 from whatifd.cli_pipeline import build_delta_fn
 from whatifd.config import ChangeConfig
 from whatifd.pipeline import run_pipeline
-from whatifd.runner_loader import LoadedRunner
+from whatifd.runner_loader import load_runner
 from whatifd.serialization.canonical import canonical_json_bytes
 from whatifd.serialization.determinism import extract_deterministic_subset
 from whatifd.serialization.encoder import encode_report_v01
@@ -82,13 +82,15 @@ def _run_exec_and_extract_subset(tmp_path) -> dict[str, Any]:
 
     child = tmp_path / "det_agent.py"
     child.write_text(_DETERMINISTIC_CHILD, encoding="utf-8")
-    runner = ExecRunner([sys.executable, str(child)])
     floor = TrustFloor()
     policy = DecisionPolicy()
+    # Resolve through the production loader so the test exercises the real
+    # `exec:` dispatch path (and the loader — not the test — sets `kind`).
+    loaded = load_runner(f"exec:{sys.executable} {child}")
+    runner = loaded.callable_
+    assert isinstance(runner, ExecRunner)  # `exec:` resolves to an ExecRunner
     delta_fn = build_delta_fn(
-        loaded_runner=LoadedRunner(
-            callable_=runner, kind="sync", reference="exec:python det_agent.py"
-        ),
+        loaded_runner=loaded,
         scorer=StubScorer(),
         change=ChangeConfig(system_prompt="new prompt", model=None),
         replay_timeout_seconds=10.0,

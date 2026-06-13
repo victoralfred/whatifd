@@ -22,6 +22,19 @@ Format per entry:
 
 ## Open cascades (must resolve before schema freeze)
 
+### `exec:` runner lane — stdio NDJSON runner (`whatifd-exec/1`)
+
+**Source decision:** `docs/runner-contract-exec.md` (ACCEPTED spec, promoted 2026-06-13 in autopilot cycle 2; origin gap-bridge GAP-015 / H-09). A second `target.runner` scheme, `exec:<argv>`, runs the user's replay entry point as a child process speaking line-buffered NDJSON over stdin/stdout, so non-Python agents satisfy the runner contract without an SDK. v1 is `use-original`-only (no live tool calls); cache keying stays in core via a tool-lookup callback (never re-implemented in the guest).
+**Rippled to (spec-first is DONE; these are the implementation cascade, in follow-up sub-PRs):**
+- `src/whatifd/runner_loader.py` — recognize `exec:`, shell-split argv (POSIX rules), reject when `os.name != "posix"`; return a `LoadedRunner` wrapping a stateful `ExecRunner`. Loader error text names both schemes.
+- New `src/whatifd/exec_runner.py` — `ExecRunner`: lazily spawns the child, runs the hello handshake, drives `replay_request → tool_lookup* → replay_response` per trace, maps the wire frame through the **same Pydantic models** as the Python lane (cardinal #5 unchanged), enforces `timeouts.replay_seconds` per request with child-restart on timeout.
+- **Subprocess lifetime vs the per-trace `Runner` protocol (load-bearing):** `ExecRunner` is stateful (owns the child across the session) while `Runner.__call__` is per-trace. The CLI fork wiring (`_run_fork_pipeline`) must close it in a `finally` (send `shutdown`, then SIGTERM→SIGKILL on the grace timer). This teardown hook is new vs the stateless `python:` callable and must land WITH `ExecRunner`, not after.
+- `failure_codes.py` — proposed new registry code `runner_protocol_error` (stage replay, scope trace, retryable false; `details`: `raw_excerpt` ≤256 chars, `violation`). Cardinal #1: protocol pathologies stay distinguishable from agent exceptions.
+- `RunManifest`/report `runtime` — additive optional fields `runner_lane: "python"|"exec"` and `exec_runner: {argv, executable_sha256, runner_name, runner_version, protocol, restarts}`. `restarts` is non-deterministic; the rest `x-deterministic: true`. Additive but doctrine-guarded (cardinal #6) — schema doc + golden updates in the same PR.
+- Conformance: `examples/exec_agent_node/` (~60-line Node reference), a `whatifd exec-check <target>` harness, walkthrough fixture #8 (`regression_check` end-to-end over an exec runner, deterministic-subset byte-equality extending `tests/integration/test_determinism.py`).
+**Status:** in_progress — spec ACCEPTED + §9 design questions settled; implementation cascade above decomposed into follow-up sub-PRs (loader+ExecRunner+teardown → registry code → manifest fields → conformance assets).
+**Resolution:** spec at `docs/runner-contract-exec.md`; this entry tracks the implementation until each cascade row lands.
+
 ### `whatifd.adapters` package introduced (Phase 4A.1)
 
 **Source decision:** Phase 4A.1 (PR #57) introduces `src/whatifd/adapters/` with `TraceSource` / `Scorer` Protocols, `RawTrace` / `JudgeResult` Pydantic models (Sensitive[str] user-content fields per cardinal #5), `AdapterMetadata` frozen dataclass, and a re-exported `ClusterKeySupport`. Lazy-load contract: core modules (`whatifd.cli`, `whatifd.diff`, `whatifd.config`, `whatifd.contract`, `whatifd.cache`, `whatifd.render`) MUST NOT import `whatifd.adapters`; the subprocess test in `tests/unit/whatifd/adapters/test_protocols.py::TestLazyLoad` is the enforcement.

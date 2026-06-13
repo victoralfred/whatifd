@@ -249,13 +249,13 @@ from whatifd.render.markdown import render_full_report
 print(render_full_report(report))
 ```
 
-The five-section structure (header → cohort table → findings → cache + methodology → run manifest) is what the six committed walkthroughs in `docs/walkthroughs/` show.
+The five-section structure (header → cohort table → findings → cache + methodology → run manifest) is what the seven committed walkthroughs in `docs/walkthroughs/` show.
 
 ## What's next
 
 - **[Runner contract](./runner-contract.md)** — the protocol your replay code implements
 - **[Concepts](./concepts.md)** — the doctrine: defensible verdicts, non-claims, trust floor vs decision policy
-- **[Walkthroughs](./walkthroughs/)** — six rendered examples (Ship, Don't Ship, Inconclusive)
+- **[Walkthroughs](./walkthroughs/)** — seven rendered examples (Ship, Don't Ship, Inconclusive)
 - **[`examples/minimal_agent/`](../examples/minimal_agent/)** — copy-paste reference Runner
 
 ## Stub adapters: what they do (and don't)

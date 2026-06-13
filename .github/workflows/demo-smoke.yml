@@ -1,0 +1,79 @@
+name: demo-smoke
+
+# Runs the site's 60-second demo verbatim against the RELEASED PyPI packages
+# (not the workspace source), so a broken publish or a bit-rotted quickstart is
+# caught nightly. The demo must produce an Inconclusive verdict with exit code 2
+# (the stub source ships empty, so the trust floor refuses Ship/Don't Ship).
+# See gap-bridge GAP-028; the demo text mirrors whatif.codes docs/index.md.
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # nightly 07:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sixty-second-demo:
+    name: 60-second demo (released PyPI packages)
+    runs-on: ubuntu-latest
+    env:
+      VIRTUAL_ENV: ${{ github.workspace }}/.demo-venv
+    steps:
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install released packages from PyPI (not the workspace source)
+        run: |
+          uv venv "$VIRTUAL_ENV"
+          uv pip install whatifd whatifd-langfuse whatifd-inspect-ai
+
+      - name: Write the 60-second demo files (verbatim from whatif.codes)
+        run: |
+          mkdir -p demo
+          cat > demo/runner.py <<'EOF'
+          from whatifd.contract import TraceInput, ReplayConfig, ToolCache, ReplayOutput
+
+          def run(trace_input: TraceInput, config: ReplayConfig, tool_cache: ToolCache) -> ReplayOutput:
+              return ReplayOutput(text=f"replayed: {trace_input.user_message[:40]}", tool_spans=[], metadata={})
+          EOF
+          touch demo/__init__.py
+          cat > whatifd.config.yaml <<'EOF'
+          source:
+            adapter: stub
+          target:
+            runner: "python:demo.runner:run"
+          selection:
+            failure_cohort: { limit: 20 }
+            baseline_cohort: { limit: 20 }
+          change:
+            system_prompt: "demo system prompt"
+          scorer:
+            adapter: stub
+          decision: {}
+          reporting:
+            profile: default
+          timeouts:
+            replay_seconds: 5.0
+            score_seconds: 5.0
+          EOF
+
+      - name: Run the demo and assert Inconclusive / exit 2
+        run: |
+          set +e
+          PYTHONPATH=. "$VIRTUAL_ENV/bin/whatifd" fork --config whatifd.config.yaml
+          code=$?
+          set -e
+          echo "whatifd fork exit code: $code"
+          if [ "$code" -ne 2 ]; then
+            echo "::error::expected exit 2 (Inconclusive), got $code"
+            exit 1
+          fi
+          ls reports/whatifd-fork-*.json reports/whatifd-fork-*.md
+          if ! grep -q "Inconclusive" reports/whatifd-fork-*.md; then
+            echo "::error::report does not contain the Inconclusive verdict"
+            exit 1
+          fi
+          echo "Demo verified: Inconclusive verdict, exit 2, JSON + Markdown artifacts present."

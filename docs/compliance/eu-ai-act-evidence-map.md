@@ -1,8 +1,10 @@
 # whatifd evidence map — `ReportV01` artifacts and EU AI Act high-risk obligations
 
-> **Status:** DRAFT for ledger unit **H-13** · lane `DOCS` · **publication is HUMAN-gated**
-> (legal-adjacent claims; see gap-bridge cardinal rules). Proposed repo location:
-> `docs/compliance/eu-ai-act-evidence-map.md`.
+> **Status:** DRAFT, filed at `docs/compliance/eu-ai-act-evidence-map.md` (gap-bridge GAP-019 / H-13).
+> **Not yet published or linked from any public surface** — legal-adjacent claims are
+> HUMAN-gated (see gap-bridge cardinal rules); a human must review before this is
+> linked from the site, README, or marketing. Filed here so it is version-controlled
+> and reviewable, not to publish it.
 >
 > **Not legal advice.** This document maps whatifd's report fields to the
 > *categories of evidence* the EU AI Act (Regulation (EU) 2024/1689) asks

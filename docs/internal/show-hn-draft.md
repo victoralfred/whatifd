@@ -1,12 +1,11 @@
 # Show HN draft — whatifd
 
-> **Status:** DRAFT for ledger unit **H-16** · lane `DOCS` (draft) →
-> **publication is HUMAN-gated** (it's your name and account on the post).
-> Proposed repo location: `docs/internal/show-hn-draft.md`.
-> Pre-flight before posting: H-01/H-02 docs drift must be DONE (HN *will*
-> click the site and the README within minutes; a "planned v0.3" table under
-> a v0.3.0 release is the first comment you'll get), and the 60-second demo
-> must run verbatim from a clean venv (H-08).
+> **Status:** DRAFT, filed at `docs/internal/show-hn-draft.md` (gap-bridge GAP-023 / H-16).
+> **Posting is HUMAN-gated** (your name and account on the post) — see GAP-024.
+> Pre-flight, now satisfied: the site/README drift (GAP-001, GAP-002) is DONE,
+> so a "planned v0.3" table under a v0.3.0 release no longer greets readers, and
+> the 60-second demo was verified to run verbatim in a clean venv (GAP-029,
+> exit 2 / Inconclusive as advertised). Remaining gate is the decision to post.
 
 ---
 

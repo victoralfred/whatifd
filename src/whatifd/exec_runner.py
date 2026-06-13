@@ -83,6 +83,16 @@ class ExecRunner:
         self._runner_version: str | None = None
         self._started = False
 
+    @property
+    def runner_name(self) -> str | None:
+        """The child's self-reported `runner_name` (set after the handshake)."""
+        return self._runner_name
+
+    @property
+    def runner_version(self) -> str | None:
+        """The child's self-reported `runner_version` (set after the handshake)."""
+        return self._runner_version
+
     # -- lifecycle ---------------------------------------------------------
 
     def start(self) -> None:

@@ -46,11 +46,11 @@ jobs:
 
       - name: Checkout whatifd (source of truth)
         if: steps.guard.outputs.skip == 'false'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Checkout whatifd-action (publish target)
         if: steps.guard.outputs.skip == 'false'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: victoralfred/whatifd-action
           token: ${{ secrets.ACTION_SYNC_TOKEN }}

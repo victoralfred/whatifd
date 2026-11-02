@@ -56,7 +56,7 @@ dev = [
   # cassette migration). Industry practice for downstream consumers
   # of a serialization-format library: pin the format-defining
   # dependency directly even when it's pulled transitively.
-  "vcrpy>=8.0,<9.0",
+  "vcrpy>=8.0,<10.0",
   "ruff>=0.15.12",
   "mypy>=1.20.2",
   "hypothesis>=6.152.4",
